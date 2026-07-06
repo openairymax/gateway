@@ -1,0 +1,59 @@
+Airymax - AI Agent Runtime Platform Engineering
+Copyright (c) 2025-2026 SPHARX Ltd. All Rights Reserved.
+Project Homepage:
+https://github.com/SpharxTeam/Airymax
+
+===========================================================================
+CORE INTELLECTUAL PROPERTY DECLARATION
+===========================================================================
+This product includes software originally developed by SPHARX Ltd.
+The following core architectures, technologies and modules are original
+intellectual property of SPHARX Ltd., protected by copyright law and
+relevant international treaties:
+
+- MicroCoreRT (微核心): Abstracted Microkernel Component Layer
+- AgentsIPC: Inter-Process Communication framework
+- CoreLoopThree (三层认知循环): Cognition-Action-Memory three-in-one
+  core architecture
+- Thinkdual (双思考系统): Engineering implementation of Kahneman
+  Dual-System Theory for full-link multi-agent collaboration
+- TimeSliceInfer: Time-sliced inference engine
+- MemoryRovol (记忆卷载): Memory Rolling & Evolution Engine
+- Cupolas (安全穹顶): Virtual Workbench Sandbox & Endogenous Security
+- SystemicLLM: Provider unified abstraction with intelligent routing
+
+===========================================================================
+TRADEMARK NOTICE
+===========================================================================
+Airymax, AgentRT, MicroCoreRT, CoreLoopThree, Thinkdual, Cupolas,
+MemoryRovol, TimeSliceInfer, SystemicLLM, AgentsIPC are trademarks or
+registered trademarks of SPHARX Ltd. All other trademarks, product
+names, and company names mentioned in this project are the property of
+their respective owners.
+
+===========================================================================
+THIRD-PARTY COMPONENTS NOTICE
+===========================================================================
+This product may include third-party open source software components.
+Each third-party component is distributed under its own original open
+source license, and the relevant license terms and copyright statements
+are retained in the corresponding component directory and source code
+files. The use of third-party components does not affect the terms of
+either license applicable to the core code of this project.
+
+===========================================================================
+LICENSE STATEMENT
+===========================================================================
+This software is dual-licensed under:
+  1. GNU Affero General Public License v3.0 or later (AGPL v3)
+     https://www.gnu.org/licenses/agpl-3.0.html
+  2. Apache License, Version 2.0
+     https://www.apache.org/licenses/LICENSE-2.0
+
+You may choose either license at your option. The full text of both
+licenses is included in the LICENSE file in the root directory of this
+project.
+
+The content of this NOTICE file is for informational purposes only,
+and does not modify, limit, or expand the terms and conditions of
+either license.
