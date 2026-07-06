@@ -1,0 +1,82 @@
+# =============================================================================
+# Airymax C Layer Module — .gitignore
+# =============================================================================
+
+# CMake 构建产物
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# 编译产物
+*.o
+*.obj
+*.a
+*.lib
+*.la
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+
+# 编译器数据库
+compile_commands.json
+compile_flags.txt
+
+# 测试与覆盖率
+Testing/
+CTestTestfile.cmake
+*.gcov
+*.gcda
+*.gcno
+*.profraw
+test-results/
+test_output/
+
+# Core dump
+core
+core.*
+*.core
+
+# Python（部分 C 模块有 Python 测试脚本）
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# IDE 配置
+.vscode/
+.idea/
+.vs/
+*.code-workspace
+.cache/
+.clangd/
+
+# 运行时数据
+data/
+*.log
+*.tmp
+*.bak
+
+# 环境与密钥
+.env
+.env.*
+!.env.example
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 编辑器临时文件
+*.swp
+*.swo
+*~
