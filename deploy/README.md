@@ -140,4 +140,4 @@ kubectl apply -f k8s/service.yaml
 
 ---
 
-© 2026 SPHARX Ltd. All Rights Reserved.
+© 2025-2026 SPHARX Ltd. All Rights Reserved.
