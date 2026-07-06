@@ -1,252 +1,188 @@
-# Gateway — 协议网关层
+**Language:** English | [简体中文](README_zh.md)
 
-**模块路径**: `agentrt/gateway/`
-**版本**: v0.1.0
+# Airymax Gateway — HTTP / gRPC Gateway Daemon
 
-## 概述
+`agentrt/gateway/`
 
-Gateway 是 AgentRT 的协议网关层，负责将外部客户端的 HTTP、WebSocket、Stdio 请求统一转换为内部 JSON-RPC 2.0 协议调用，是连接外部世界与 AgentRT 内核服务的桥梁。网关层遵循 **K-1 内核极简** 原则——只做协议翻译，零业务逻辑，所有业务逻辑通过 `agentrt/atoms/syscall` 接口调用。
+**Version:** 0.1.1
+**License:** AGPL-3.0-or-later OR Apache-2.0 (dual-licensed)
+**Branch:** `feature/official-hubs-01`
 
-架构定位：
+---
+
+## 1. Module Positioning
+
+Gateway is the **protocol gateway layer** of the Airymax agent runtime. It is
+the bridge that connects the external world to the Airymax kernel: it takes
+inbound HTTP, WebSocket, and Stdio requests and uniformly translates them into
+internal JSON-RPC 2.0 calls that are dispatched through `agentrt/atoms/syscall`
+into the kernel services.
+
+Gateway follows the **K-1 kernel-minimalism** principle strictly: it does
+**only protocol translation, zero business logic**. Every business decision is
+delegated to the kernel via the syscall interface.
 
 ```
-agentrt/daemons/gateway_d/ --> agentrt/gateway/ --> agentrt/atoms/syscall/
-                      ^
-                 协议转换层
+External client → gateway_d → gateway → atoms/syscall → backend services
+                   (daemon)   (lib)      (kernel)
 ```
 
-## 设计目标
+Design goals:
 
-- **协议转换**：将 HTTP / WebSocket / Stdio 请求转换为内部 JSON-RPC 2.0 调用
-- **多协议支持**：支持 JSON-RPC、MCP、A2A、OpenAI API 等多种协议的自适应检测与转换
-- **连接管理**：管理客户端长连接、WebSocket 会话和并发请求
-- **安全防护**：基于令牌桶的速率限制、请求鉴权、CORS 策略
-- **高并发**：基于 libmicrohttpd 和 libwebsockets 的事件驱动架构
-- **可扩展**：支持动态端点注册、自定义请求处理器注入
+- **Protocol translation** — convert HTTP / WebSocket / Stdio requests into
+  internal JSON-RPC 2.0 calls.
+- **Multi-protocol support** — auto-detect and convert JSON-RPC, MCP, A2A, and
+  OpenAI-API protocols.
+- **Connection management** — manage client long-lived connections, WebSocket
+  sessions, and concurrent requests.
+- **Security enforcement** — token-bucket rate limiting, request
+  authentication, CORS policies.
+- **High concurrency** — event-driven architecture based on libmicrohttpd and
+  libwebsockets.
+- **Extensibility** — dynamic endpoint registration and custom request-handler
+  injection.
 
-## 目录结构
+---
+
+## 2. Directory Structure
 
 ```
 gateway/
-├── include/                          # 公共头文件
-│   ├── gateway.h                     # 网关统一公共接口（生命周期、控制、查询）
-│   └── gateway_protocol_bridge.h     # 网关与协议系统的桥接层接口
+├── CMakeLists.txt                       # CMake build configuration
+├── README.md                            # This file (English)
+├── README_zh.md                         # Chinese version
+├── LICENSE                              # Dual license texts (AGPL-3.0 + Apache-2.0)
+├── NOTICE                               # Copyright notice
+├── include/                             # Public headers
+│   ├── gateway.h                        # Unified public API (lifecycle / control / query)
+│   └── gateway_protocol_bridge.h        # Gateway ↔ protocols bridge interface
 ├── src/
-│   ├── gateway/                      # 核心网关实现
-│   │   ├── gateway.h                 # 内部网关头文件（ops 表、结构体定义）
-│   │   ├── gateway_internal.h        # 内部类型与函数声明
-│   │   ├── gateway_api.c             # 公共 API 实现（create/start/stop/destroy）
-│   │   ├── http_gateway.h            # HTTP 网关头文件
-│   │   ├── http_gateway.c            # HTTP 网关实现（基于 libmicrohttpd）
-│   │   ├── http_gateway_routes.h     # HTTP 路由表头文件
-│   │   ├── http_gateway_routes.c     # HTTP 静态路由表定义
-│   │   ├── ws_gateway.h              # WebSocket 网关头文件
-│   │   ├── ws_gateway.c              # WebSocket 网关实现（基于 libwebsockets）
-│   │   ├── stdio_gateway.h           # Stdio 网关头文件
-│   │   ├── stdio_gateway.c           # Stdio 网关实现（REPL 交互模式）
-│   │   └── gateway_protocol_bridge.c # 协议桥接层实现
-│   └── utils/                        # 工具模块
-│       ├── jsonrpc.h                 # JSON-RPC 2.0 协议工具函数
-│       ├── jsonrpc.c                 # JSON-RPC 2.0 请求验证、响应生成、批量处理
-│       ├── syscall_router.h          # 系统调用路由器接口
-│       ├── syscall_router.c          # JSON-RPC 方法到 syscall 的路由分发
-│       ├── gateway_rpc_handler.h     # 统一 RPC 请求处理模块
-│       ├── gateway_rpc_handler.c     # HTTP/WS/Stdio 共享的 RPC 处理逻辑
-│       ├── gateway_protocol_handler.h # 多协议网关请求处理器
-│       ├── gateway_protocol_handler.c # MCP/A2A/OpenAI 协议自适应处理
-│       ├── gateway_rate_limiter.h    # 速率限制器接口
-│       ├── gateway_rate_limiter.c    # 基于令牌桶的速率限制实现
-│       ├── gateway_utils.h           # 通用工具宏与内联函数
-│       ├── gateway_compat.h          # 兼容性定义
-│       └── mcp_server.h / .c         # MCP 协议服务端实现
-├── tests/                            # 测试与基准
-│   ├── CMakeLists.txt                # 测试构建配置
-│   ├── test_gateway.c                # 网关主测试（7 个用例）
-│   ├── test_jsonrpc.c                # JSON-RPC 协议测试（17 个用例）
-│   ├── test_syscall_router.c         # 系统调用路由测试（8 个用例）
-│   ├── test_gateway_rpc_handler.c    # RPC 处理模块测试（14 个用例）
-│   └── gateway_benchmark.c           # 性能基准测试工具
-├── docker/                           # Docker 部署配置
-│   ├── Dockerfile                    # 容器构建文件
-│   ├── docker-compose.yml            # 开发环境编排
-│   ├── docker-compose.dev.yml        # 开发调试编排
-│   ├── docker-compose.prod.yml       # 生产环境编排
-│   ├── .env.example                  # 环境变量示例
-│   └── monitoring/                   # 监控配置
-│       ├── prometheus.yml            # Prometheus 采集配置
-│       ├── alerts.yml                # 告警规则
-│       └── grafana_agentrt_dashboard.json  # Grafana 仪表盘
-├── deploy/                           # K8s 部署配置
-│   ├── k8s/                          # Kubernetes 资源清单
-│   │   ├── namespace.yaml            # 命名空间定义
-│   │   ├── configmap.yaml            # 多环境 ConfigMap
-│   │   ├── deployment.yaml           # Deployment + HPA
-│   │   └── service.yaml              # Service + Ingress + NetworkPolicy
-│   └── README.md                     # 部署指南
-├── config/                           # 静态分析配置
-│   └── cppcheck.cfg                  # cppcheck 规则
-├── CMakeLists.txt                    # CMake 构建配置
-└── README.md                         # 本文件
+│   ├── gateway/                         # Core gateway implementation
+│   │   ├── gateway.h                    # Internal header (ops vtable, structs)
+│   │   ├── gateway_internal.h           # Internal types and function decls
+│   │   ├── gateway_api.c                # Public API (create / start / stop / destroy)
+│   │   ├── http_gateway.c/.h            # HTTP gateway (libmicrohttpd)
+│   │   ├── http_gateway_routes.c/.h     # Static HTTP route table
+│   │   ├── ws_gateway.c/.h              # WebSocket gateway (libwebsockets)
+│   │   ├── stdio_gateway.c/.h           # Stdio gateway (REPL interaction)
+│   │   └── gateway_protocol_bridge.c    # Protocol bridge impl
+│   └── utils/                           # Utility modules
+│       ├── jsonrpc.c/.h                 # JSON-RPC 2.0 utilities (validate / response / batch)
+│       ├── syscall_router.c/.h          # JSON-RPC method → syscall dispatch
+│       ├── gateway_rpc_handler.c/.h     # Shared RPC handling for HTTP/WS/Stdio
+│       ├── gateway_protocol_handler.c/.h  # MCP / A2A / OpenAI auto-detection & conversion
+│       ├── gateway_rate_limiter.c/.h    # Token-bucket rate limiter
+│       ├── gateway_utils.h              # Generic helper macros & inlines
+│       ├── gateway_compat.h             # Compatibility definitions
+│       └── mcp_server.c/.h              # MCP protocol server (tools / resources / prompts)
+├── tests/                               # Tests & benchmarks
+│   ├── test_gateway.c                   # Gateway main test (7 cases)
+│   ├── test_jsonrpc.c                   # JSON-RPC protocol test (17 cases)
+│   ├── test_syscall_router.c            # Syscall router test (8 cases)
+│   ├── test_gateway_rpc_handler.c       # RPC handler test (14 cases)
+│   └── gateway_benchmark.c              # Performance benchmark
+├── docker/                              # Docker deployment (Dockerfile, compose files, monitoring)
+├── deploy/                              # K8s deployment (namespace / configmap / deployment / service)
+└── config/                              # Static-analysis config (cppcheck.cfg)
 ```
 
-## 核心组件
+### Core Components
 
-### 网关实例（Gateway Instance）
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| **Public API** | `include/gateway.h` | Unified lifecycle API: `create / start / stop / destroy` |
+| **HTTP gateway** | `http_gateway.c` | libmicrohttpd-based HTTP server with dynamic endpoint registration |
+| **WebSocket gateway** | `ws_gateway.c` | libwebsockets-based bidirectional RPC |
+| **Stdio gateway** | `stdio_gateway.c` | Stdin/stdout REPL mode, blocking single-threaded |
+| **Protocol bridge** | `gateway_protocol_bridge.c` | Gateway ↔ protocols module bridge with auto-detection |
 
-采用 **ops 虚表** 设计模式，三种网关类型共享统一接口：
+### Utility Modules
 
-| 组件 | 文件 | 职责 |
-|------|------|------|
-| 公共接口 | `include/gateway.h` | 统一生命周期 API：create / start / stop / destroy |
-| HTTP 网关 | `src/gateway/http_gateway.c` | 基于 libmicrohttpd 的 HTTP 服务器，支持动态端点注册 |
-| WebSocket 网关 | `src/gateway/ws_gateway.c` | 基于 libwebsockets 的双向 RPC 通信 |
-| Stdio 网关 | `src/gateway/stdio_gateway.c` | 标准输入输出的 REPL 交互模式，阻塞式单线程 |
-| 协议桥接 | `src/gateway/gateway_protocol_bridge.c` | Gateway ↔ Protocols 模块桥接，支持协议自动检测 |
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| **JSON-RPC 2.0** | `jsonrpc.c` | Request validation, response generation, batch processing, notifications |
+| **Syscall router** | `syscall_router.c` | JSON-RPC method-name → syscall function dispatch |
+| **RPC handler** | `gateway_rpc_handler.c` | Shared RPC handling logic across all three gateways |
+| **Multi-protocol handler** | `gateway_protocol_handler.c` | MCP / A2A / OpenAI auto-detection and conversion |
+| **Rate limiter** | `gateway_rate_limiter.c` | Token-bucket algorithm, per-IP / per-API-Key throttling |
+| **MCP server** | `mcp_server.c` | MCP server with tool / resource / prompt registration |
 
-### 工具模块
-
-| 组件 | 文件 | 职责 |
-|------|------|------|
-| JSON-RPC 2.0 | `src/utils/jsonrpc.c` | 请求验证、响应生成、批量请求、通知支持 |
-| 系统调用路由 | `src/utils/syscall_router.c` | JSON-RPC 方法名到 syscall 函数的路由分发 |
-| RPC 处理器 | `src/utils/gateway_rpc_handler.c` | 三种网关共享的统一 RPC 处理逻辑 |
-| 多协议处理器 | `src/utils/gateway_protocol_handler.c` | MCP/A2A/OpenAI 协议自适应检测与转换 |
-| 速率限制器 | `src/utils/gateway_rate_limiter.c` | 基于令牌桶算法，支持按 IP/API Key 限流 |
-| MCP 服务器 | `src/utils/mcp_server.c` | MCP 协议服务端，支持工具/资源/提示词注册 |
-
-## 架构
+### Architecture
 
 ```
-外部客户端
+External client
   │
-  ├─ HTTP REST ───→ http_gateway ──→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端服务
-  ├─ WebSocket ──→ ws_gateway ────→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端服务
-  ├─ Stdio ──────→ stdio_gateway ─→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端服务
-  └─ MCP ────────→ mcp_server ────→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端服务
+  ├─ HTTP REST ───→ http_gateway ──→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
+  ├─ WebSocket ──→ ws_gateway ────→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
+  ├─ Stdio ──────→ stdio_gateway ─→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
+  └─ MCP ────────→ mcp_server ────→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
                          │
-              gateway_protocol_handler
-              (协议检测/转换/统一处理)
+              gateway_protocol_handler  (auto-detect / convert / unified)
                          │
-              gateway_rpc_handler
-              (统一 RPC 处理逻辑)
+              gateway_rpc_handler       (shared RPC logic)
                          │
-                  IPC Service Bus
+                  IPC service bus
 ```
 
-## 接口说明
+---
 
-### 生命周期 API
+## 3. Upstream / Downstream Dependencies
 
-| 函数 | 说明 |
-|------|------|
-| `gateway_http_create(host, port)` | 创建 HTTP 网关实例 |
-| `gateway_ws_create(host, port)` | 创建 WebSocket 网关实例 |
-| `gateway_stdio_create()` | 创建 Stdio 网关实例 |
-| `gateway_destroy(gw)` | 销毁网关实例并释放资源 |
-| `gateway_start(gw)` | 启动网关（HTTP/WS 非阻塞，Stdio 阻塞） |
-| `gateway_stop(gw)` | 优雅停止网关 |
+### Upstream (Gateway depends on)
 
-### 控制与查询 API
+| Dependency | Source | Purpose |
+|------------|--------|---------|
+| **protocols** | `agentrt/protocols/` | Protocol router / gateway / registry interfaces; A2A / MCP / OpenAI adapters — linked as `agentrt_protocols` |
+| **atoms** | `agentrt/atoms/` | CoreKern types and IPC primitives; `atoms/syscall` is the dispatch target for `syscall_router`; `atoms/memory` linked as `agentrt_memory` |
+| **commons** | `agentrt/commons/` | Platform abstraction, types, error framework, logging, sync, memory macros — linked as `agentrt_common` |
+| **cupolas** | `agentrt/cupolas/` | Logical upstream: gateway invokes Cupolas for request authentication and input sanitization at the protocol boundary |
+| cJSON | external | JSON parsing — **hard dependency** as of Airymax 0.1.1 (stub library is not supported) |
+| libmicrohttpd | external | HTTP server (≥ 0.9.70) |
+| libwebsockets | external | WebSocket support (≥ 4.3.0) |
+| OpenSSL | external | TLS/SSL (≥ 1.1.1) |
+| libcurl | external | HTTP client for benchmarks (optional; benchmark falls back to simulation mode) |
 
-| 函数 | 说明 |
-|------|------|
-| `gateway_set_handler(gw, handler, user_data)` | 设置自定义请求处理回调 |
-| `gateway_register_endpoint(gw, method, path, handler, user_data)` | 注册动态 HTTP 端点 |
-| `gateway_get_type(gw)` | 获取网关类型枚举 |
-| `gateway_is_running(gw)` | 检查网关是否运行中 |
-| `gateway_get_stats(gw, out_json)` | 获取 JSON 格式统计信息 |
-| `gateway_get_name(gw)` | 获取网关名称 |
+### Downstream (consumers of Gateway)
 
-### 错误码
+| Consumer | What it uses |
+|----------|--------------|
+| **gateway_d** | The gateway daemon (`agentrt/daemons/gateway_d/`) wraps this library and exposes it as a system service |
+| SDK / external clients | SDK ships gateway client libraries; external clients connect over HTTP / WebSocket / Stdio / MCP |
+| Agent applications | Agent apps invoke the runtime through the gateway's JSON-RPC 2.0 surface |
 
-| 枚举值 | 说明 |
-|--------|------|
-| `GATEWAY_SUCCESS` | 成功 (0) |
-| `GATEWAY_ERROR_INVALID` | 无效参数 (-1) |
-| `GATEWAY_ERROR_MEMORY` | 内存不足 (-2) |
-| `GATEWAY_ERROR_IO` | I/O 错误 (-3) |
-| `GATEWAY_ERROR_TIMEOUT` | 超时 (-4) |
-| `GATEWAY_ERROR_CLOSED` | 连接已关闭 (-5) |
-| `GATEWAY_ERROR_PROTOCOL` | 协议错误 (-6) |
+---
 
-### JSON-RPC 2.0 工具函数
+## 4. Public API
 
-| 函数 | 说明 |
-|------|------|
-| `jsonrpc_validate_request(json)` | 验证请求格式（必需字段 + 版本检查） |
-| `jsonrpc_get_method(json)` | 提取方法名 |
-| `jsonrpc_get_params(json)` | 提取参数对象 |
-| `jsonrpc_create_success_response(id, result)` | 创建成功响应 |
-| `jsonrpc_create_error_response(id, code, msg, data)` | 创建错误响应 |
-| `jsonrpc_validate_batch_request(batch, count)` | 验证批量请求（最大 64 项） |
-| `jsonrpc_process_batch(batch, handler, user_data)` | 处理批量请求 |
-| `jsonrpc_create_notification(method, params)` | 创建通知（无 id 字段） |
+### Lifecycle
 
-### 速率限制器 API
+| Function | Description |
+|----------|-------------|
+| `gateway_http_create(host, port)` | Create an HTTP gateway instance |
+| `gateway_ws_create(host, port)` | Create a WebSocket gateway instance |
+| `gateway_stdio_create()` | Create a Stdio gateway instance |
+| `gateway_destroy(gw)` | Destroy a gateway instance and release resources |
+| `gateway_start(gw)` | Start the gateway (HTTP/WS non-blocking; Stdio blocking) |
+| `gateway_stop(gw)` | Gracefully stop the gateway |
 
-| 函数 | 说明 |
-|------|------|
-| `gateway_rate_limiter_create(config)` | 创建速率限制器 |
-| `gateway_rate_limiter_destroy(limiter)` | 销毁速率限制器 |
-| `gateway_rate_limiter_allow(limiter, client_key)` | 检查请求是否允许 |
-| `gateway_rate_limiter_get_stats(...)` | 获取限制状态统计 |
-| `gateway_rate_limiter_reset_client(limiter, key)` | 重置指定客户端计数 |
+### Control & Query
 
-### MCP 服务器 API
+| Function | Description |
+|----------|-------------|
+| `gateway_set_handler(gw, handler, user_data)` | Set a custom request handler callback |
+| `gateway_register_endpoint(gw, method, path, handler, user_data)` | Register a dynamic HTTP endpoint |
+| `gateway_get_type(gw)` | Get the gateway type enum |
+| `gateway_is_running(gw)` | Check whether the gateway is running |
+| `gateway_get_stats(gw, out_json)` | Get JSON-format statistics |
+| `gateway_get_name(gw)` | Get the gateway name |
 
-| 函数 | 说明 |
-|------|------|
-| `mcp_server_create(config)` | 创建 MCP 服务器实例 |
-| `mcp_server_register_tool(...)` | 注册工具处理器 |
-| `mcp_server_register_resource(...)` | 注册资源处理器 |
-| `mcp_server_register_prompt(...)` | 注册提示词处理器 |
-| `mcp_server_handle_request(...)` | 处理 MCP 请求 |
+### Error codes
 
-## 条件编译
+`GATEWAY_SUCCESS` (0), `GATEWAY_ERROR_INVALID` (-1), `GATEWAY_ERROR_MEMORY` (-2),
+`GATEWAY_ERROR_IO` (-3), `GATEWAY_ERROR_TIMEOUT` (-4), `GATEWAY_ERROR_CLOSED` (-5),
+`GATEWAY_ERROR_PROTOCOL` (-6).
 
-| 依赖 | 条件宏 | 缺失时行为 |
-|------|--------|-----------|
-| cJSON | `AGENTRT_HAS_CJSON` | 整个 Gateway 模块跳过编译 |
-| libmicrohttpd | `AGENTRT_HAS_MICROHTTPD` | HTTP 网关不可用 |
-| libwebsockets | `AGENTRT_HAS_LIBWEBSOCKETS` | WebSocket 网关不可用 |
-| libcurl | `AGENTRT_HAS_CURL` | 基准测试使用模拟模式 |
-
-## 依赖关系
-
-| 组件 | 版本 | 用途 |
-|------|------|------|
-| libmicrohttpd | ≥ 0.9.70 | HTTP 服务器 |
-| libwebsockets | ≥ 4.3.0 | WebSocket 支持 |
-| cJSON | ≥ 1.7.15 | JSON 解析（必需，缺失则跳过整个模块） |
-| OpenSSL | ≥ 1.1.1 | TLS/SSL |
-| agentrt_protocols | 内部 | 协议路由与转换 |
-| agentrt_common | 内部 | 公共工具库 |
-| agentrt_memory | 内部 | 内存管理 |
-
-## 构建说明
-
-```bash
-# 构建 Gateway 模块（需要 cJSON 开发库）
-mkdir build && cd build
-cmake .. -DBUILD_TESTS=ON -DBUILD_BENCHMARK=ON
-make gateway
-
-# 运行测试
-ctest --test-dir build -R "gateway|jsonrpc|syscall|rpc_handler"
-
-# 运行性能基准
-./build/gateway_benchmark
-
-# 静态分析
-make cppcheck
-
-# 代码格式化
-make format
-```
-
-## 使用示例
-
-### 创建并启动 HTTP 网关
+### Usage Example
 
 ```c
 #include "gateway.h"
@@ -268,56 +204,87 @@ int main(void) {
 }
 ```
 
-### 注册自定义请求处理器
+---
 
-```c
-int my_handler(const char *request_json, char **response_json, void *user_data) {
-    *response_json = strdup("{\"jsonrpc\":\"2.0\",\"result\":\"ok\",\"id\":1}");
-    return 0;
-}
+## 5. Build Instructions
 
-gateway_set_handler(gw, my_handler, NULL);
+```bash
+# Build the gateway module (requires cJSON dev headers)
+cmake -B build -DBUILD_TESTS=ON -DBUILD_BENCHMARK=ON
+cmake --build build --target gateway
+
+# Run tests
+ctest --test-dir build -R "gateway|jsonrpc|syscall|rpc_handler"
+
+# Run performance benchmark
+./build/gateway_benchmark
+
+# Static analysis & formatting (if targets exist)
+cmake --build build --target cppcheck
+cmake --build build --target format
 ```
 
-### 注册动态 HTTP 端点
+### CMake Options & Conditional Compilation
 
-```c
-int metrics_handler(const gateway_endpoint_request_t *req,
-                    gateway_endpoint_response_t *resp) {
-    resp->status_code = 200;
-    resp->content_type = "text/plain";
-    resp->body = strdup("requests_total 12345");
-    resp->body_len = strlen(resp->body);
-    return 0;
-}
+| Dependency | Conditional Macro | Behavior When Missing |
+|------------|-------------------|-----------------------|
+| cJSON | `AGENTRT_HAS_CJSON` | **Hard failure** — gateway module is skipped with `FATAL_ERROR` (Airymax 0.1.1 disallows stub libraries) |
+| libmicrohttpd | `AGENTRT_HAS_MICROHTTPD` | HTTP gateway unavailable |
+| libwebsockets | `AGENTRT_HAS_LIBWEBSOCKETS` | WebSocket gateway unavailable |
+| libcurl | `AGENTRT_HAS_CURL` | Benchmark runs in simulation mode |
 
-gateway_register_endpoint(gw, "GET", "/metrics", metrics_handler, NULL);
+### Build Artifacts
+
+- `gateway` — static library aggregating all gateway components
+- Public headers installed under `include/agentrt/gateway`
+
+### Installation
+
+```bash
+cmake --install build --prefix /opt/airymax
 ```
 
-## 配置示例
+### Configuration Example
 
 ```json
 {
-    "gateway": {
-        "http_port": 8080,
-        "ws_port": 8081,
-        "metrics_port": 9090,
-        "tls_cert": "/etc/agentrt/certs/server.crt",
-        "tls_key": "/etc/agentrt/certs/server.key",
-        "rate_limit": {
-            "enabled": true,
-            "requests_per_second": 1000,
-            "requests_per_minute": 50000,
-            "burst_size": 2000
-        },
-        "cors": {
-            "allowed_origins": ["*"],
-            "allowed_methods": ["GET", "POST", "OPTIONS"]
-        }
+  "gateway": {
+    "http_port": 8080,
+    "ws_port": 8081,
+    "metrics_port": 9090,
+    "tls_cert": "/etc/agentrt/certs/server.crt",
+    "tls_key": "/etc/agentrt/certs/server.key",
+    "rate_limit": {
+      "enabled": true,
+      "requests_per_second": 1000,
+      "requests_per_minute": 50000,
+      "burst_size": 2000
+    },
+    "cors": {
+      "allowed_origins": ["*"],
+      "allowed_methods": ["GET", "POST", "OPTIONS"]
     }
+  }
 }
 ```
 
 ---
 
-© 2026 SPHARX Ltd. All Rights Reserved.
+## 6. License
+
+Copyright (c) 2025-2026 SPHARX Ltd. All Rights Reserved.
+
+This module is dual-licensed under the terms of either:
+
+- **GNU Affero General Public License v3.0 or later**
+  ([AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.txt)), or
+- **Apache License, Version 2.0**
+  ([Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt))
+
+SPDX-License-Identifier: `AGPL-3.0-or-later OR Apache-2.0`
+
+The full license texts are in the [LICENSE](LICENSE) file; the copyright
+notice is in [NOTICE](NOTICE). You may select either license to comply with.
+The AGPL-3.0-or-later terms apply by default; the Apache-2.0 alternative is
+provided for downstream integration scenarios (e.g., closed-source or
+proprietary distribution) that the AGPL does not accommodate.
