@@ -66,11 +66,11 @@ metadata:
 spec:
   tls:
     - hosts:
-        - ${GATEWAY_API_HOST:-api.agentos.example.com}
-        - ${GATEWAY_WS_HOST:-ws.agentos.example.com}
+        - ${GATEWAY_API_HOST:-api.agentrt.example.com}
+        - ${GATEWAY_WS_HOST:-ws.agentrt.example.com}
       secretName: agentrt-gateway-tls
   rules:
-    - host: ${GATEWAY_API_HOST:-api.agentos.example.com}
+    - host: ${GATEWAY_API_HOST:-api.agentrt.example.com}
       http:
         paths:
           - path: /
@@ -80,7 +80,7 @@ spec:
                 name: agentrt-gateway
                 port:
                   number: 8080
-    - host: ${GATEWAY_WS_HOST:-ws.agentos.example.com}
+    - host: ${GATEWAY_WS_HOST:-ws.agentrt.example.com}
       http:
         paths:
           - path: /

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file gateway_compat.h
- * @brief Gateway utility 兼容层 - AGENTOS 标准错误码备用定义
+ * @brief Gateway utility 兼容层 - AGENTRT 标准错误码备用定义
  *
  * 供不包含 gateway_internal.h 的独立 utility 模块使用。
  * 如果 types.h 在 include path 中已提供定义，则使用其定义；

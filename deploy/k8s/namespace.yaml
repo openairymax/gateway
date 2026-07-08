@@ -8,7 +8,7 @@ metadata:
   name: agentrt-gateway
   labels:
     name: agentrt-gateway
-    app.kubernetes.io/name: agentos
+    app.kubernetes.io/name: agentrt
     app.kubernetes.io/component: gateway
     app.kubernetes.io/managed-by: kubectl
   annotations:

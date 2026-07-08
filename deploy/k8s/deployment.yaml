@@ -138,7 +138,7 @@ spec:
               mountPath: /etc/agentrt/gateway
               readOnly: true
             - name: logs
-              mountPath: /var/log/agentos
+              mountPath: /var/log/agentrt
       
       # 卷定义
       volumes:
