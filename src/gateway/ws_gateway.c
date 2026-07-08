@@ -571,7 +571,7 @@ static agentrt_error_t ws_gateway_start(void *gateway_impl)
     ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
 
     struct lws_context_creation_info info;
-    __builtin_memset(&info, 0, sizeof(info));
+    AGENTRT_MEMSET(&info, 0, sizeof(info));
     info.port = gateway->port;
     info.iface = gateway->host;
     info.protocols = ws_protocols;
