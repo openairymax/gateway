@@ -24,6 +24,8 @@
 
 #include <assert.h>
 #include <cjson/cJSON.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -232,8 +234,7 @@ static void test_create_success_response(void)
     ASSERT_NOT_NULL(response);
 
     /* 验证响应格式 */
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     /* 检查 jsonrpc 版本 */
     cJSON *version = cJSON_GetObjectItem(resp_json, "jsonrpc");
@@ -253,7 +254,7 @@ static void test_create_success_response(void)
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     ASSERT_NULL(error);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     /* result 已被 jsonrpc_create_success_response 接管并释放，不可再删 */
     cJSON_Delete(id);
@@ -274,14 +275,13 @@ static void test_create_success_response_null_result(void)
     char *response = jsonrpc_create_success_response(id, NULL);
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *result = cJSON_GetObjectItem(resp_json, "result");
     ASSERT_NOT_NULL(result);
     ASSERT_TRUE(result->type == cJSON_NULL);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     cJSON_Delete(id);
 
@@ -303,8 +303,7 @@ static void test_create_error_response(void)
     char *response = jsonrpc_create_error_response(id, -32601, "Method not found", NULL);
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     /* 检查 error 字段 */
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
@@ -329,7 +328,7 @@ static void test_create_error_response(void)
     cJSON *result = cJSON_GetObjectItem(resp_json, "result");
     ASSERT_NULL(result);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     cJSON_Delete(id);
 
@@ -349,8 +348,7 @@ static void test_create_error_response_with_data(void)
     char *response = jsonrpc_create_error_response(id, -32000, "Server error", data);
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     ASSERT_NOT_NULL(error);
@@ -359,7 +357,7 @@ static void test_create_error_response_with_data(void)
     ASSERT_NOT_NULL(data_field);
     ASSERT_STR_EQ(data_field->valuestring, "Additional error details");
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     /* data 已被 jsonrpc_create_error_response 接管并释放，不可再删 */
     cJSON_Delete(id);
@@ -379,8 +377,7 @@ static void test_create_parse_error_response(void)
     char *response = jsonrpc_create_parse_error_response();
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     ASSERT_NOT_NULL(error);
@@ -389,7 +386,7 @@ static void test_create_parse_error_response(void)
     ASSERT_NOT_NULL(code);
     ASSERT_EQ(code->valueint, JSONRPC_PARSE_ERROR);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
 
     TEST_PASS();
@@ -405,13 +402,13 @@ static void test_create_invalid_request_response(void)
     char *response = jsonrpc_create_invalid_request_response();
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     cJSON *code = cJSON_GetObjectItem(error, "code");
 
     ASSERT_EQ(code->valueint, JSONRPC_INVALID_REQUEST);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
 
     TEST_PASS();
@@ -428,13 +425,13 @@ static void test_create_method_not_found_response(void)
     char *response = jsonrpc_create_method_not_found_response(id);
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     cJSON *code = cJSON_GetObjectItem(error, "code");
 
     ASSERT_EQ(code->valueint, JSONRPC_METHOD_NOT_FOUND);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     cJSON_Delete(id);
 
@@ -452,7 +449,7 @@ static void test_create_invalid_params_response(void)
     char *response = jsonrpc_create_invalid_params_response(id, "Missing required field");
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     cJSON *code = cJSON_GetObjectItem(error, "code");
     cJSON *message = cJSON_GetObjectItem(error, "message");
@@ -460,7 +457,7 @@ static void test_create_invalid_params_response(void)
     ASSERT_EQ(code->valueint, JSONRPC_INVALID_PARAMS);
     ASSERT_STR_EQ(message->valuestring, "Invalid params");
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     cJSON_Delete(id);
 
@@ -478,13 +475,13 @@ static void test_create_internal_error_response(void)
     char *response = jsonrpc_create_internal_error_response(id, "Unexpected error");
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     cJSON *code = cJSON_GetObjectItem(error, "code");
 
     ASSERT_EQ(code->valueint, JSONRPC_INTERNAL_ERROR);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     cJSON_Delete(id);
 
@@ -502,13 +499,13 @@ static void test_create_rate_limited_response(void)
     char *response = jsonrpc_create_rate_limited_response(id);
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     cJSON *code = cJSON_GetObjectItem(error, "code");
 
     ASSERT_EQ(code->valueint, JSONRPC_RATE_LIMITED);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     cJSON_Delete(id);
 
@@ -526,13 +523,13 @@ static void test_create_auth_failed_response(void)
     char *response = jsonrpc_create_auth_failed_response(id);
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     cJSON *code = cJSON_GetObjectItem(error, "code");
 
     ASSERT_EQ(code->valueint, JSONRPC_AUTH_FAILED);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
     cJSON_Delete(id);
 
