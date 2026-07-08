@@ -28,6 +28,8 @@
 #ifdef GATEWAY_HAS_WS
 
 #include <cjson/cJSON.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 #include <libwebsockets.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -372,17 +374,17 @@ static int handle_ws_rpc_request(ws_gateway_t *gateway, ws_connection_context_t 
         return AGENTRT_ERR_UNKNOWN;
     }
 
-    cJSON *response_json = cJSON_Parse(response);
-    if (!response_json) {
+    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
+    CJSON_PARSE_GUARD(response_json, response, {
         AGENTRT_FREE(response);
         agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "cJSON_Parse: parse error");
         return AGENTRT_ERR_UNKNOWN;
-    }
+    });
 
     ws_message_t *response_msg =
         ws_message_create(WS_MSG_TYPE_RPC_RESPONSE, context->session_id, response_json);
-    cJSON_Delete(response_json);
+    /* response_json 由 CJSON_AUTO_FREE 自动释放 */
 
     if (response_msg) {
         ws_send_message(wsi, response_msg);
@@ -509,8 +511,8 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
         atomic_fetch_add(&gateway->bytes_received, len);
 
         /* 解析JSON消息 */
-        cJSON *json = cJSON_Parse((const char *)in);
-        if (!json) {
+        /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
+        CJSON_PARSE_GUARD(json, (const char *)in, {
             /* 解析失败，发送错误响应 */
             char *error_json = jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
             if (error_json) {
@@ -523,12 +525,12 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                 AGENTRT_FREE(error_json);
             }
             return 0;
-        }
+        });
 
         /* 提取消息类型 */
         cJSON *type = cJSON_GetObjectItem(json, "type");
         if (!type || !cJSON_IsString(type)) {
-            cJSON_Delete(json);
+            /* json 由 CJSON_AUTO_FREE 自动释放 */
             return handle_ws_unknown_message(wsi, "missing type field");
         }
 
@@ -547,7 +549,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             result = handle_ws_unknown_message(wsi, type_str);
         }
 
-        cJSON_Delete(json);
+        /* json 由 CJSON_AUTO_FREE 自动释放 */
         return result;
 
     case LWS_CALLBACK_CLOSED:

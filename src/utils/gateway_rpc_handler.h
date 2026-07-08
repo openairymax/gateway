@@ -22,6 +22,8 @@
 #define GATEWAY_RPC_HANDLER_H
 
 #include <cjson/cJSON.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 #include <stddef.h>
 
 /**
@@ -52,8 +54,7 @@ typedef struct {
  * @since 1.0.1
  *
  * @code
- * cJSON* request = cJSON_Parse(json_string);
- * if (!request) { return NULL; }
+ * CJSON_PARSE_GUARD(request, json_string, { return NULL; });
  *
  * rpc_result_t result = gateway_rpc_handle_request(request, my_handler, my_data);
  *
@@ -63,6 +64,7 @@ typedef struct {
  *
  * printf("Response: %s\n", result.response_json);
  * rpc_result_free(&result);
+ * // request 由 CJSON_AUTO_FREE 自动释放
  * @endcode
  */
 rpc_result_t gateway_rpc_handle_request(const cJSON *request,

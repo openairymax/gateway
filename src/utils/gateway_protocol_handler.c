@@ -19,6 +19,8 @@
 #include "syscall_router.h"
 
 #include <cjson/cJSON.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -516,8 +518,9 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     final_result.response_json = response_str;
 
     if (detected_type != AGENTRT_PROTOCOL_JSON_RPC) {
-        cJSON *jsonrpc_resp = cJSON_Parse(response_str);
-        if (jsonrpc_resp) {
+        /* P0.18.2: 模式 C — 用 do { ... } while (0) + break 配合 CJSON_PARSE_GUARD */
+        do {
+            CJSON_PARSE_GUARD(jsonrpc_resp, response_str, { break; });
             cJSON *result_data = cJSON_GetObjectItem(jsonrpc_resp, "result");
             if (result_data) {
                 switch (detected_type) {
@@ -574,8 +577,8 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                     break;
                 }
             }
-            cJSON_Delete(jsonrpc_resp);
-        }
+            /* jsonrpc_resp 由 CJSON_AUTO_FREE 自动释放 */
+        } while (0);
     }
 
     handler->successful_responses++;
@@ -637,12 +640,12 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
 
     gateway_protocol_handler_get_default_config(config);
 
-    cJSON *root = cJSON_Parse(json_config);
-    if (!root) {
+    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
+    CJSON_PARSE_GUARD(root, json_config, {
         agentrt_error_push_ex(AGENTRT_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: invalid parameter");
         return AGENTRT_ERR_INVALID_PARAM;
-    }
+    });
 
     cJSON *item;
 
@@ -670,7 +673,7 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
     if (cJSON_IsBool(item))
         config->enable_protocol_detection = cJSON_IsTrue(item);
 
-    cJSON_Delete(root);
+    /* root 由 CJSON_AUTO_FREE 自动释放 */
     return 0;
 }
 
@@ -775,16 +778,16 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
     AGENTRT_CHECK(jsonrpc_response != NULL, AGENTRT_ERR_NULL_POINTER, "jsonrpc_response is NULL");
     AGENTRT_CHECK(target_response != NULL, AGENTRT_ERR_NULL_POINTER, "target_response is NULL");
 
-    cJSON *jsonrpc = cJSON_Parse(jsonrpc_response);
-    if (!jsonrpc) {
+    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
+    CJSON_PARSE_GUARD(jsonrpc, jsonrpc_response, {
         agentrt_error_push_ex(AGENTRT_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: invalid parameter");
         return AGENTRT_ERR_INVALID_PARAM;
-    }
+    });
 
     cJSON *result = cJSON_GetObjectItem(jsonrpc, "result");
     if (!result) {
-        cJSON_Delete(jsonrpc);
+        /* jsonrpc 由 CJSON_AUTO_FREE 自动释放 */
         agentrt_error_push_ex(AGENTRT_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: null pointer");
         return AGENTRT_ERR_NULL_POINTER;
@@ -840,7 +843,7 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         break;
     }
 
-    cJSON_Delete(jsonrpc);
+    /* jsonrpc 由 CJSON_AUTO_FREE 自动释放 */
     return *target_response ? 0 : -4;
 }
 
