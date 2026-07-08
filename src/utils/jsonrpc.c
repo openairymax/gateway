@@ -392,18 +392,24 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
 
         char *resp_str = handler(item, user_data);
         if (resp_str) {
-            cJSON *resp_parsed = cJSON_Parse(resp_str);
-            if (resp_parsed) {
+            /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+            int _resp_parsed_ok = 0;
+            do {
+                CJSON_PARSE_GUARD(resp_parsed, resp_str, { break; });
                 cJSON_AddItemToArray(responses, resp_parsed);
-            } else {
+                resp_parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                _resp_parsed_ok = 1;
+            } while (0);
+            if (!_resp_parsed_ok) {
                 const cJSON *id = jsonrpc_get_id(item);
                 char *err_resp_str =
                     jsonrpc_create_internal_error_response(id, "Handler returned invalid JSON");
                 if (err_resp_str) {
-                    cJSON *err_parsed = cJSON_Parse(err_resp_str);
-                    if (err_parsed) {
+                    do {
+                        CJSON_PARSE_GUARD(err_parsed, err_resp_str, { break; });
                         cJSON_AddItemToArray(responses, err_parsed);
-                    }
+                        err_parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                    } while (0);
                     AGENTRT_FREE(err_resp_str);
                 }
             }

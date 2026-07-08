@@ -28,6 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 
 /* ========== 测试辅助宏 ========== */
 
@@ -122,14 +124,13 @@ static void test_handle_valid_request(void)
     ASSERT_EQ(result.error_code, 0);
 
     /* 验证响应是有效的JSON */
-    cJSON *resp = cJSON_Parse(result.response_json);
-    ASSERT_NOT_NULL(resp);
+    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *jsonrpc = cJSON_GetObjectItem(resp, "jsonrpc");
     ASSERT_NOT_NULL(jsonrpc);
     ASSERT_STR_EQ(jsonrpc->valuestring, "2.0");
 
-    cJSON_Delete(resp);
+    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
     cJSON_Delete(request);
 
@@ -173,8 +174,7 @@ static void test_handle_null_request(void)
     ASSERT_NEQ(result.error_code, 0);
 
     /* 验证错误响应格式 */
-    cJSON *resp = cJSON_Parse(result.response_json);
-    ASSERT_NOT_NULL(resp);
+    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *error = cJSON_GetObjectItem(resp, "error");
     ASSERT_NOT_NULL(error);
@@ -183,7 +183,7 @@ static void test_handle_null_request(void)
     ASSERT_NOT_NULL(code);
     ASSERT_EQ(code->valueint, -32600);
 
-    cJSON_Delete(resp);
+    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
 
     TEST_PASS();
@@ -247,9 +247,7 @@ static int mock_handler(const char *request_str, char **response_str, void *user
         return AGENTRT_ERR_NULL_POINTER;
 
     /* 简单的echo handler */
-    cJSON *request = cJSON_Parse(request_str);
-    if (!request)
-        return AGENTRT_ERR_PARSE_ERROR;
+    CJSON_PARSE_GUARD(request, request_str, { return AGENTRT_ERR_PARSE_ERROR; });
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "jsonrpc", "2.0");
@@ -258,7 +256,7 @@ static int mock_handler(const char *request_str, char **response_str, void *user
 
     *response_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
-    cJSON_Delete(request);
+    /* request 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
 
     return 0;
 }
@@ -279,14 +277,13 @@ static void test_custom_handler_invocation(void)
     ASSERT_EQ(result.error_code, 0);
 
     /* 验证handler被调用并返回了正确响应 */
-    cJSON *resp = cJSON_Parse(result.response_json);
-    ASSERT_NOT_NULL(resp);
+    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *result_field = cJSON_GetObjectItem(resp, "result");
     ASSERT_NOT_NULL(result_field);
     ASSERT_STR_EQ(result_field->valuestring, "mock_handler_success");
 
-    cJSON_Delete(resp);
+    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
     cJSON_Delete(request);
 
@@ -340,8 +337,7 @@ static void test_create_error_result(void)
     ASSERT_EQ(result.error_code, -32601);
 
     /* 验证错误响应格式 */
-    cJSON *resp = cJSON_Parse(result.response_json);
-    ASSERT_NOT_NULL(resp);
+    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *error = cJSON_GetObjectItem(resp, "error");
     ASSERT_NOT_NULL(error);
@@ -354,7 +350,7 @@ static void test_create_error_result(void)
     ASSERT_NOT_NULL(message);
     ASSERT_STR_EQ(message->valuestring, "Method not found");
 
-    cJSON_Delete(resp);
+    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
 
     TEST_PASS();

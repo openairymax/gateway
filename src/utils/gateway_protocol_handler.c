@@ -205,25 +205,25 @@ static cJSON *extract_openai_to_jsonrpc(const char *request_data, size_t request
 
     cJSON *model = cJSON_GetObjectItem(root, "model");
     if (model)
-        cJSON_AddItemToObject(params, "model", cJSON_Parse(cJSON_PrintUnformatted(model)));
+        cJSON_AddItemToObject(params, "model", CJSON_DEEP_COPY(model));
 
     cJSON *messages = cJSON_GetObjectItem(root, "messages");
     if (messages)
-        cJSON_AddItemToObject(params, "messages", cJSON_Parse(cJSON_PrintUnformatted(messages)));
+        cJSON_AddItemToObject(params, "messages", CJSON_DEEP_COPY(messages));
 
     cJSON *prompt = cJSON_GetObjectItem(root, "prompt");
     if (prompt)
-        cJSON_AddItemToObject(params, "prompt", cJSON_Parse(cJSON_PrintUnformatted(prompt)));
+        cJSON_AddItemToObject(params, "prompt", CJSON_DEEP_COPY(prompt));
 
     cJSON *temperature = cJSON_GetObjectItem(root, "temperature");
     if (temperature)
         cJSON_AddItemToObject(params, "temperature",
-                              cJSON_Parse(cJSON_PrintUnformatted(temperature)));
+                              CJSON_DEEP_COPY(temperature));
 
     cJSON *max_tokens = cJSON_GetObjectItem(root, "max_tokens");
     if (max_tokens)
         cJSON_AddItemToObject(params, "max_tokens",
-                              cJSON_Parse(cJSON_PrintUnformatted(max_tokens)));
+                              CJSON_DEEP_COPY(max_tokens));
 
     cJSON_Delete(root);
     return params;
@@ -260,7 +260,7 @@ static cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_si
     }
 
     cJSON *params = cJSON_GetObjectItem(root, "params");
-    cJSON *result = params ? cJSON_Parse(cJSON_PrintUnformatted(params)) : cJSON_CreateObject();
+    cJSON *result = params ? CJSON_DEEP_COPY(params) : cJSON_CreateObject();
     cJSON_Delete(root);
     return result;
 }
@@ -293,11 +293,11 @@ static cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_si
     cJSON *agent_id = cJSON_GetObjectItem(root, "agent_id");
     if (agent_id)
         cJSON_AddItemToObject(params, "target_agent",
-                              cJSON_Parse(cJSON_PrintUnformatted(agent_id)));
+                              CJSON_DEEP_COPY(agent_id));
 
     cJSON *message = cJSON_GetObjectItem(root, "message");
     if (message)
-        cJSON_AddItemToObject(params, "payload", cJSON_Parse(cJSON_PrintUnformatted(message)));
+        cJSON_AddItemToObject(params, "payload", CJSON_DEEP_COPY(message));
 
     cJSON_Delete(root);
     return params;
@@ -529,14 +529,14 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                     cJSON *choices = cJSON_CreateArray();
                     cJSON *choice = cJSON_CreateObject();
                     cJSON_AddItemToObject(choice, "message",
-                                          cJSON_Parse(cJSON_PrintUnformatted(result_data)));
+                                          CJSON_DEEP_COPY(result_data));
                     cJSON_AddItemToArray(choices, choice);
                     cJSON_AddItemToObject(openai_resp, "choices", choices);
 
                     cJSON *model_used = cJSON_GetObjectItem(result_data, "model");
                     if (model_used) {
                         cJSON_AddItemToObject(openai_resp, "model",
-                                              cJSON_Parse(cJSON_PrintUnformatted(model_used)));
+                                              CJSON_DEEP_COPY(model_used));
                     } else {
                         cJSON_AddStringToObject(openai_resp, "model", "default");
                     }
@@ -552,7 +552,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                 case AGENTRT_PROTOCOL_MCP: {
                     cJSON *mcp_resp = cJSON_CreateObject();
                     cJSON_AddItemToObject(mcp_resp, "content",
-                                          cJSON_Parse(cJSON_PrintUnformatted(result_data)));
+                                          CJSON_DEEP_COPY(result_data));
                     cJSON_AddBoolToObject(mcp_resp, "isError", 0);
 
                     char *new_response = cJSON_PrintUnformatted(mcp_resp);
@@ -564,7 +564,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                 case AGENTRT_PROTOCOL_A2A: {
                     cJSON *a2a_resp = cJSON_CreateObject();
                     cJSON_AddItemToObject(a2a_resp, "response",
-                                          cJSON_Parse(cJSON_PrintUnformatted(result_data)));
+                                          CJSON_DEEP_COPY(result_data));
                     cJSON_AddStringToObject(a2a_resp, "status", "success");
 
                     char *new_response = cJSON_PrintUnformatted(a2a_resp);
@@ -798,17 +798,15 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         cJSON *openai = cJSON_CreateObject();
         cJSON *choices = cJSON_CreateArray();
         cJSON *choice = cJSON_CreateObject();
-        char *msg_str = cJSON_PrintUnformatted(result);
-        cJSON_AddItemToObject(choice, "message", cJSON_Parse(msg_str));
-        AGENTRT_FREE(msg_str);
+        /* P0.18.2: CJSON_DEEP_COPY 替代 PrintUnformatted+Parse+FREE 三步曲 */
+        cJSON_AddItemToObject(choice, "message", CJSON_DEEP_COPY(result));
         cJSON_AddItemToArray(choices, choice);
         cJSON_AddItemToObject(openai, "choices", choices);
 
         cJSON *model = cJSON_GetObjectItem(result, "model");
         if (model) {
-            char *model_str = cJSON_PrintUnformatted(model);
-            cJSON_AddItemToObject(openai, "model", cJSON_Parse(model_str));
-            AGENTRT_FREE(model_str);
+            /* P0.18.2: CJSON_DEEP_COPY 替代 PrintUnformatted+Parse+FREE 三步曲 */
+            cJSON_AddItemToObject(openai, "model", CJSON_DEEP_COPY(model));
         } else {
             cJSON_AddStringToObject(openai, "model", "default");
         }
@@ -820,9 +818,8 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
 
     case AGENTRT_PROTOCOL_MCP: {
         cJSON *mcp = cJSON_CreateObject();
-        char *content_str = cJSON_PrintUnformatted(result);
-        cJSON_AddItemToObject(mcp, "content", cJSON_Parse(content_str));
-        AGENTRT_FREE(content_str);
+        /* P0.18.2: CJSON_DEEP_COPY 替代 PrintUnformatted+Parse+FREE 三步曲 */
+        cJSON_AddItemToObject(mcp, "content", CJSON_DEEP_COPY(result));
         cJSON_AddBoolToObject(mcp, "isError", 0);
 
         *target_response = cJSON_PrintUnformatted(mcp);
@@ -831,7 +828,7 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
 
     case AGENTRT_PROTOCOL_A2A: {
         cJSON *a2a = cJSON_CreateObject();
-        cJSON_AddItemToObject(a2a, "response", cJSON_Parse(cJSON_PrintUnformatted(result)));
+        cJSON_AddItemToObject(a2a, "response", CJSON_DEEP_COPY(result));
         cJSON_AddStringToObject(a2a, "status", "success");
 
         *target_response = cJSON_PrintUnformatted(a2a);

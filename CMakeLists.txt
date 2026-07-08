@@ -80,6 +80,9 @@ target_include_directories(gateway
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/utils>
+        # P0.18.2: gateway_rpc_handler.h (PUBLIC 头) 引用 <cjson_helpers.h>，
+        # 需向 gateway 的消费者（含测试目标）传递此 include 路径，避免找不到头文件
+        $<BUILD_INTERFACE:${COMMONS_DIR}/utils/cjson/include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${COREKERN_DIR}/include

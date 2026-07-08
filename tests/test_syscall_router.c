@@ -26,6 +26,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 
 /* ========== 测试辅助宏 ========== */
 
@@ -110,8 +112,7 @@ static void test_route_task_methods(void)
         gateway_syscall_route("agentrt_sys_task_submit", params, (cJSON *)jsonrpc_get_id(request));
     ASSERT_NOT_NULL(response);
     /* 响应应该是有效的 JSON */
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     /* 检查响应格式 */
     cJSON *jsonrpc_ver = cJSON_GetObjectItem(resp_json, "jsonrpc");
@@ -123,7 +124,7 @@ static void test_route_task_methods(void)
     ASSERT_EQ(id->valueint, 1);
 
     cJSON_free(response);
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_Delete(request);
 
     /* 测试其他任务方法 */
@@ -288,8 +289,7 @@ static void test_route_unknown_method(void)
     ASSERT_NOT_NULL(response);
 
     /* 解析响应，检查是否为错误响应 */
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     /* 应该包含 error 字段 */
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
@@ -300,7 +300,7 @@ static void test_route_unknown_method(void)
     ASSERT_NOT_NULL(code);
     ASSERT_EQ(code->valueint, JSONRPC_METHOD_NOT_FOUND);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
 
     TEST_PASS();
@@ -320,14 +320,13 @@ static void test_null_safety(void)
     ASSERT_NOT_NULL(response);
 
     /* 响应应该是有效的 JSON */
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     /* 应该是错误响应 */
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     ASSERT_NOT_NULL(error);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
 
     TEST_PASS();
@@ -351,13 +350,12 @@ static void test_method_prefix_matching(void)
     response = gateway_syscall_route("task_submit", NULL, NULL);
     ASSERT_NOT_NULL(response);
 
-    cJSON *resp_json = cJSON_Parse(response);
-    ASSERT_NOT_NULL(resp_json);
+    CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
 
     cJSON *error = cJSON_GetObjectItem(resp_json, "error");
     ASSERT_NOT_NULL(error);
 
-    cJSON_Delete(resp_json);
+    /* resp_json 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     cJSON_free(response);
 
     TEST_PASS();
