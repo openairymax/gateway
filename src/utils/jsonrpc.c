@@ -21,6 +21,8 @@
 
 #ifdef AGENTRT_HAS_CJSON
 #include <cjson/cJSON.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 #endif
 
 static const char *const g_error_messages[] = {
@@ -346,10 +348,12 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
         if (!cJSON_IsObject(item)) {
             char *err_resp = jsonrpc_create_invalid_request_response();
             if (err_resp) {
-                cJSON *parsed = cJSON_Parse(err_resp);
-                if (parsed) {
+                /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+                do {
+                    CJSON_PARSE_GUARD(parsed, err_resp, { break; });
                     cJSON_AddItemToArray(responses, parsed);
-                }
+                    parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                } while (0);
                 AGENTRT_FREE(err_resp);
             }
             continue;
@@ -375,10 +379,12 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                 break;
             }
             if (err_resp) {
-                cJSON *parsed = cJSON_Parse(err_resp);
-                if (parsed) {
+                /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+                do {
+                    CJSON_PARSE_GUARD(parsed, err_resp, { break; });
                     cJSON_AddItemToArray(responses, parsed);
-                }
+                    parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                } while (0);
                 AGENTRT_FREE(err_resp);
             }
             continue;
@@ -406,10 +412,12 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
             const cJSON *id = jsonrpc_get_id(item);
             char *err_resp = jsonrpc_create_internal_error_response(id, "Handler returned NULL");
             if (err_resp) {
-                cJSON *parsed = cJSON_Parse(err_resp);
-                if (parsed) {
+                /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+                do {
+                    CJSON_PARSE_GUARD(parsed, err_resp, { break; });
                     cJSON_AddItemToArray(responses, parsed);
-                }
+                    parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                } while (0);
                 AGENTRT_FREE(err_resp);
             }
         }
@@ -473,14 +481,17 @@ bool jsonrpc_is_notification(const cJSON *json)
 char *jsonrpc_create_notification_params(const char *method, const char *params_json)
 {
 #ifdef AGENTRT_HAS_CJSON
-    cJSON *params = NULL;
-    if (params_json && strlen(params_json) > 0) {
-        params = cJSON_Parse(params_json);
-        if (!params)
-            return NULL;
-    }
+    if (!method || strlen(method) == 0)
+        return NULL;
 
-    return jsonrpc_create_notification(method, params);
+    if (params_json && strlen(params_json) > 0) {
+        /* P0.18.2: 模式 A 变体 — 解析成功后所有权转移给 jsonrpc_create_notification */
+        CJSON_PARSE_GUARD(params, params_json, { return NULL; });
+        char *result = jsonrpc_create_notification(method, params);
+        params = NULL; /* 所有权转移给 notification，防止 CJSON_AUTO_FREE 重复释放 */
+        return result;
+    }
+    return jsonrpc_create_notification(method, NULL);
 #else
     (void)method;
     (void)params_json;

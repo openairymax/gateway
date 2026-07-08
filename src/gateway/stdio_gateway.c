@@ -22,6 +22,8 @@
 #include "logging.h"
 #ifdef AGENTRT_HAS_CJSON
 #include <cjson/cJSON.h>
+/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+#include <cjson_helpers.h>
 #endif
 
 #include <stdio.h>
@@ -107,10 +109,10 @@ static char *show_help(void)
  */
 static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
 {
-    cJSON *request = cJSON_Parse(json_str);
-    if (!request) {
+    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
+    CJSON_PARSE_GUARD(request, json_str, {
         return jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
-    }
+    });
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
@@ -126,14 +128,14 @@ static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
         if (result.response_json)
             result.response_json = NULL;
         gateway_rpc_free(&result);
-        cJSON_Delete(request);
+        /* request 由 CJSON_AUTO_FREE 自动释放 */
         return error_resp;
     }
 
     char *success_resp = result.response_json;
     result.response_json = NULL;
     gateway_rpc_free(&result);
-    cJSON_Delete(request);
+    /* request 由 CJSON_AUTO_FREE 自动释放 */
     return success_resp;
 }
 
