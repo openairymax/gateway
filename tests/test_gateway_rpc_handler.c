@@ -482,9 +482,9 @@ static void test_special_characters_in_method(void)
 {
     TEST_BEGIN("special_characters_in_method");
 
-    const char *special_methods[] = {"agentos.sys.task.submit",      /* 点号 */
-                                     "agentos/sys/task/submit",      /* 斜杠 */
-                                     "agentos::sys::task::submit",   /* 双冒号 */
+    const char *special_methods[] = {"agentrt.sys.task.submit",      /* 点号 */
+                                     "agentrt/sys/task/submit",      /* 斜杠 */
+                                     "agentrt::sys::task::submit",   /* 双冒号 */
                                      "agentrt_sys_task_submit_中文", /* 中文 */
                                      NULL};
 
