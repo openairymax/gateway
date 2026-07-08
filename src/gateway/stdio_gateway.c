@@ -236,7 +236,7 @@ static agentrt_error_t stdio_gateway_start(void *gateway_impl)
                 atomic_fetch_add(&gateway->bytes_received, input_len);
 
                 if (gateway->input_buffer_pos + input_len < gateway->input_buffer_size) {
-                    __builtin_memcpy(gateway->input_buffer + gateway->input_buffer_pos, buffer, input_len);
+                    AGENTRT_MEMCPY(gateway->input_buffer + gateway->input_buffer_pos, buffer, input_len);
                     gateway->input_buffer_pos += input_len;
 
                     char *newline = memchr(gateway->input_buffer, '\n', gateway->input_buffer_pos);

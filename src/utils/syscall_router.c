@@ -880,7 +880,7 @@ agentrt_error_t agentrt_sys_memory_write(const void *data, size_t len, const cha
         RUNTIME_UNLOCK();
         return AGENTRT_ERR_OUT_OF_MEMORY;
     }
-    __builtin_memcpy(rec->data, data, len);
+    AGENTRT_MEMCPY(rec->data, data, len);
     rec->len = len;
     rec->metadata = metadata ? AGENTRT_STRDUP(metadata) : NULL;
     rec->score = 1.0f;
@@ -938,7 +938,7 @@ agentrt_error_t agentrt_sys_memory_get(const char *record_id, void **out_data, s
             RUNTIME_UNLOCK();
             return AGENTRT_ERR_OUT_OF_MEMORY;
         }
-        __builtin_memcpy(*out_data, g_runtime.records[idx].data, g_runtime.records[idx].len);
+        AGENTRT_MEMCPY(*out_data, g_runtime.records[idx].data, g_runtime.records[idx].len);
         ((char *)*out_data)[g_runtime.records[idx].len] = '\0';
         *out_len = g_runtime.records[idx].len;
         RUNTIME_UNLOCK();
