@@ -53,6 +53,7 @@
 #include "memory_compat.h"
 #include "error.h"
 #include "gateway_compat.h"
+#include "sync_compat.h"  /* P0.18.3: 用 sync 抽象替代 pthread_mutex */
 
 /* ========== 常量定义 ========== */
 
@@ -84,7 +85,7 @@ typedef struct {
     request_result_t *results;
     size_t capacity;
     size_t count;
-    pthread_mutex_t mutex;
+    agentrt_mutex_t mutex;
 } result_set_t;
 
 typedef struct {
@@ -169,7 +170,7 @@ static void result_set_init(result_set_t *set, size_t capacity)
     set->results = (request_result_t *)AGENTRT_CALLOC(capacity, sizeof(request_result_t));
     set->capacity = capacity;
     set->count = 0;
-    pthread_mutex_init(&set->mutex, NULL);
+    agentrt_mutex_init(&set->mutex);
 }
 
 static void result_set_destroy(result_set_t *set)
@@ -178,16 +179,15 @@ static void result_set_destroy(result_set_t *set)
     set->results = NULL;
     set->capacity = 0;
     set->count = 0;
-    pthread_mutex_destroy(&set->mutex);
+    agentrt_mutex_destroy(&set->mutex);
 }
 
 static void result_set_add(result_set_t *set, const request_result_t *result)
 {
-    pthread_mutex_lock(&set->mutex);
+    AGENTRT_MUTEX_LOCK_GUARD(set->mutex);
     if (set->count < set->capacity) {
         set->results[set->count++] = *result;
     }
-    pthread_mutex_unlock(&set->mutex);
 }
 
 /* ========== 统计计算 ========== */
