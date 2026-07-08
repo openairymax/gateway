@@ -110,10 +110,16 @@ target_include_directories(gateway
         ${CJSON_INCLUDE_DIRS}/cjson
 )
 
-target_link_libraries(gateway PRIVATE
-    agentrt_protocols
-    agentrt_common
-    agentrt_memory
+# P0.18.1: svc_common 提供 jsonrpc_get_error_message（jsonrpc_helpers.c），
+# gateway/src/utils/jsonrpc.c:167 调用此符号，故 gateway 依赖 svc_common。
+# PUBLIC 传播至测试目标（test_jsonrpc/test_syscall_router/test_rpc_handler）
+target_link_libraries(gateway
+    PUBLIC
+        svc_common
+    PRIVATE
+        agentrt_protocols
+        agentrt_common
+        agentrt_memory
 )
 
 if(AGENTRT_HAS_CJSON)
