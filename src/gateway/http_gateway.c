@@ -230,7 +230,7 @@ int parse_json_request(http_gateway_t *gateway, http_request_context_t *context,
         return AGENTRT_ERR_UNKNOWN;
     }
 
-    if (jsonrpc_validate_request(context->json_request) != 0) {
+    if (gw_jsonrpc_validate_request(context->json_request) != 0) {
         cJSON_Delete(context->json_request);
         context->json_request = NULL;
         agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: parse error");

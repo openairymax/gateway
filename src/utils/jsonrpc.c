@@ -25,18 +25,7 @@
 #include <cjson_helpers.h>
 #endif
 
-static const char *const g_error_messages[] = {
-    [JSONRPC_PARSE_ERROR + 32700] = "Parse error",
-    [JSONRPC_INVALID_REQUEST + 32700] = "Invalid Request",
-    [JSONRPC_METHOD_NOT_FOUND + 32700] = "Method not found",
-    [JSONRPC_INVALID_PARAMS + 32700] = "Invalid params",
-    [JSONRPC_INTERNAL_ERROR + 32700] = "Internal error",
-};
-
-static const char *const g_custom_error_messages[] = {
-    "Rate limit exceeded", "Authentication failed", "Session expired", "Service unavailable"};
-
-int jsonrpc_validate_request(const cJSON *json)
+int gw_jsonrpc_validate_request(const cJSON *json)
 {
 #ifdef AGENTRT_HAS_CJSON
     AGENTRT_CHECK(json != NULL, AGENTRT_ERR_NULL_POINTER, "json is NULL");
@@ -260,37 +249,9 @@ char *jsonrpc_create_auth_failed_response(const cJSON *id)
     return jsonrpc_create_error_response(id, JSONRPC_AUTH_FAILED, NULL, NULL);
 }
 
-const char *jsonrpc_get_error_message(int code)
-{
-    if (code >= -32700 && code <= -32600) {
-        int idx = code + 32700;
-        if (idx >= 0 && idx < (int)(sizeof(g_error_messages) / sizeof(g_error_messages[0]))) {
-            return g_error_messages[idx];
-        }
-    }
-
-    int cidx = -1;
-    switch (code) {
-    case JSONRPC_RATE_LIMITED:
-        cidx = 0;
-        break;
-    case JSONRPC_AUTH_FAILED:
-        cidx = 1;
-        break;
-    case JSONRPC_SESSION_EXPIRED:
-        cidx = 2;
-        break;
-    case JSONRPC_SERVICE_UNAVAILABLE:
-        cidx = 3;
-        break;
-    }
-    if (cidx >= 0 &&
-        cidx < (int)(sizeof(g_custom_error_messages) / sizeof(g_custom_error_messages[0]))) {
-        return g_custom_error_messages[cidx];
-    }
-
-    return "Unknown error";
-}
+/* P0.18.1: jsonrpc_get_error_message 已统一至 daemons/common/src/jsonrpc_helpers.c，
+ * 消除 gateway_lib_obj 与 svc_common 链接时的 multiple definition 错误。
+ * 声明见 jsonrpc.h:173 及 jsonrpc_helpers.h:56（AGENTRT_API 权威声明）。 */
 
 int jsonrpc_validate_batch_request(const cJSON *batch_json, size_t *out_count)
 {
@@ -359,11 +320,11 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
             continue;
         }
 
-        if (jsonrpc_is_notification(item)) {
+        if (gw_jsonrpc_is_notification(item)) {
             continue;
         }
 
-        int valid = jsonrpc_validate_request(item);
+        int valid = gw_jsonrpc_validate_request(item);
         if (valid != 0) {
             (void)jsonrpc_get_id(item);
             char *err_resp = NULL;
@@ -471,7 +432,7 @@ char *jsonrpc_create_notification(const char *method, cJSON *params)
 #endif
 }
 
-bool jsonrpc_is_notification(const cJSON *json)
+bool gw_jsonrpc_is_notification(const cJSON *json)
 {
 #ifdef AGENTRT_HAS_CJSON
     if (!json || !cJSON_IsObject(json))

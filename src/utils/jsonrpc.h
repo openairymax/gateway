@@ -49,7 +49,7 @@
  * @return -2 无效（字段类型错误）
  * @return -3 无效（jsonrpc 版本不是 "2.0"）
  */
-int jsonrpc_validate_request(const cJSON *json);
+int gw_jsonrpc_validate_request(const cJSON *json);
 
 /**
  * @brief 从 JSON-RPC 请求中提取方法名
@@ -234,7 +234,7 @@ char *jsonrpc_create_notification(const char *method, cJSON *params);
  * @return true 是通知
  * @return false 不是通知或有id字段
  */
-bool jsonrpc_is_notification(const cJSON *json);
+bool gw_jsonrpc_is_notification(const cJSON *json);
 
 /**
  * @brief 创建参数化通知（便捷函数）
