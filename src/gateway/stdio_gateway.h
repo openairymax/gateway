@@ -10,8 +10,8 @@
  */
 
 // @owner: team-B
-#ifndef AGENTRT_GATEWAY_STDIO_H
-#define AGENTRT_GATEWAY_STDIO_H
+#ifndef AIRY_RT_GATEWAY_STDIO_H
+#define AIRY_RT_GATEWAY_STDIO_H
 
 #include "gateway_internal.h"
 
@@ -32,4 +32,4 @@ gateway_t *stdio_gateway_create(void);
 }
 #endif
 
-#endif /* AGENTRT_GATEWAY_STDIO_H */
+#endif /* AIRY_RT_GATEWAY_STDIO_H */

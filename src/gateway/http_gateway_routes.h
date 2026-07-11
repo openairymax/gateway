@@ -20,7 +20,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 #else
 struct cJSON;

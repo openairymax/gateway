@@ -83,7 +83,7 @@ static cJSON *mcp_make_error(int code, const char *message, const cJSON *data)
 
 mcp_server_t mcp_server_create(const mcp_server_config_t *config)
 {
-    mcp_server_t server = (mcp_server_t)AGENTRT_CALLOC(1, sizeof(struct mcp_server_s));
+    mcp_server_t server = (mcp_server_t)AIRY_CALLOC(1, sizeof(struct mcp_server_s));
     if (!server)
         return NULL;
 
@@ -107,41 +107,41 @@ void mcp_server_destroy(mcp_server_t server)
         return;
 
     for (int i = 0; i < server->tool_count; i++) {
-        AGENTRT_FREE(server->tools[i].name);
-        AGENTRT_FREE(server->tools[i].description);
+        AIRY_FREE(server->tools[i].name);
+        AIRY_FREE(server->tools[i].description);
         if (server->tools[i].input_schema)
             cJSON_Delete(server->tools[i].input_schema);
     }
 
     for (int i = 0; i < server->resource_count; i++) {
-        AGENTRT_FREE(server->resources[i].uri);
-        AGENTRT_FREE(server->resources[i].name);
-        AGENTRT_FREE(server->resources[i].description);
-        AGENTRT_FREE(server->resources[i].mime_type);
+        AIRY_FREE(server->resources[i].uri);
+        AIRY_FREE(server->resources[i].name);
+        AIRY_FREE(server->resources[i].description);
+        AIRY_FREE(server->resources[i].mime_type);
     }
 
     for (int i = 0; i < server->prompt_count; i++) {
-        AGENTRT_FREE(server->prompts[i].name);
-        AGENTRT_FREE(server->prompts[i].description);
+        AIRY_FREE(server->prompts[i].name);
+        AIRY_FREE(server->prompts[i].description);
         if (server->prompts[i].argument_schema)
             cJSON_Delete(server->prompts[i].argument_schema);
     }
 
-    AGENTRT_FREE(server);
+    AIRY_FREE(server);
 }
 
 int mcp_server_register_tool(mcp_server_t server, const char *name, const char *description,
                              cJSON *input_schema, mcp_tool_handler_t handler, void *user_data)
 {
-    AGENTRT_CHECK(server != NULL, AGENTRT_ERR_NULL_POINTER, "server is NULL");
-    AGENTRT_CHECK(name != NULL, AGENTRT_ERR_NULL_POINTER, "name is NULL");
-    AGENTRT_CHECK(handler != NULL, AGENTRT_ERR_NULL_POINTER, "handler is NULL");
+    AIRY_CHECK(server != NULL, AIRY_ERR_NULL_POINTER, "server is NULL");
+    AIRY_CHECK(name != NULL, AIRY_ERR_NULL_POINTER, "name is NULL");
+    AIRY_CHECK(handler != NULL, AIRY_ERR_NULL_POINTER, "handler is NULL");
     if (server->tool_count >= MCP_MAX_TOOLS)
-        return AGENTRT_ERR_OVERFLOW;
+        return AIRY_ERR_OVERFLOW;
 
     mcp_tool_entry_t *entry = &server->tools[server->tool_count++];
-    entry->name = AGENTRT_STRDUP(name);
-    entry->description = description ? AGENTRT_STRDUP(description) : AGENTRT_STRDUP("");
+    entry->name = AIRY_STRDUP(name);
+    entry->description = description ? AIRY_STRDUP(description) : AIRY_STRDUP("");
     entry->input_schema = input_schema ? cJSON_Duplicate(input_schema, 1) : NULL;
     entry->handler = handler;
     entry->user_data = user_data;
@@ -152,27 +152,27 @@ int mcp_server_register_resource(mcp_server_t server, const char *uri, const cha
                                  const char *description, const char *mime_type,
                                  mcp_resource_handler_t handler, void *user_data)
 {
-    AGENTRT_CHECK(server != NULL, AGENTRT_ERR_NULL_POINTER, "server is NULL");
-    AGENTRT_CHECK(uri != NULL, AGENTRT_ERR_NULL_POINTER, "uri is NULL");
-    AGENTRT_CHECK(handler != NULL, AGENTRT_ERR_NULL_POINTER, "handler is NULL");
+    AIRY_CHECK(server != NULL, AIRY_ERR_NULL_POINTER, "server is NULL");
+    AIRY_CHECK(uri != NULL, AIRY_ERR_NULL_POINTER, "uri is NULL");
+    AIRY_CHECK(handler != NULL, AIRY_ERR_NULL_POINTER, "handler is NULL");
     if (server->resource_count >= MCP_MAX_RESOURCES)
-        return AGENTRT_ERR_OVERFLOW;
+        return AIRY_ERR_OVERFLOW;
 
     mcp_resource_entry_t *entry = &server->resources[server->resource_count];
-    entry->uri = AGENTRT_STRDUP(uri);
-    entry->name = name ? AGENTRT_STRDUP(name) : AGENTRT_STRDUP("");
-    entry->description = description ? AGENTRT_STRDUP(description) : AGENTRT_STRDUP("");
-    entry->mime_type = mime_type ? AGENTRT_STRDUP(mime_type) : AGENTRT_STRDUP("text/plain");
+    entry->uri = AIRY_STRDUP(uri);
+    entry->name = name ? AIRY_STRDUP(name) : AIRY_STRDUP("");
+    entry->description = description ? AIRY_STRDUP(description) : AIRY_STRDUP("");
+    entry->mime_type = mime_type ? AIRY_STRDUP(mime_type) : AIRY_STRDUP("text/plain");
     if (!entry->uri || !entry->name || !entry->description || !entry->mime_type) {
-        AGENTRT_FREE(entry->uri);
-        AGENTRT_FREE(entry->name);
-        AGENTRT_FREE(entry->description);
-        AGENTRT_FREE(entry->mime_type);
+        AIRY_FREE(entry->uri);
+        AIRY_FREE(entry->name);
+        AIRY_FREE(entry->description);
+        AIRY_FREE(entry->mime_type);
         entry->uri = NULL;
         entry->name = NULL;
         entry->description = NULL;
         entry->mime_type = NULL;
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
     }
     entry->handler = handler;
     entry->user_data = user_data;
@@ -184,21 +184,21 @@ int mcp_server_register_prompt(mcp_server_t server, const char *name, const char
                                cJSON *argument_schema, mcp_prompt_handler_t handler,
                                void *user_data)
 {
-    AGENTRT_CHECK(server != NULL, AGENTRT_ERR_NULL_POINTER, "server is NULL");
-    AGENTRT_CHECK(name != NULL, AGENTRT_ERR_NULL_POINTER, "name is NULL");
-    AGENTRT_CHECK(handler != NULL, AGENTRT_ERR_NULL_POINTER, "handler is NULL");
+    AIRY_CHECK(server != NULL, AIRY_ERR_NULL_POINTER, "server is NULL");
+    AIRY_CHECK(name != NULL, AIRY_ERR_NULL_POINTER, "name is NULL");
+    AIRY_CHECK(handler != NULL, AIRY_ERR_NULL_POINTER, "handler is NULL");
     if (server->prompt_count >= MCP_MAX_PROMPTS)
-        return AGENTRT_ERR_OVERFLOW;
+        return AIRY_ERR_OVERFLOW;
 
     mcp_prompt_entry_t *entry = &server->prompts[server->prompt_count];
-    entry->name = AGENTRT_STRDUP(name);
-    entry->description = description ? AGENTRT_STRDUP(description) : AGENTRT_STRDUP("");
+    entry->name = AIRY_STRDUP(name);
+    entry->description = description ? AIRY_STRDUP(description) : AIRY_STRDUP("");
     if (!entry->name || !entry->description) {
-        AGENTRT_FREE(entry->name);
-        AGENTRT_FREE(entry->description);
+        AIRY_FREE(entry->name);
+        AIRY_FREE(entry->description);
         entry->name = NULL;
         entry->description = NULL;
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
     }
     entry->argument_schema = argument_schema ? cJSON_Duplicate(argument_schema, 1) : NULL;
     entry->handler = handler;
@@ -484,9 +484,9 @@ static int handle_prompts_get(mcp_server_t server, const cJSON *params, cJSON **
 int mcp_server_handle_request(mcp_server_t server, const char *method, const cJSON *params,
                               cJSON **response)
 {
-    AGENTRT_CHECK(server != NULL, AGENTRT_ERR_NULL_POINTER, "server is NULL");
-    AGENTRT_CHECK(method != NULL, AGENTRT_ERR_NULL_POINTER, "method is NULL");
-    AGENTRT_CHECK(response != NULL, AGENTRT_ERR_NULL_POINTER, "response is NULL");
+    AIRY_CHECK(server != NULL, AIRY_ERR_NULL_POINTER, "server is NULL");
+    AIRY_CHECK(method != NULL, AIRY_ERR_NULL_POINTER, "method is NULL");
+    AIRY_CHECK(response != NULL, AIRY_ERR_NULL_POINTER, "response is NULL");
 
     server->request_count++;
 
@@ -525,7 +525,7 @@ int mcp_server_handle_request(mcp_server_t server, const char *method, const cJS
 
 int mcp_server_get_capabilities(cJSON **caps)
 {
-    AGENTRT_CHECK(caps != NULL, AGENTRT_ERR_NULL_POINTER, "caps is NULL");
+    AIRY_CHECK(caps != NULL, AIRY_ERR_NULL_POINTER, "caps is NULL");
 
     *caps = cJSON_CreateObject();
 

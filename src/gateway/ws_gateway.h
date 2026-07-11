@@ -10,8 +10,8 @@
  */
 
 // @owner: team-B
-#ifndef AGENTRT_GATEWAY_WS_H
-#define AGENTRT_GATEWAY_WS_H
+#ifndef AIRY_RT_GATEWAY_WS_H
+#define AIRY_RT_GATEWAY_WS_H
 
 #include "gateway_internal.h"
 
@@ -36,4 +36,4 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port);
 }
 #endif
 
-#endif /* AGENTRT_GATEWAY_WS_H */
+#endif /* AIRY_RT_GATEWAY_WS_H */

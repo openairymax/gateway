@@ -109,42 +109,42 @@ static int is_valid_json(const char *data, size_t len)
     return 1;
 }
 
-static agentrt_protocol_type_t detect_protocol_internal(const char *request_data,
+static airy_protocol_type_t detect_protocol_internal(const char *request_data,
                                                         size_t request_size)
 {
 
     if (!request_data || request_size == 0) {
-        return AGENTRT_PROTOCOL_COUNT;
+        return AIRY_PROTOCOL_COUNT;
     }
 
     if (!is_valid_json(request_data, request_size)) {
-        return AGENTRT_PROTOCOL_COUNT;
+        return AIRY_PROTOCOL_COUNT;
     }
 
     if (json_field_equals(request_data, "jsonrpc", "2.0") &&
         json_field_exists(request_data, "method")) {
         if (json_field_exists(request_data, "MCP") || json_field_exists(request_data, "mcp"))
-            return AGENTRT_PROTOCOL_MCP;
-        return AGENTRT_PROTOCOL_JSON_RPC;
+            return AIRY_PROTOCOL_MCP;
+        return AIRY_PROTOCOL_JSON_RPC;
     }
 
     if (json_field_exists(request_data, "model") &&
         (json_field_exists(request_data, "messages") || json_field_exists(request_data, "prompt")))
-        return AGENTRT_PROTOCOL_OPENAI;
+        return AIRY_PROTOCOL_OPENAI;
 
     if (json_field_exists(request_data, "agent_id") &&
         (json_field_exists(request_data, "task_id") || json_field_exists(request_data, "message")))
-        return AGENTRT_PROTOCOL_A2A;
+        return AIRY_PROTOCOL_A2A;
 
-    return AGENTRT_PROTOCOL_COUNT;
+    return AIRY_PROTOCOL_COUNT;
 }
 
 static rpc_result_t create_error_result(int code, const char *message, const char *id_str)
 {
     rpc_result_t result;
-    AGENTRT_MEMSET(&result, 0, sizeof(result));
+    AIRY_MEMSET(&result, 0, sizeof(result));
     result.error_code = code;
-    result.error_message = AGENTRT_STRDUP(message ? message : "Unknown error");
+    result.error_message = AIRY_STRDUP(message ? message : "Unknown error");
 
     cJSON *error_resp = cJSON_CreateObject();
     cJSON_AddStringToObject(error_resp, "jsonrpc", "2.0");
@@ -178,26 +178,26 @@ static cJSON *extract_openai_to_jsonrpc(const char *request_data, size_t request
 
     if (out_method) {
         if (strstr(url_path, "/chat/completions")) {
-            *out_method = AGENTRT_STRDUP("openai.chat.completions");
+            *out_method = AIRY_STRDUP("openai.chat.completions");
         } else if (strstr(url_path, "/completions")) {
-            *out_method = AGENTRT_STRDUP("openai.completions");
+            *out_method = AIRY_STRDUP("openai.completions");
         } else if (strstr(url_path, "/embeddings")) {
-            *out_method = AGENTRT_STRDUP("openai.embeddings");
+            *out_method = AIRY_STRDUP("openai.embeddings");
         } else {
-            *out_method = AGENTRT_STRDUP(url_path ? url_path : "openai.unknown");
+            *out_method = AIRY_STRDUP(url_path ? url_path : "openai.unknown");
         }
     }
 
     if (out_id) {
         cJSON *id_item = cJSON_GetObjectItem(root, "id");
         if (cJSON_IsString(id_item)) {
-            *out_id = AGENTRT_STRDUP(id_item->valuestring);
+            *out_id = AIRY_STRDUP(id_item->valuestring);
         } else if (cJSON_IsNumber(id_item)) {
             char buf[32];
             snprintf(buf, sizeof(buf), "%d", id_item->valueint);
-            *out_id = AGENTRT_STRDUP(buf);
+            *out_id = AIRY_STRDUP(buf);
         } else {
-            *out_id = AGENTRT_STRDUP("null");
+            *out_id = AIRY_STRDUP("null");
         }
     }
 
@@ -243,7 +243,7 @@ static cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_si
     if (out_method) {
         char mcp_method[256];
         snprintf(mcp_method, sizeof(mcp_method), "mcp.%s", method ? method : "unknown");
-        *out_method = AGENTRT_STRDUP(mcp_method);
+        *out_method = AIRY_STRDUP(mcp_method);
     }
 
     if (out_id) {
@@ -251,11 +251,11 @@ static cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_si
         if (cJSON_IsNumber(id_item)) {
             char buf[32];
             snprintf(buf, sizeof(buf), "%lld", (long long)cJSON_GetNumberValue(id_item));
-            *out_id = AGENTRT_STRDUP(buf);
+            *out_id = AIRY_STRDUP(buf);
         } else if (cJSON_IsString(id_item)) {
-            *out_id = AGENTRT_STRDUP(id_item->valuestring);
+            *out_id = AIRY_STRDUP(id_item->valuestring);
         } else {
-            *out_id = AGENTRT_STRDUP("null");
+            *out_id = AIRY_STRDUP("null");
         }
     }
 
@@ -278,14 +278,14 @@ static cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_si
                                  : "send";
         char a2a_method[256];
         snprintf(a2a_method, sizeof(a2a_method), "a2a.%s", action);
-        *out_method = AGENTRT_STRDUP(a2a_method);
+        *out_method = AIRY_STRDUP(a2a_method);
     }
 
     if (out_id) {
         const char *task_id = cJSON_GetObjectItem(root, "task_id")
                                   ? cJSON_GetObjectItem(root, "task_id")->valuestring
                                   : NULL;
-        *out_id = AGENTRT_STRDUP(task_id ? task_id : "null");
+        *out_id = AIRY_STRDUP(task_id ? task_id : "null");
     }
 
     cJSON *params = cJSON_CreateObject();
@@ -311,7 +311,7 @@ gateway_protocol_handler_t gateway_protocol_handler_create(const gateway_protoco
 {
 
     gateway_protocol_handler_t handler =
-        (gateway_protocol_handler_t)AGENTRT_CALLOC(1, sizeof(struct gateway_protocol_handler_s));
+        (gateway_protocol_handler_t)AIRY_CALLOC(1, sizeof(struct gateway_protocol_handler_s));
     if (!handler)
         return NULL;
 
@@ -329,12 +329,12 @@ void gateway_protocol_handler_destroy(gateway_protocol_handler_t handler)
 {
     if (!handler)
         return;
-    AGENTRT_FREE(handler);
+    AIRY_FREE(handler);
 }
 
 rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                                              const char *request_data, size_t request_size,
-                                             agentrt_protocol_type_t protocol_type,
+                                             airy_protocol_type_t protocol_type,
                                              int (*custom_handler)(const char *, char **, void *),
                                              void *handler_data)
 {
@@ -358,35 +358,35 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
         return create_error_result(-32603, err_msg, "null");
     }
 
-    agentrt_protocol_type_t detected_type = protocol_type;
+    airy_protocol_type_t detected_type = protocol_type;
 
-    if (protocol_type == AGENTRT_PROTOCOL_A2A && handler->config.enable_protocol_detection) {
+    if (protocol_type == AIRY_PROTOCOL_A2A && handler->config.enable_protocol_detection) {
         detected_type = detect_protocol_internal(request_data, request_size);
 
-        if (detected_type == AGENTRT_PROTOCOL_COUNT && handler->config.default_protocol) {
+        if (detected_type == AIRY_PROTOCOL_COUNT && handler->config.default_protocol) {
 
             if (strcmp(handler->config.default_protocol, "jsonrpc") == 0)
-                detected_type = AGENTRT_PROTOCOL_JSON_RPC;
+                detected_type = AIRY_PROTOCOL_JSON_RPC;
             else if (strcmp(handler->config.default_protocol, "mcp") == 0)
-                detected_type = AGENTRT_PROTOCOL_MCP;
+                detected_type = AIRY_PROTOCOL_MCP;
             else if (strcmp(handler->config.default_protocol, "openai") == 0)
-                detected_type = AGENTRT_PROTOCOL_OPENAI;
+                detected_type = AIRY_PROTOCOL_OPENAI;
             else if (strcmp(handler->config.default_protocol, "a2a") == 0)
-                detected_type = AGENTRT_PROTOCOL_A2A;
+                detected_type = AIRY_PROTOCOL_A2A;
         }
     }
 
     switch (detected_type) {
-    case AGENTRT_PROTOCOL_JSON_RPC:
+    case AIRY_PROTOCOL_JSON_RPC:
         handler->jsonrpc_requests++;
         break;
-    case AGENTRT_PROTOCOL_MCP:
+    case AIRY_PROTOCOL_MCP:
         handler->mcp_requests++;
         break;
-    case AGENTRT_PROTOCOL_A2A:
+    case AIRY_PROTOCOL_A2A:
         handler->a2a_requests++;
         break;
-    case AGENTRT_PROTOCOL_OPENAI:
+    case AIRY_PROTOCOL_OPENAI:
         handler->openai_requests++;
         break;
     default:
@@ -398,7 +398,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     cJSON *converted_params = NULL;
 
     switch (detected_type) {
-    case AGENTRT_PROTOCOL_JSON_RPC: {
+    case AIRY_PROTOCOL_JSON_RPC: {
         cJSON *json_rpc = cJSON_ParseWithLength(request_data, request_size);
         if (!json_rpc) {
             handler->conversion_errors++;
@@ -407,48 +407,48 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
 
         cJSON *method_item = cJSON_GetObjectItem(json_rpc, "method");
         if (cJSON_IsString(method_item)) {
-            method = AGENTRT_STRDUP(method_item->valuestring);
+            method = AIRY_STRDUP(method_item->valuestring);
         } else {
-            method = AGENTRT_STRDUP("unknown");
+            method = AIRY_STRDUP("unknown");
         }
 
         cJSON *id_item = cJSON_GetObjectItem(json_rpc, "id");
         if (id_item) {
             id_str = cJSON_PrintUnformatted(id_item);
         } else {
-            id_str = AGENTRT_STRDUP("null");
+            id_str = AIRY_STRDUP("null");
         }
 
         char *params_str = cJSON_PrintUnformatted(cJSON_GetObjectItem(json_rpc, "params"));
         converted_params = cJSON_Parse(params_str);
-        AGENTRT_FREE(params_str);
+        AIRY_FREE(params_str);
         cJSON_Delete(json_rpc);
     } break;
 
-    case AGENTRT_PROTOCOL_MCP:
+    case AIRY_PROTOCOL_MCP:
         if (!handler->config.enable_mcp_protocol) {
-            AGENTRT_FREE(method);
-            AGENTRT_FREE(id_str);
+            AIRY_FREE(method);
+            AIRY_FREE(id_str);
             handler->conversion_errors++;
             return create_error_result(-32604, "MCP protocol not enabled", "null");
         }
         converted_params = extract_mcp_to_jsonrpc(request_data, request_size, &method, &id_str);
         break;
 
-    case AGENTRT_PROTOCOL_A2A:
+    case AIRY_PROTOCOL_A2A:
         if (!handler->config.enable_a2a_protocol) {
-            AGENTRT_FREE(method);
-            AGENTRT_FREE(id_str);
+            AIRY_FREE(method);
+            AIRY_FREE(id_str);
             handler->conversion_errors++;
             return create_error_result(-32605, "A2A protocol not enabled", "null");
         }
         converted_params = extract_a2a_to_jsonrpc(request_data, request_size, &method, &id_str);
         break;
 
-    case AGENTRT_PROTOCOL_OPENAI:
+    case AIRY_PROTOCOL_OPENAI:
         if (!handler->config.enable_openai_protocol) {
-            AGENTRT_FREE(method);
-            AGENTRT_FREE(id_str);
+            AIRY_FREE(method);
+            AIRY_FREE(id_str);
             handler->conversion_errors++;
             return create_error_result(-32606, "OpenAI protocol not enabled", "null");
         }
@@ -456,15 +456,15 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
         break;
 
     default:
-        AGENTRT_FREE(method);
-        AGENTRT_FREE(id_str);
+        AIRY_FREE(method);
+        AIRY_FREE(id_str);
         handler->conversion_errors++;
         return create_error_result(-32601, "Unknown protocol type", "null");
     }
 
     if (!converted_params) {
-        AGENTRT_FREE(method);
-        AGENTRT_FREE(id_str);
+        AIRY_FREE(method);
+        AIRY_FREE(id_str);
         handler->conversion_errors++;
         return create_error_result(-32700, "Protocol conversion failed", id_str ? id_str : "null");
     }
@@ -496,16 +496,16 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
         custom_result = custom_handler(jsonrpc_request_str, &response_str, handler_data);
     } else {
         response_str =
-            AGENTRT_STRDUP("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"accepted\",\"message\":"
+            AIRY_STRDUP("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"accepted\",\"message\":"
                            "\"Request queued for processing\"},\"id\":null}");
     }
 
-    AGENTRT_FREE(method);
-    AGENTRT_FREE(id_str);
-    AGENTRT_FREE(jsonrpc_request_str);
+    AIRY_FREE(method);
+    AIRY_FREE(id_str);
+    AIRY_FREE(jsonrpc_request_str);
 
     if (custom_result != 0 || !response_str) {
-        AGENTRT_FREE(response_str);
+        AIRY_FREE(response_str);
         handler->conversion_errors++;
         return create_error_result(
             -32607, custom_result != 0 ? "Custom handler failed" : "No response from handler",
@@ -513,18 +513,18 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     }
 
     rpc_result_t final_result;
-    AGENTRT_MEMSET(&final_result, 0, sizeof(final_result));
+    AIRY_MEMSET(&final_result, 0, sizeof(final_result));
     final_result.error_code = 0;
     final_result.response_json = response_str;
 
-    if (detected_type != AGENTRT_PROTOCOL_JSON_RPC) {
+    if (detected_type != AIRY_PROTOCOL_JSON_RPC) {
         /* P0.18.2: 模式 C — 用 do { ... } while (0) + break 配合 CJSON_PARSE_GUARD */
         do {
             CJSON_PARSE_GUARD(jsonrpc_resp, response_str, { break; });
             cJSON *result_data = cJSON_GetObjectItem(jsonrpc_resp, "result");
             if (result_data) {
                 switch (detected_type) {
-                case AGENTRT_PROTOCOL_OPENAI: {
+                case AIRY_PROTOCOL_OPENAI: {
                     cJSON *openai_resp = cJSON_CreateObject();
                     cJSON *choices = cJSON_CreateArray();
                     cJSON *choice = cJSON_CreateObject();
@@ -544,31 +544,31 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                     cJSON_AddStringToObject(openai_resp, "object", "chat.completion");
 
                     char *new_response = cJSON_PrintUnformatted(openai_resp);
-                    AGENTRT_FREE(final_result.response_json);
+                    AIRY_FREE(final_result.response_json);
                     final_result.response_json = new_response;
                     cJSON_Delete(openai_resp);
                 } break;
 
-                case AGENTRT_PROTOCOL_MCP: {
+                case AIRY_PROTOCOL_MCP: {
                     cJSON *mcp_resp = cJSON_CreateObject();
                     cJSON_AddItemToObject(mcp_resp, "content",
                                           CJSON_DEEP_COPY(result_data));
                     cJSON_AddBoolToObject(mcp_resp, "isError", 0);
 
                     char *new_response = cJSON_PrintUnformatted(mcp_resp);
-                    AGENTRT_FREE(final_result.response_json);
+                    AIRY_FREE(final_result.response_json);
                     final_result.response_json = new_response;
                     cJSON_Delete(mcp_resp);
                 } break;
 
-                case AGENTRT_PROTOCOL_A2A: {
+                case AIRY_PROTOCOL_A2A: {
                     cJSON *a2a_resp = cJSON_CreateObject();
                     cJSON_AddItemToObject(a2a_resp, "response",
                                           CJSON_DEEP_COPY(result_data));
                     cJSON_AddStringToObject(a2a_resp, "status", "success");
 
                     char *new_response = cJSON_PrintUnformatted(a2a_resp);
-                    AGENTRT_FREE(final_result.response_json);
+                    AIRY_FREE(final_result.response_json);
                     final_result.response_json = new_response;
                     cJSON_Delete(a2a_resp);
                 } break;
@@ -588,8 +588,8 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
 int gateway_protocol_handler_get_stats(gateway_protocol_handler_t handler, char **stats_json)
 {
 
-    AGENTRT_CHECK(handler != NULL, AGENTRT_ERR_NULL_POINTER, "handler is NULL");
-    AGENTRT_CHECK(stats_json != NULL, AGENTRT_ERR_NULL_POINTER, "stats_json is NULL");
+    AIRY_CHECK(handler != NULL, AIRY_ERR_NULL_POINTER, "handler is NULL");
+    AIRY_CHECK(stats_json != NULL, AIRY_ERR_NULL_POINTER, "stats_json is NULL");
 
     double uptime_seconds = difftime(time(NULL), handler->created_at);
 
@@ -622,7 +622,7 @@ void gateway_protocol_handler_get_default_config(gateway_protocol_config_t *conf
 {
     if (!config)
         return;
-    AGENTRT_MEMSET(config, 0, sizeof(*config));
+    AIRY_MEMSET(config, 0, sizeof(*config));
     config->enable_mcp_protocol = true;
     config->enable_a2a_protocol = true;
     config->enable_openai_protocol = true;
@@ -635,16 +635,16 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
                                                    const char *json_config)
 {
 
-    AGENTRT_CHECK(config != NULL, AGENTRT_ERR_NULL_POINTER, "config is NULL");
-    AGENTRT_CHECK(json_config != NULL, AGENTRT_ERR_NULL_POINTER, "json_config is NULL");
+    AIRY_CHECK(config != NULL, AIRY_ERR_NULL_POINTER, "config is NULL");
+    AIRY_CHECK(json_config != NULL, AIRY_ERR_NULL_POINTER, "json_config is NULL");
 
     gateway_protocol_handler_get_default_config(config);
 
     /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
     CJSON_PARSE_GUARD(root, json_config, {
-        agentrt_error_push_ex(AGENTRT_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: invalid parameter");
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
     });
 
     cJSON *item;
@@ -677,72 +677,72 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
     return 0;
 }
 
-agentrt_protocol_type_t gateway_protocol_detect(const char *request_data, size_t request_size)
+airy_protocol_type_t gateway_protocol_detect(const char *request_data, size_t request_size)
 {
     return detect_protocol_internal(request_data, request_size);
 }
 
 int gateway_protocol_is_jsonrpc(const char *request_data, size_t request_size)
 {
-    return detect_protocol_internal(request_data, request_size) == AGENTRT_PROTOCOL_JSON_RPC ? 1
+    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_JSON_RPC ? 1
                                                                                              : 0;
 }
 
 int gateway_protocol_is_mcp(const char *request_data, size_t request_size)
 {
-    return detect_protocol_internal(request_data, request_size) == AGENTRT_PROTOCOL_MCP ? 1 : 0;
+    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_MCP ? 1 : 0;
 }
 
 int gateway_protocol_is_a2a(const char *request_data, size_t request_size)
 {
-    return detect_protocol_internal(request_data, request_size) == AGENTRT_PROTOCOL_A2A ? 1 : 0;
+    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_A2A ? 1 : 0;
 }
 
 int gateway_protocol_is_openai(const char *request_data, size_t request_size)
 {
-    return detect_protocol_internal(request_data, request_size) == AGENTRT_PROTOCOL_OPENAI ? 1 : 0;
+    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_OPENAI ? 1 : 0;
 }
 
 int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
                                         const char *request_data, size_t request_size,
-                                        agentrt_protocol_type_t protocol_type, char **jsonrpc_out)
+                                        airy_protocol_type_t protocol_type, char **jsonrpc_out)
 {
 
-    AGENTRT_CHECK(handler != NULL, AGENTRT_ERR_NULL_POINTER, "handler is NULL");
-    AGENTRT_CHECK(request_data != NULL, AGENTRT_ERR_NULL_POINTER, "request_data is NULL");
-    AGENTRT_CHECK(jsonrpc_out != NULL, AGENTRT_ERR_NULL_POINTER, "jsonrpc_out is NULL");
+    AIRY_CHECK(handler != NULL, AIRY_ERR_NULL_POINTER, "handler is NULL");
+    AIRY_CHECK(request_data != NULL, AIRY_ERR_NULL_POINTER, "request_data is NULL");
+    AIRY_CHECK(jsonrpc_out != NULL, AIRY_ERR_NULL_POINTER, "jsonrpc_out is NULL");
 
     char *method = NULL;
     char *id_str = NULL;
     cJSON *params = NULL;
 
     switch (protocol_type) {
-    case AGENTRT_PROTOCOL_MCP:
+    case AIRY_PROTOCOL_MCP:
         params = extract_mcp_to_jsonrpc(request_data, request_size, &method, &id_str);
         break;
-    case AGENTRT_PROTOCOL_A2A:
+    case AIRY_PROTOCOL_A2A:
         params = extract_a2a_to_jsonrpc(request_data, request_size, &method, &id_str);
         break;
-    case AGENTRT_PROTOCOL_OPENAI:
+    case AIRY_PROTOCOL_OPENAI:
         params = extract_openai_to_jsonrpc(request_data, request_size, &method, &id_str);
         break;
-    case AGENTRT_PROTOCOL_JSON_RPC:
-        *jsonrpc_out = AGENTRT_STRNDUP(request_data, request_size);
-        AGENTRT_FREE(method);
-        AGENTRT_FREE(id_str);
+    case AIRY_PROTOCOL_JSON_RPC:
+        *jsonrpc_out = AIRY_STRNDUP(request_data, request_size);
+        AIRY_FREE(method);
+        AIRY_FREE(id_str);
         return *jsonrpc_out ? 0 : -2;
     default:
-        agentrt_error_push_ex(AGENTRT_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: null pointer");
-        return AGENTRT_ERR_NULL_POINTER;
+        return AIRY_ERR_NULL_POINTER;
     }
 
     if (!params) {
-        AGENTRT_FREE(method);
-        AGENTRT_FREE(id_str);
-        agentrt_error_push_ex(AGENTRT_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+        AIRY_FREE(method);
+        AIRY_FREE(id_str);
+        airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: out of memory");
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     cJSON *jsonrpc_req = cJSON_CreateObject();
@@ -762,39 +762,39 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
 
     *jsonrpc_out = cJSON_PrintUnformatted(jsonrpc_req);
     cJSON_Delete(jsonrpc_req);
-    AGENTRT_FREE(method);
-    AGENTRT_FREE(id_str);
+    AIRY_FREE(method);
+    AIRY_FREE(id_str);
 
     return *jsonrpc_out ? 0 : -5;
 }
 
 int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
                                           const char *jsonrpc_response,
-                                          agentrt_protocol_type_t target_protocol,
+                                          airy_protocol_type_t target_protocol,
                                           char **target_response)
 {
 
-    AGENTRT_CHECK(handler != NULL, AGENTRT_ERR_NULL_POINTER, "handler is NULL");
-    AGENTRT_CHECK(jsonrpc_response != NULL, AGENTRT_ERR_NULL_POINTER, "jsonrpc_response is NULL");
-    AGENTRT_CHECK(target_response != NULL, AGENTRT_ERR_NULL_POINTER, "target_response is NULL");
+    AIRY_CHECK(handler != NULL, AIRY_ERR_NULL_POINTER, "handler is NULL");
+    AIRY_CHECK(jsonrpc_response != NULL, AIRY_ERR_NULL_POINTER, "jsonrpc_response is NULL");
+    AIRY_CHECK(target_response != NULL, AIRY_ERR_NULL_POINTER, "target_response is NULL");
 
     /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
     CJSON_PARSE_GUARD(jsonrpc, jsonrpc_response, {
-        agentrt_error_push_ex(AGENTRT_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: invalid parameter");
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
     });
 
     cJSON *result = cJSON_GetObjectItem(jsonrpc, "result");
     if (!result) {
         /* jsonrpc 由 CJSON_AUTO_FREE 自动释放 */
-        agentrt_error_push_ex(AGENTRT_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
                               "gateway_protocol_handler: null pointer");
-        return AGENTRT_ERR_NULL_POINTER;
+        return AIRY_ERR_NULL_POINTER;
     }
 
     switch (target_protocol) {
-    case AGENTRT_PROTOCOL_OPENAI: {
+    case AIRY_PROTOCOL_OPENAI: {
         cJSON *openai = cJSON_CreateObject();
         cJSON *choices = cJSON_CreateArray();
         cJSON *choice = cJSON_CreateObject();
@@ -816,7 +816,7 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         cJSON_Delete(openai);
     } break;
 
-    case AGENTRT_PROTOCOL_MCP: {
+    case AIRY_PROTOCOL_MCP: {
         cJSON *mcp = cJSON_CreateObject();
         /* P0.18.2: CJSON_DEEP_COPY 替代 PrintUnformatted+Parse+FREE 三步曲 */
         cJSON_AddItemToObject(mcp, "content", CJSON_DEEP_COPY(result));
@@ -826,7 +826,7 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         cJSON_Delete(mcp);
     } break;
 
-    case AGENTRT_PROTOCOL_A2A: {
+    case AIRY_PROTOCOL_A2A: {
         cJSON *a2a = cJSON_CreateObject();
         cJSON_AddItemToObject(a2a, "response", CJSON_DEEP_COPY(result));
         cJSON_AddStringToObject(a2a, "status", "success");
@@ -836,7 +836,7 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
     } break;
 
     default:
-        *target_response = AGENTRT_STRDUP(jsonrpc_response);
+        *target_response = AIRY_STRDUP(jsonrpc_response);
         break;
     }
 
@@ -862,14 +862,14 @@ rpc_result_t gateway_protocol_handle_jsonrpc(const cJSON *request,
     gateway_protocol_handler_get_default_config(&config);
     gateway_protocol_handler_t h = gateway_protocol_handler_create(&config);
     if (!h) {
-        AGENTRT_FREE(request_str);
+        AIRY_FREE(request_str);
         return create_error_result(-32608, "Failed to create handler", "null");
     }
 
     rpc_result_t result = gateway_protocol_handle_request(
-        h, request_str, strlen(request_str), AGENTRT_PROTOCOL_JSON_RPC, handler, handler_data);
+        h, request_str, strlen(request_str), AIRY_PROTOCOL_JSON_RPC, handler, handler_data);
 
-    AGENTRT_FREE(request_str);
+    AIRY_FREE(request_str);
     gateway_protocol_handler_destroy(h);
     return result;
 }

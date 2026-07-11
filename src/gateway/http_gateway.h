@@ -10,13 +10,13 @@
  */
 
 // @owner: team-B
-#ifndef AGENTRT_GATEWAY_HTTP_H
-#define AGENTRT_GATEWAY_HTTP_H
+#ifndef AIRY_RT_GATEWAY_HTTP_H
+#define AIRY_RT_GATEWAY_HTTP_H
 
 #include "gateway_internal.h"
 
 #include <stdint.h>
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 #else
 struct cJSON;
@@ -174,4 +174,4 @@ int http_gateway_register_endpoint(http_gateway_t *gateway, const char *method, 
 }
 #endif
 
-#endif /* AGENTRT_GATEWAY_HTTP_H */
+#endif /* AIRY_RT_GATEWAY_HTTP_H */

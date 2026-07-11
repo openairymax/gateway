@@ -114,7 +114,7 @@ static void test_handle_valid_request(void)
 {
     TEST_BEGIN("handle_valid_request");
 
-    cJSON *request = create_valid_request("agentrt_sys_task_submit", 1);
+    cJSON *request = create_valid_request("airy_sys_task_submit", 1);
     ASSERT_NOT_NULL(request);
 
     rpc_result_t result = gateway_rpc_handle_request(request, NULL, NULL);
@@ -147,7 +147,7 @@ static void test_handle_request_with_params(void)
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "name", "test_task");
 
-    cJSON *request = create_request_with_params("agentrt_sys_memory_write", params, 2);
+    cJSON *request = create_request_with_params("airy_sys_memory_write", params, 2);
     ASSERT_NOT_NULL(request);
 
     rpc_result_t result = gateway_rpc_handle_request(request, NULL, NULL);
@@ -244,10 +244,10 @@ static int mock_handler(const char *request_str, char **response_str, void *user
     (void)user_data;
 
     if (!request_str || !response_str)
-        return AGENTRT_ERR_NULL_POINTER;
+        return AIRY_ERR_NULL_POINTER;
 
     /* 简单的echo handler */
-    CJSON_PARSE_GUARD(request, request_str, { return AGENTRT_ERR_PARSE_ERROR; });
+    CJSON_PARSE_GUARD(request, request_str, { return AIRY_ERR_PARSE_ERROR; });
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "jsonrpc", "2.0");
@@ -298,7 +298,7 @@ static int error_handler_func(const char *req, char **resp, void *data)
     (void)req;
     (void)resp;
     (void)data;
-    return AGENTRT_ERR_UNKNOWN; /* 返回错误 */
+    return AIRY_ERR_UNKNOWN; /* 返回错误 */
 }
 
 /**
@@ -403,7 +403,7 @@ static void test_memory_stability_under_load(void)
 
     for (int i = 0; i < 1000; i++) {
         char method[64];
-        snprintf(method, sizeof(method), "agentrt_sys_task_submit_%d", i);
+        snprintf(method, sizeof(method), "airy_sys_task_submit_%d", i);
 
         cJSON *request = create_valid_request(method, i);
         ASSERT_NOT_NULL(request);
@@ -411,7 +411,7 @@ static void test_memory_stability_under_load(void)
         rpc_result_t result = gateway_rpc_handle_request(request, NULL, NULL);
 
         if (result.response_json) {
-            AGENTRT_FREE(result.response_json);
+            AIRY_FREE(result.response_json);
         }
 
         cJSON_Delete(request);
@@ -453,7 +453,7 @@ static void test_very_long_method_name(void)
     TEST_BEGIN("very_long_method_name");
 
     char long_method[1024];
-    AGENTRT_MEMSET(long_method, 'A', sizeof(long_method) - 1);
+    AIRY_MEMSET(long_method, 'A', sizeof(long_method) - 1);
     long_method[sizeof(long_method) - 1] = '\0';
 
     cJSON *request = cJSON_CreateObject();
@@ -481,7 +481,7 @@ static void test_special_characters_in_method(void)
     const char *special_methods[] = {"agentrt.sys.task.submit",      /* 点号 */
                                      "agentrt/sys/task/submit",      /* 斜杠 */
                                      "agentrt::sys::task::submit",   /* 双冒号 */
-                                     "agentrt_sys_task_submit_中文", /* 中文 */
+                                     "airy_sys_task_submit_中文", /* 中文 */
                                      NULL};
 
     for (int i = 0; special_methods[i] != NULL; i++) {

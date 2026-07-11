@@ -673,8 +673,8 @@ int main(int argc, char **argv)
     printf("  Results: %d/%d passed\n", g_tests_passed, g_tests_run);
     printf("========================================\n\n");
 
-    /* 清理错误链，释放 AGENTRT_ERROR/AGENTRT_CHECK 分配的消息字符串 */
-    agentrt_error_clear();
+    /* 清理错误链，释放 AIRY_ERROR/AIRY_CHECK 分配的消息字符串 */
+    airy_err_clear();
 
     return (g_tests_passed == g_tests_run) ? 0 : 1;
 }

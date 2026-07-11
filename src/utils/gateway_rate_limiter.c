@@ -66,9 +66,9 @@ struct gateway_rate_limiter {
 
     /* 哈希表互斥锁 - 保护 clients_table 结构修改 */
 #ifdef _WIN32
-    agentrt_mutex_t table_lock;
+    airy_mtx_t table_lock;
 #else
-    agentrt_mutex_t table_lock;
+    airy_mtx_t table_lock;
 #endif
 };
 
@@ -96,13 +96,13 @@ static uint32_t hash_string(const char *str, size_t table_size)
  */
 static client_state_t *client_state_create(const char *client_key, uint64_t now_ns)
 {
-    client_state_t *state = AGENTRT_CALLOC(1, sizeof(client_state_t));
+    client_state_t *state = AIRY_CALLOC(1, sizeof(client_state_t));
     if (!state)
         return NULL;
 
-    state->client_key = AGENTRT_STRDUP(client_key);
+    state->client_key = AIRY_STRDUP(client_key);
     if (!state->client_key) {
-        AGENTRT_FREE(state);
+        AIRY_FREE(state);
         return NULL;
     }
 
@@ -127,9 +127,9 @@ static void client_state_destroy(client_state_t *state)
         return;
 
     if (state->client_key) {
-        AGENTRT_FREE(state->client_key);
+        AIRY_FREE(state->client_key);
     }
-    AGENTRT_FREE(state);
+    AIRY_FREE(state);
 }
 
 /**
@@ -141,9 +141,9 @@ static client_state_t *get_or_create_client(gateway_rate_limiter_t *limiter, con
     uint32_t hash = hash_string(client_key, limiter->table_size);
 
 #ifdef _WIN32
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #else
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #endif
 
     /* 查找现有客户端 */
@@ -153,9 +153,9 @@ static client_state_t *get_or_create_client(gateway_rate_limiter_t *limiter, con
             current->last_access_time = time(NULL);
 
 #ifdef _WIN32
-            agentrt_mutex_unlock(&limiter->table_lock);
+            airy_mtx_unlock(&limiter->table_lock);
 #else
-            agentrt_mutex_unlock(&limiter->table_lock);
+            airy_mtx_unlock(&limiter->table_lock);
 #endif
             return current;
         }
@@ -166,9 +166,9 @@ static client_state_t *get_or_create_client(gateway_rate_limiter_t *limiter, con
     client_state_t *new_client = client_state_create(client_key, now_ns);
     if (!new_client) {
 #ifdef _WIN32
-        agentrt_mutex_unlock(&limiter->table_lock);
+        airy_mtx_unlock(&limiter->table_lock);
 #else
-        agentrt_mutex_unlock(&limiter->table_lock);
+        airy_mtx_unlock(&limiter->table_lock);
 #endif
         return NULL;
     }
@@ -180,9 +180,9 @@ static client_state_t *get_or_create_client(gateway_rate_limiter_t *limiter, con
     atomic_fetch_add(&limiter->active_clients, 1);
 
 #ifdef _WIN32
-    agentrt_mutex_unlock(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
 #else
-    agentrt_mutex_unlock(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
 #endif
 
     return new_client;
@@ -256,9 +256,9 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
     time_t expire_threshold = now - 3600; /* 1小时未活跃 */
 
 #ifdef _WIN32
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #else
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #endif
 
     for (size_t i = 0; i < limiter->table_size; i++) {
@@ -279,9 +279,9 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
     limiter->last_cleanup_time = now;
 
 #ifdef _WIN32
-    agentrt_mutex_unlock(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
 #else
-    agentrt_mutex_unlock(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
 #endif
 }
 
@@ -370,7 +370,7 @@ void gateway_rate_limiter_get_default_config(gateway_rate_limit_config_t *config
 
 gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_config_t *config)
 {
-    gateway_rate_limiter_t *limiter = AGENTRT_CALLOC(1, sizeof(gateway_rate_limiter_t));
+    gateway_rate_limiter_t *limiter = AIRY_CALLOC(1, sizeof(gateway_rate_limiter_t));
     if (!limiter)
         return NULL;
 
@@ -382,16 +382,16 @@ gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_con
     }
 
     /* 创建哈希表（大小为质数，减少冲突） */
-    const char *env_ts = getenv("AGENTRT_RATE_LIMIT_TABLE_SIZE");
+    const char *env_ts = getenv("AIRY_RATE_LIMIT_TABLE_SIZE");
     if (env_ts) {
         unsigned long v = strtoul(env_ts, NULL, 10);
         limiter->table_size = (v > 0 && v < 100000) ? (size_t)v : 1021;
     } else {
         limiter->table_size = 1021;
     }
-    limiter->clients_table = AGENTRT_CALLOC(limiter->table_size, sizeof(client_state_t *));
+    limiter->clients_table = AIRY_CALLOC(limiter->table_size, sizeof(client_state_t *));
     if (!limiter->clients_table) {
-        AGENTRT_FREE(limiter);
+        AIRY_FREE(limiter);
         return NULL;
     }
 
@@ -402,9 +402,9 @@ gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_con
 
     /* 初始化哈希表互斥锁 */
 #ifdef _WIN32
-    agentrt_mutex_init(&limiter->table_lock);
+    airy_mtx_init(&limiter->table_lock);
 #else
-    agentrt_mutex_init(&limiter->table_lock);
+    airy_mtx_init(&limiter->table_lock);
 #endif
 
     limiter->last_cleanup_time = time(NULL);
@@ -421,9 +421,9 @@ void gateway_rate_limiter_destroy(gateway_rate_limiter_t *limiter)
 
     /* 锁定哈希表进行完整清理 */
 #ifdef _WIN32
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #else
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #endif
 
     /* 清理所有客户端状态 */
@@ -436,18 +436,18 @@ void gateway_rate_limiter_destroy(gateway_rate_limiter_t *limiter)
                 current = next;
             }
         }
-        AGENTRT_FREE(limiter->clients_table);
+        AIRY_FREE(limiter->clients_table);
     }
 
 #ifdef _WIN32
-    agentrt_mutex_unlock(&limiter->table_lock);
-    agentrt_mutex_destroy(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
+    airy_mtx_destroy(&limiter->table_lock);
 #else
-    agentrt_mutex_unlock(&limiter->table_lock);
-    agentrt_mutex_destroy(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
+    airy_mtx_destroy(&limiter->table_lock);
 #endif
 
-    AGENTRT_FREE(limiter);
+    AIRY_FREE(limiter);
 }
 
 bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *client_key)
@@ -501,9 +501,9 @@ void gateway_rate_limiter_reset_client(gateway_rate_limiter_t *limiter, const ch
     uint32_t hash = hash_string(client_key, limiter->table_size);
 
 #ifdef _WIN32
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #else
-    agentrt_mutex_lock(&limiter->table_lock);
+    airy_mtx_lock(&limiter->table_lock);
 #endif
 
     client_state_t *current = limiter->clients_table[hash];
@@ -515,9 +515,9 @@ void gateway_rate_limiter_reset_client(gateway_rate_limiter_t *limiter, const ch
             current->last_update_ns = gateway_time_ns();
 
 #ifdef _WIN32
-            agentrt_mutex_unlock(&limiter->table_lock);
+            airy_mtx_unlock(&limiter->table_lock);
 #else
-            agentrt_mutex_unlock(&limiter->table_lock);
+            airy_mtx_unlock(&limiter->table_lock);
 #endif
             return;
         }
@@ -525,8 +525,8 @@ void gateway_rate_limiter_reset_client(gateway_rate_limiter_t *limiter, const ch
     }
 
 #ifdef _WIN32
-    agentrt_mutex_unlock(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
 #else
-    agentrt_mutex_unlock(&limiter->table_lock);
+    airy_mtx_unlock(&limiter->table_lock);
 #endif
 }

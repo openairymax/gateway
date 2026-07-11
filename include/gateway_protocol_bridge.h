@@ -14,8 +14,8 @@
  * @since 0.1.0
  */
 
-#ifndef AGENTRT_GATEWAY_PROTOCOL_BRIDGE_H
-#define AGENTRT_GATEWAY_PROTOCOL_BRIDGE_H
+#ifndef AIRY_RT_GATEWAY_PROTOCOL_BRIDGE_H
+#define AIRY_RT_GATEWAY_PROTOCOL_BRIDGE_H
 
 #include "gateway.h"
 #include "protocol_router.h"
@@ -164,4 +164,4 @@ int gw_protocol_bridge_register_extension_adapter(gw_protocol_bridge_handle_t br
 }
 #endif
 
-#endif /* AGENTRT_GATEWAY_PROTOCOL_BRIDGE_H */
+#endif /* AIRY_RT_GATEWAY_PROTOCOL_BRIDGE_H */

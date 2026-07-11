@@ -85,7 +85,7 @@ typedef struct {
     request_result_t *results;
     size_t capacity;
     size_t count;
-    agentrt_mutex_t mutex;
+    airy_mtx_t mutex;
 } result_set_t;
 
 typedef struct {
@@ -157,8 +157,8 @@ static int compare_double(const void *a, const void *b)
     double da = *(const double *)a;
     double db = *(const double *)b;
     if (da < db) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "compare_double: error AGENTRT_ERR_UNKNOWN");
-        return AGENTRT_ERR_UNKNOWN;
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "compare_double: error AIRY_ERR_UNKNOWN");
+        return AIRY_ERR_UNKNOWN;
     }
     if (da > db)
         return 1;
@@ -167,24 +167,24 @@ static int compare_double(const void *a, const void *b)
 
 static void result_set_init(result_set_t *set, size_t capacity)
 {
-    set->results = (request_result_t *)AGENTRT_CALLOC(capacity, sizeof(request_result_t));
+    set->results = (request_result_t *)AIRY_CALLOC(capacity, sizeof(request_result_t));
     set->capacity = capacity;
     set->count = 0;
-    agentrt_mutex_init(&set->mutex);
+    airy_mtx_init(&set->mutex);
 }
 
 static void result_set_destroy(result_set_t *set)
 {
-    AGENTRT_FREE(set->results);
+    AIRY_FREE(set->results);
     set->results = NULL;
     set->capacity = 0;
     set->count = 0;
-    agentrt_mutex_destroy(&set->mutex);
+    airy_mtx_destroy(&set->mutex);
 }
 
 static void result_set_add(result_set_t *set, const request_result_t *result)
 {
-    AGENTRT_MUTEX_LOCK_GUARD(set->mutex);
+    AIRY_MUTEX_LOCK_GUARD(set->mutex);
     if (set->count < set->capacity) {
         set->results[set->count++] = *result;
     }
@@ -237,7 +237,7 @@ static void compute_statistics(const result_set_t *set, benchmark_stats_t *stats
     }
     stats->stddev_us = sqrt(variance / n);
 
-    AGENTRT_FREE(latencies);
+    AIRY_FREE(latencies);
 
     stats->total_requests = (int)n;
     stats->success_count = 0;
@@ -579,7 +579,7 @@ static int parse_args(int argc, char *argv[])
                 fseek(pf, 0, SEEK_END);
                 g_config.payload_size = ftell(pf);
                 fseek(pf, 0, SEEK_SET);
-                g_config.payload = (char *)AGENTRT_MALLOC(g_config.payload_size + 1);
+                g_config.payload = (char *)AIRY_MALLOC(g_config.payload_size + 1);
                 {
                     size_t __attribute__((unused)) _fr;
                     _fr = fread(g_config.payload, 1, g_config.payload_size, pf);
@@ -597,8 +597,8 @@ static int parse_args(int argc, char *argv[])
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
             print_usage(argv[0]);
-            agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: not supported");
-            return AGENTRT_ERR_UNKNOWN;
+            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: not supported");
+            return AIRY_ERR_UNKNOWN;
         }
     }
     return 1;
@@ -679,8 +679,8 @@ int main(int argc, char *argv[])
         pthread_join(threads[i], NULL);
     }
 
-    AGENTRT_FREE(threads);
-    AGENTRT_FREE(thread_ids);
+    AIRY_FREE(threads);
+    AIRY_FREE(thread_ids);
     pthread_barrier_destroy(&g_config.start_barrier);
 
     curl_global_cleanup();
@@ -729,7 +729,7 @@ int main(int argc, char *argv[])
 
     result_set_destroy(&g_config.warmup_results);
     result_set_destroy(&g_config.bench_results);
-    AGENTRT_FREE(g_config.payload);
+    AIRY_FREE(g_config.payload);
 
     printf("\nBenchmark complete.\n");
     return 0;

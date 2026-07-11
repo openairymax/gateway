@@ -13,8 +13,8 @@
  */
 
 // @owner: team-B
-#ifndef AGENTRT_GATEWAY_RATE_LIMITER_H
-#define AGENTRT_GATEWAY_RATE_LIMITER_H
+#ifndef AIRY_RT_GATEWAY_RATE_LIMITER_H
+#define AIRY_RT_GATEWAY_RATE_LIMITER_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -112,4 +112,4 @@ void gateway_rate_limiter_get_default_config(gateway_rate_limit_config_t *config
 }
 #endif
 
-#endif /* AGENTRT_GATEWAY_RATE_LIMITER_H */
+#endif /* AIRY_RT_GATEWAY_RATE_LIMITER_H */

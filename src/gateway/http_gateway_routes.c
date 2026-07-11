@@ -26,7 +26,7 @@
 #include "syscalls.h"
 
 #include <microhttpd.h>
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 #endif
 #include <stdlib.h>
@@ -84,7 +84,7 @@ int handle_post_jsonrpc(http_gateway_t *gateway,
 
     int ret = MHD_queue_response(connection, 200, response);
     MHD_destroy_response(response);
-    AGENTRT_FREE(json_response);
+    AIRY_FREE(json_response);
     return ret;
 }
 
@@ -212,14 +212,14 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
     }
 
     char *metrics_json = NULL;
-    agentrt_error_t err = agentrt_sys_telemetry_metrics(&metrics_json);
+    airy_err_t err = airy_sys_telemetry_metrics(&metrics_json);
 
-    if (err != AGENTRT_SUCCESS || !metrics_json) {
-        metrics_json = AGENTRT_STRDUP("{\"error\":\"failed to get metrics\"}");
+    if (err != AIRY_SUCCESS || !metrics_json) {
+        metrics_json = AIRY_STRDUP("{\"error\":\"failed to get metrics\"}");
     }
 
     struct MHD_Response *response = create_http_response(200, metrics_json, strlen(metrics_json));
-    AGENTRT_FREE(metrics_json);
+    AIRY_FREE(metrics_json);
 
     atomic_fetch_add(&gateway->requests_total, 1);
 
@@ -239,7 +239,7 @@ int handle_not_found(http_gateway_t *gateway __attribute__((unused)),
     char *error_response = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
     struct MHD_Response *response =
         create_http_response(404, error_response, strlen(error_response));
-    AGENTRT_FREE(error_response);
+    AIRY_FREE(error_response);
 
     atomic_fetch_add(&gateway->requests_failed, 1);
 
@@ -260,7 +260,7 @@ int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *con
     char *error_response = jsonrpc_create_error_response(NULL, -413, "Request too large", NULL);
     struct MHD_Response *response =
         create_http_response(413, error_response, strlen(error_response));
-    AGENTRT_FREE(error_response);
+    AIRY_FREE(error_response);
 
     atomic_fetch_add(&gateway->requests_failed, 1);
     atomic_fetch_add(&gateway->bytes_received, data_size);
@@ -281,7 +281,7 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
     char *error_response = jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
     struct MHD_Response *response =
         create_http_response(400, error_response, strlen(error_response));
-    AGENTRT_FREE(error_response);
+    AIRY_FREE(error_response);
 
     atomic_fetch_add(&gateway->requests_failed, 1);
     atomic_fetch_add(&gateway->bytes_received, data_size);
@@ -398,7 +398,7 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
         atomic_fetch_add(&gateway->requests_failed, 1);
     }
 
-    AGENTRT_FREE(resp.body);
+    AIRY_FREE(resp.body);
 
     return ret;
 }
@@ -466,13 +466,13 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
 
     /* 阶段 1: 初始化请求上下文 */
     if (!context) {
-        context = AGENTRT_CALLOC(1, sizeof(http_request_context_t));
+        context = AIRY_CALLOC(1, sizeof(http_request_context_t));
         if (!context) {
             return MHD_NO;
         }
 
         if (!gateway_is_url_safe(url)) {
-            AGENTRT_FREE(context);
+            AIRY_FREE(context);
             const char *error_response =
                 "{\"error\":{\"code\":-32002,\"message\":\"Invalid URL path\"}}";
             struct MHD_Response *response = MHD_create_response_from_buffer(

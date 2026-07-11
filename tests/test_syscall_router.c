@@ -103,13 +103,13 @@ static void test_route_task_methods(void)
 {
     TEST_BEGIN("route_task_methods");
 
-    /* 测试 agentrt_sys_task_submit */
+    /* 测试 airy_sys_task_submit */
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "name", "test_task");
-    cJSON *request = create_jsonrpc_request_with_params("agentrt_sys_task_submit", params);
+    cJSON *request = create_jsonrpc_request_with_params("airy_sys_task_submit", params);
 
     char *response =
-        gateway_syscall_route("agentrt_sys_task_submit", params, (cJSON *)jsonrpc_get_id(request));
+        gateway_syscall_route("airy_sys_task_submit", params, (cJSON *)jsonrpc_get_id(request));
     ASSERT_NOT_NULL(response);
     /* 响应应该是有效的 JSON */
     CJSON_PARSE_GUARD(resp_json, response, { TEST_FAIL("parse response failed"); return; });
@@ -128,15 +128,15 @@ static void test_route_task_methods(void)
     cJSON_Delete(request);
 
     /* 测试其他任务方法 */
-    response = gateway_syscall_route("agentrt_sys_task_query", NULL, NULL);
+    response = gateway_syscall_route("airy_sys_task_query", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    response = gateway_syscall_route("agentrt_sys_task_wait", NULL, NULL);
+    response = gateway_syscall_route("airy_sys_task_wait", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    response = gateway_syscall_route("agentrt_sys_task_cancel", NULL, NULL);
+    response = gateway_syscall_route("airy_sys_task_cancel", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
@@ -154,30 +154,30 @@ static void test_route_memory_methods(void)
 
     char *response;
 
-    /* 测试 agentrt_sys_memory_write */
+    /* 测试 airy_sys_memory_write */
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "key", "test_key");
     cJSON_AddStringToObject(params, "value", "test_value");
-    response = gateway_syscall_route("agentrt_sys_memory_write", params, NULL);
+    response = gateway_syscall_route("airy_sys_memory_write", params, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
     cJSON_Delete(params);
 
-    /* 测试 agentrt_sys_memory_search */
+    /* 测试 airy_sys_memory_search */
     params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "query", "search_query");
-    response = gateway_syscall_route("agentrt_sys_memory_search", params, NULL);
+    response = gateway_syscall_route("airy_sys_memory_search", params, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
     cJSON_Delete(params);
 
-    /* 测试 agentrt_sys_memory_get */
-    response = gateway_syscall_route("agentrt_sys_memory_get", NULL, NULL);
+    /* 测试 airy_sys_memory_get */
+    response = gateway_syscall_route("airy_sys_memory_get", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_memory_delete */
-    response = gateway_syscall_route("agentrt_sys_memory_delete", NULL, NULL);
+    /* 测试 airy_sys_memory_delete */
+    response = gateway_syscall_route("airy_sys_memory_delete", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
@@ -195,23 +195,23 @@ static void test_route_session_methods(void)
 
     char *response;
 
-    /* 测试 agentrt_sys_session_create */
-    response = gateway_syscall_route("agentrt_sys_session_create", NULL, NULL);
+    /* 测试 airy_sys_session_create */
+    response = gateway_syscall_route("airy_sys_session_create", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_session_get */
-    response = gateway_syscall_route("agentrt_sys_session_get", NULL, NULL);
+    /* 测试 airy_sys_session_get */
+    response = gateway_syscall_route("airy_sys_session_get", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_session_close */
-    response = gateway_syscall_route("agentrt_sys_session_close", NULL, NULL);
+    /* 测试 airy_sys_session_close */
+    response = gateway_syscall_route("airy_sys_session_close", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_session_list */
-    response = gateway_syscall_route("agentrt_sys_session_list", NULL, NULL);
+    /* 测试 airy_sys_session_list */
+    response = gateway_syscall_route("airy_sys_session_list", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
@@ -229,13 +229,13 @@ static void test_route_telemetry_methods(void)
 
     char *response;
 
-    /* 测试 agentrt_sys_telemetry_metrics */
-    response = gateway_syscall_route("agentrt_sys_telemetry_metrics", NULL, NULL);
+    /* 测试 airy_sys_telemetry_metrics */
+    response = gateway_syscall_route("airy_sys_telemetry_metrics", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_telemetry_traces */
-    response = gateway_syscall_route("agentrt_sys_telemetry_traces", NULL, NULL);
+    /* 测试 airy_sys_telemetry_traces */
+    response = gateway_syscall_route("airy_sys_telemetry_traces", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
@@ -253,23 +253,23 @@ static void test_route_agent_methods(void)
 
     char *response;
 
-    /* 测试 agentrt_sys_agent_spawn */
-    response = gateway_syscall_route("agentrt_sys_agent_spawn", NULL, NULL);
+    /* 测试 airy_sys_agent_spawn */
+    response = gateway_syscall_route("airy_sys_agent_spawn", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_agent_terminate */
-    response = gateway_syscall_route("agentrt_sys_agent_terminate", NULL, NULL);
+    /* 测试 airy_sys_agent_terminate */
+    response = gateway_syscall_route("airy_sys_agent_terminate", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_agent_invoke */
-    response = gateway_syscall_route("agentrt_sys_agent_invoke", NULL, NULL);
+    /* 测试 airy_sys_agent_invoke */
+    response = gateway_syscall_route("airy_sys_agent_invoke", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
-    /* 测试 agentrt_sys_agent_list */
-    response = gateway_syscall_route("agentrt_sys_agent_list", NULL, NULL);
+    /* 测试 airy_sys_agent_list */
+    response = gateway_syscall_route("airy_sys_agent_list", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
@@ -285,7 +285,7 @@ static void test_route_unknown_method(void)
 {
     TEST_BEGIN("route_unknown_method");
 
-    char *response = gateway_syscall_route("agentrt_sys_unknown_method", NULL, NULL);
+    char *response = gateway_syscall_route("airy_sys_unknown_method", NULL, NULL);
     ASSERT_NOT_NULL(response);
 
     /* 解析响应，检查是否为错误响应 */
@@ -341,8 +341,8 @@ static void test_method_prefix_matching(void)
 {
     TEST_BEGIN("method_prefix_matching");
 
-    /* 测试 agentrt_sys_前缀的方法 */
-    char *response = gateway_syscall_route("agentrt_sys_task_submit", NULL, NULL);
+    /* 测试 airy_sys_前缀的方法 */
+    char *response = gateway_syscall_route("airy_sys_task_submit", NULL, NULL);
     ASSERT_NOT_NULL(response);
     cJSON_free(response);
 
@@ -410,8 +410,8 @@ int main(int argc, char **argv)
     printf("  Results: %d/%d passed\n", g_tests_passed, g_tests_run);
     printf("========================================\n\n");
 
-    /* 清理错误链，释放 AGENTRT_ERROR/AGENTRT_CHECK 分配的消息字符串 */
-    agentrt_error_clear();
+    /* 清理错误链，释放 AIRY_ERROR/AIRY_CHECK 分配的消息字符串 */
+    airy_err_clear();
 
     return (g_tests_passed == g_tests_run) ? 0 : 1;
 }

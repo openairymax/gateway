@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 #endif
 
@@ -51,12 +51,12 @@ void gateway_destroy(gateway_t *gw)
         g_gateway_stats.running = false;
         g_gateway_stats.active_connections = 0;
     }
-    AGENTRT_FREE(gw);
+    AIRY_FREE(gw);
 }
 
 int gateway_start(gateway_t *gw)
 {
-    AGENTRT_CHECK(gw != NULL, AGENTRT_ERR_NULL_POINTER, "gw is NULL");
+    AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
     int err = 0;
     if (gw->ops && gw->ops->start) {
         err = gw->ops->start(gw->impl);
@@ -70,7 +70,7 @@ int gateway_start(gateway_t *gw)
 
 int gateway_stop(gateway_t *gw)
 {
-    AGENTRT_CHECK(gw != NULL, AGENTRT_ERR_NULL_POINTER, "gw is NULL");
+    AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
     if (gw->ops && gw->ops->stop) {
         gw->ops->stop(gw->impl);
     }
@@ -81,12 +81,12 @@ int gateway_stop(gateway_t *gw)
 
 int gateway_get_stats(gateway_t *gw, char **out_json)
 {
-    AGENTRT_CHECK(gw != NULL, AGENTRT_ERR_NULL_POINTER, "gw is NULL");
-    AGENTRT_CHECK(out_json != NULL, AGENTRT_ERR_NULL_POINTER, "out_json is NULL");
+    AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
+    AIRY_CHECK(out_json != NULL, AIRY_ERR_NULL_POINTER, "out_json is NULL");
 
     double uptime_seconds = difftime(time(NULL), g_gateway_stats.start_time);
 
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     cJSON *stats = cJSON_CreateObject();
     cJSON_AddStringToObject(stats, "status", g_gateway_stats.running ? "running" : "stopped");
     cJSON_AddNumberToObject(stats, "uptime_seconds", uptime_seconds);
@@ -104,14 +104,14 @@ int gateway_get_stats(gateway_t *gw, char **out_json)
              g_gateway_stats.running ? "running" : "stopped", uptime_seconds,
              (unsigned long long)g_gateway_stats.total_connections,
              (unsigned long long)g_gateway_stats.active_connections);
-    *out_json = AGENTRT_STRDUP(buf);
+    *out_json = AIRY_STRDUP(buf);
 #endif
     return 0;
 }
 
 int gateway_set_handler(gateway_t *gw, gateway_request_handler_t handler, void *user_data)
 {
-    AGENTRT_CHECK(gw != NULL, AGENTRT_ERR_NULL_POINTER, "gw is NULL");
+    AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
     gw->public_handler = handler;
     gw->public_handler_data = user_data;
     return 0;
@@ -141,11 +141,11 @@ const char *gateway_get_name(gateway_t *gw)
 int gateway_register_endpoint(gateway_t *gw, const char *method, const char *path,
                               gateway_endpoint_handler_t handler, void *user_data)
 {
-    AGENTRT_CHECK(gw != NULL, AGENTRT_ERR_NULL_POINTER, "gw is NULL");
-    AGENTRT_CHECK(method != NULL, AGENTRT_ERR_NULL_POINTER, "method is NULL");
-    AGENTRT_CHECK(path != NULL, AGENTRT_ERR_NULL_POINTER, "path is NULL");
-    AGENTRT_CHECK(handler != NULL, AGENTRT_ERR_NULL_POINTER, "handler is NULL");
-    AGENTRT_CHECK(gw->type == GATEWAY_TYPE_HTTP, AGENTRT_ERR_INVALID_PARAM, "gw type is not HTTP");
+    AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
+    AIRY_CHECK(method != NULL, AIRY_ERR_NULL_POINTER, "method is NULL");
+    AIRY_CHECK(path != NULL, AIRY_ERR_NULL_POINTER, "path is NULL");
+    AIRY_CHECK(handler != NULL, AIRY_ERR_NULL_POINTER, "handler is NULL");
+    AIRY_CHECK(gw->type == GATEWAY_TYPE_HTTP, AIRY_ERR_INVALID_PARAM, "gw type is not HTTP");
     return http_gateway_register_endpoint((http_gateway_t *)gw->impl, method, path, handler,
                                           user_data);
 }

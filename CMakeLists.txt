@@ -14,10 +14,10 @@ set(SYSCALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../atoms/syscall")
 set(COMMONS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../commons")
 set(PROTOCOLS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../protocols")
 
-agentrt_print_info("[GATEWAY] Configuring gateway module (cJSON: ${AGENTRT_HAS_CJSON}, microhttpd: ${AGENTRT_HAS_MICROHTTPD}, websockets: ${AGENTRT_HAS_LIBWEBSOCKETS})")
+airy_print_info("[GATEWAY] Configuring gateway module (cJSON: ${AIRY_HAS_CJSON}, microhttpd: ${AIRY_HAS_MICROHTTPD}, websockets: ${AIRY_HAS_LIBWEBSOCKETS})")
 
 # cJSON 是网关模块的硬依赖（0.1.1 零技术债：不允许桩库）
-if(NOT AGENTRT_HAS_CJSON)
+if(NOT AIRY_HAS_CJSON)
     message(FATAL_ERROR "[GATEWAY] cJSON is a hard dependency for Airymax 0.1.1. "
                         "Please install cJSON (e.g. apt install libcjson-dev) and reconfigure. "
                         "Stub gateway library is not supported.")
@@ -26,13 +26,13 @@ endif()
 # 验证关键路径
 foreach(_dir ${COREKERN_DIR}/include ${SYSCALL_DIR}/include ${COMMONS_DIR} ${PROTOCOLS_DIR}/include ${PROTOCOLS_DIR}/common/include)
     if(EXISTS "${_dir}")
-        agentrt_print_ok("[GATEWAY]   [OK] ${_dir}")
+        airy_print_ok("[GATEWAY]   [OK] ${_dir}")
     else()
-        agentrt_print_warn("[GATEWAY]   [MISSING] ${_dir}")
+        airy_print_warn("[GATEWAY]   [MISSING] ${_dir}")
     endif()
 endforeach()
 
-if(AGENTRT_HAS_CJSON)
+if(AIRY_HAS_CJSON)
 set(GATEWAY_SOURCES
     src/gateway/gateway_api.c
     src/gateway/http_gateway.c
@@ -65,13 +65,13 @@ set(GATEWAY_HEADERS
 # ========== 库目标 ==========
 add_library(gateway STATIC ${GATEWAY_SOURCES})
 
-# jsonrpc.c / syscall_router.c 等源文件使用 AGENTRT_HAS_CJSON 守卫
-target_compile_definitions(gateway PUBLIC AGENTRT_HAS_CJSON=1)
+# jsonrpc.c / syscall_router.c 等源文件使用 AIRY_HAS_CJSON 守卫
+target_compile_definitions(gateway PUBLIC AIRY_HAS_CJSON=1)
 
-if(AGENTRT_HAS_LIBWEBSOCKETS)
+if(AIRY_HAS_LIBWEBSOCKETS)
     set_source_files_properties(
         src/gateway/ws_gateway.c
-        PROPERTIES COMPILE_DEFINITIONS "AGENTRT_COMPLIANCE_IMPL"
+        PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
     )
 endif()
 
@@ -117,12 +117,12 @@ target_link_libraries(gateway
     PUBLIC
         svc_common
     PRIVATE
-        agentrt_protocols
-        agentrt_common
-        agentrt_memory
+        airy_protocols
+        airy_common
+        airy_memory
 )
 
-if(AGENTRT_HAS_CJSON)
+if(AIRY_HAS_CJSON)
     if(cJSON_FOUND)
         target_link_libraries(gateway PUBLIC cjson)
     elseif(CJSON_FOUND)
@@ -130,7 +130,7 @@ if(AGENTRT_HAS_CJSON)
     endif()
 endif()
 
-if(AGENTRT_HAS_MICROHTTPD)
+if(AIRY_HAS_MICROHTTPD)
     if(libmicrohttpd_FOUND)
         target_link_libraries(gateway PRIVATE microhttpd)
     elseif(MICROHTTPD_FOUND)
@@ -138,7 +138,7 @@ if(AGENTRT_HAS_MICROHTTPD)
     endif()
 endif()
 
-if(AGENTRT_HAS_LIBWEBSOCKETS)
+if(AIRY_HAS_LIBWEBSOCKETS)
     if(libwebsockets_FOUND)
         target_link_libraries(gateway PRIVATE websockets)
     elseif(LIBWEBSOCKETS_FOUND)
@@ -181,26 +181,26 @@ if(BUILD_TESTS)
 
     # syscall_router 测试 (8个用例)
     add_executable(test_syscall_router tests/test_syscall_router.c)
-    target_compile_definitions(test_syscall_router PRIVATE AGENTRT_COMPLIANCE_IMPL)
+    target_compile_definitions(test_syscall_router PRIVATE AIRY_COMPLIANCE_IMPL)
     target_link_libraries(test_syscall_router gateway)
     add_test(NAME syscall_router_test COMMAND test_syscall_router)
 
     # jsonrpc 协议测试 (17个用例)
     add_executable(test_jsonrpc tests/test_jsonrpc.c)
-    target_compile_definitions(test_jsonrpc PRIVATE AGENTRT_COMPLIANCE_IMPL)
+    target_compile_definitions(test_jsonrpc PRIVATE AIRY_COMPLIANCE_IMPL)
     target_link_libraries(test_jsonrpc gateway)
     add_test(NAME jsonrpc_test COMMAND test_jsonrpc)
 
     # gateway_rpc_handler 统一RPC处理模块测试 (14个用例)
     add_executable(test_rpc_handler tests/test_gateway_rpc_handler.c)
-    target_compile_definitions(test_rpc_handler PRIVATE AGENTRT_COMPLIANCE_IMPL)
+    target_compile_definitions(test_rpc_handler PRIVATE AIRY_COMPLIANCE_IMPL)
     target_link_libraries(test_rpc_handler gateway)
     add_test(NAME rpc_handler_test COMMAND test_rpc_handler)
 
     # 性能基准测试工具 (C-W1-004 / PERF-001~003)
     if(BUILD_BENCHMARK)
         add_executable(gateway_benchmark tests/gateway_benchmark.c)
-        target_compile_definitions(gateway_benchmark PRIVATE AGENTRT_COMPLIANCE_IMPL)
+        target_compile_definitions(gateway_benchmark PRIVATE AIRY_COMPLIANCE_IMPL)
         target_include_directories(gateway_benchmark PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../commons/include
             ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/logging/include
@@ -212,16 +212,16 @@ if(BUILD_TESTS)
         )
         target_link_libraries(gateway_benchmark PRIVATE gateway Threads::Threads m)
 
-        if(AGENTRT_HAS_CURL)
+        if(AIRY_HAS_CURL)
             target_include_directories(gateway_benchmark PRIVATE ${CURL_INCLUDE_DIRS})
             target_link_libraries(gateway_benchmark PRIVATE ${CURL_LIBRARIES})
             target_compile_definitions(gateway_benchmark PRIVATE USE_CURL=1)
-            agentrt_print_info("  gateway_benchmark: with libcurl support")
+            airy_print_info("  gateway_benchmark: with libcurl support")
         else()
-            agentrt_print_warn("  gateway_benchmark: simulation mode (no libcurl)")
+            airy_print_warn("  gateway_benchmark: simulation mode (no libcurl)")
         endif()
 
-        agentrt_print_ok("  gateway_benchmark: configured (TeamC C-W1-004)")
+        airy_print_ok("  gateway_benchmark: configured (TeamC C-W1-004)")
     endif()
 endif()
 
