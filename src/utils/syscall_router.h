@@ -16,7 +16,7 @@
 #ifndef GATEWAY_SYSCALL_ROUTER_H
 #define GATEWAY_SYSCALL_ROUTER_H
 
-#include "agentrt.h"
+#include "airy_rt.h"
 
 #include <cjson/cJSON.h>
 
@@ -29,7 +29,7 @@ extern "C" {
  *
  * 将 JSON-RPC 方法名和参数路由到对应的系统调用函数。
  *
- * @param[in] method 方法名（如 "agentrt_sys_task_submit"）
+ * @param[in] method 方法名（如 "airy_sys_task_submit"）
  * @param[in] params 参数对象
  * @param[in] request_id 请求 ID（可为 NULL）
  * @return JSON 响应字符串，需调用者 free()

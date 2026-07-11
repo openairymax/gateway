@@ -28,7 +28,7 @@
 #ifdef GATEWAY_HAS_HTTP
 
 #include <microhttpd.h>
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 #endif
 #include <stdio.h>
@@ -210,31 +210,31 @@ int parse_json_request(http_gateway_t *gateway, http_request_context_t *context,
                        size_t size)
 {
     if (!data || size == 0) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "parse_json_request: parse error");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
 
     /* 强化大小限制检查 */
     if (size > gateway->max_request_size) {
         /* 记录安全事件（如果有日志系统） */
         atomic_fetch_add(&gateway->requests_failed, 1);
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
+        return AIRY_ERR_UNKNOWN;
     }
 
     context->json_request = cJSON_Parse(data);
     if (!context->json_request) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "cJSON_Parse: parse error");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
 
     if (gw_jsonrpc_validate_request(context->json_request) != 0) {
         cJSON_Delete(context->json_request);
         context->json_request = NULL;
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: parse error");
-        return AGENTRT_ERR_UNKNOWN;
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: parse error");
+        return AIRY_ERR_UNKNOWN;
     }
 
     return 0;
@@ -270,7 +270,7 @@ static char *__attribute__((used)) http_handler_adapter(void *request, void *use
 
     char *response_json = NULL;
     int ret = adapter->public_handler(request_json, &response_json, adapter->user_data);
-    AGENTRT_FREE(request_json);
+    AIRY_FREE(request_json);
 
     if (ret != 0 || !response_json) {
         return NULL;
@@ -291,9 +291,9 @@ static int internal_handler_public_wrapper(const char *request_json, char **resp
     internal_to_public_adapter_t *adapter = (internal_to_public_adapter_t *)user_data;
     if (!adapter || !adapter->internal_handler) {
         *response_json = NULL;
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "if: null pointer");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     char *resp = adapter->internal_handler((void *)request_json, adapter->internal_data);
     if (resp) {
@@ -301,9 +301,9 @@ static int internal_handler_public_wrapper(const char *request_json, char **resp
         return 0;
     }
     *response_json = NULL;
-    agentrt_error_push_ex(AGENTRT_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
+    airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
                           "if: null pointer");
-    return AGENTRT_ERR_NULL_POINTER;
+    return AIRY_ERR_NULL_POINTER;
 }
 
 /**
@@ -321,7 +321,7 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
         internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler,
                                                 .internal_data = gateway->handler_data};
         result = gateway_protocol_handle_request(gateway->protocol_handler, context->upload_data,
-                                                 context->upload_data_size, AGENTRT_PROTOCOL_COUNT,
+                                                 context->upload_data_size, AIRY_PROTOCOL_COUNT,
                                                  internal_handler_public_wrapper, &adapter);
     } else if (context->json_request) {
         internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler,
@@ -366,12 +366,12 @@ static void http_request_completed_callback(
             cJSON_Delete(ctx->json_request);
             ctx->json_request = NULL;
         }
-        AGENTRT_FREE(ctx);
+        AIRY_FREE(ctx);
         *con_cls = NULL;
     }
 }
 
-static agentrt_error_t http_gateway_start(void *gateway_impl)
+static airy_err_t http_gateway_start(void *gateway_impl)
 {
     http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
 
@@ -401,12 +401,12 @@ static agentrt_error_t http_gateway_start(void *gateway_impl)
 #pragma GCC diagnostic pop
 
     if (!gateway->daemon) {
-        return AGENTRT_EBUSY;
+        return AIRY_EBUSY;
     }
 
     atomic_store(&gateway->running, true);
 
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 static void http_gateway_stop(void *gateway_impl)
 {
@@ -426,30 +426,30 @@ static void http_gateway_destroy(void *gateway_impl)
     http_gateway_stop(gateway);
 
     if (gateway->handler_adapter) {
-        AGENTRT_FREE(gateway->handler_adapter);
+        AIRY_FREE(gateway->handler_adapter);
         gateway->handler_adapter = NULL;
     }
     gateway->handler = NULL;
     gateway->handler_data = NULL;
 
     if (gateway->host) {
-        AGENTRT_FREE(gateway->host);
+        AIRY_FREE(gateway->host);
     }
 
     /* 清理 CORS 配置资源 */
     if (gateway->cors.allowed_methods) {
-        AGENTRT_FREE(gateway->cors.allowed_methods);
+        AIRY_FREE(gateway->cors.allowed_methods);
     }
     if (gateway->cors.allowed_headers) {
-        AGENTRT_FREE(gateway->cors.allowed_headers);
+        AIRY_FREE(gateway->cors.allowed_headers);
     }
     if (gateway->cors.allowed_origins) {
         for (size_t i = 0; i < gateway->cors.allowed_origins_count; i++) {
             if (gateway->cors.allowed_origins[i]) {
-                AGENTRT_FREE(gateway->cors.allowed_origins[i]);
+                AIRY_FREE(gateway->cors.allowed_origins[i]);
             }
         }
-        AGENTRT_FREE(gateway->cors.allowed_origins);
+        AIRY_FREE(gateway->cors.allowed_origins);
     }
 
     /* 清理速率限制器 */
@@ -466,30 +466,30 @@ static void http_gateway_destroy(void *gateway_impl)
     /* 清理动态端点 */
     if (gateway->dynamic_endpoints) {
         for (size_t i = 0; i < gateway->dynamic_endpoint_count; i++) {
-            AGENTRT_FREE(gateway->dynamic_endpoints[i].method);
-            AGENTRT_FREE(gateway->dynamic_endpoints[i].path);
+            AIRY_FREE(gateway->dynamic_endpoints[i].method);
+            AIRY_FREE(gateway->dynamic_endpoints[i].path);
         }
-        AGENTRT_FREE(gateway->dynamic_endpoints);
+        AIRY_FREE(gateway->dynamic_endpoints);
         gateway->dynamic_endpoints = NULL;
     }
     gateway->dynamic_endpoint_count = 0;
     gateway->dynamic_endpoint_capacity = 0;
 
-    AGENTRT_FREE(gateway);
+    AIRY_FREE(gateway);
 }
 static const char *http_gateway_get_name(void *gateway_impl __attribute__((unused)))
 {
     return "HTTP Gateway";
 }
-static agentrt_error_t http_gateway_get_stats(void *gateway_impl, char **out_json)
+static airy_err_t http_gateway_get_stats(void *gateway_impl, char **out_json)
 {
     http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
     if (!gateway || !out_json)
-        return AGENTRT_EINVAL;
+        return AIRY_EINVAL;
 
     cJSON *stats = cJSON_CreateObject();
     if (!stats)
-        return AGENTRT_ENOMEM;
+        return AIRY_ENOMEM;
     cJSON_AddNumberToObject(stats, "requests_total", (double)atomic_load(&gateway->requests_total));
     cJSON_AddNumberToObject(stats, "requests_failed",
                             (double)atomic_load(&gateway->requests_failed));
@@ -500,9 +500,9 @@ static agentrt_error_t http_gateway_get_stats(void *gateway_impl, char **out_jso
     cJSON_Delete(stats);
 
     if (!json_str)
-        return AGENTRT_ENOMEM;
+        return AIRY_ENOMEM;
     *out_json = json_str;
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 
 /**
@@ -526,23 +526,23 @@ static bool http_gateway_is_running(void *gateway_impl)
  * 2. 公共模式（推荐）：通过 gateway_set_handler() API 传入，
  *    自动创建适配器将公共签名 (const char*, char**, void*) -> int 转换为内部签名
  */
-static agentrt_error_t http_gateway_set_handler(void *gateway_impl,
+static airy_err_t http_gateway_set_handler(void *gateway_impl,
                                                 gateway_internal_handler_t handler, void *user_data)
 {
     http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
     if (!gateway)
-        return AGENTRT_EINVAL;
+        return AIRY_EINVAL;
 
     /* 清理旧适配器 */
     if (gateway->handler_adapter) {
-        AGENTRT_FREE(gateway->handler_adapter);
+        AIRY_FREE(gateway->handler_adapter);
         gateway->handler_adapter = NULL;
     }
 
     gateway->handler = handler;
     gateway->handler_data = user_data;
 
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 
 static const gateway_ops_t http_gateway_ops = {.start = http_gateway_start,
@@ -559,19 +559,19 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
         return NULL;
     }
 
-    http_gateway_t *gateway = AGENTRT_CALLOC(1, sizeof(http_gateway_t));
+    http_gateway_t *gateway = AIRY_CALLOC(1, sizeof(http_gateway_t));
     if (!gateway) {
         return NULL;
     }
 
     gateway->port = port;
-    gateway->host = AGENTRT_STRDUP(host);
+    gateway->host = AIRY_STRDUP(host);
     gateway->handler_adapter = NULL;
     gateway->handler = NULL;
     gateway->handler_data = NULL;
 
     if (!gateway->host) {
-        AGENTRT_FREE(gateway);
+        AIRY_FREE(gateway);
         return NULL;
     }
 
@@ -597,8 +597,8 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
     gateway->cors.allow_all_origins = false;
     gateway->cors.allowed_origins = NULL;
     gateway->cors.allowed_origins_count = 0;
-    gateway->cors.allowed_methods = AGENTRT_STRDUP("POST, GET, OPTIONS");
-    gateway->cors.allowed_headers = AGENTRT_STRDUP("Content-Type, Authorization");
+    gateway->cors.allowed_methods = AIRY_STRDUP("POST, GET, OPTIONS");
+    gateway->cors.allowed_headers = AIRY_STRDUP("Content-Type, Authorization");
     gateway->cors.max_age = 3600; /* 1小时缓存 */
 
     /* 从环境变量读取 CORS 模式 */
@@ -612,7 +612,7 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
     const char *cors_origins = getenv("GATEWAY_CORS_ORIGINS");
     if (cors_origins && !gateway->cors.allow_all_origins) {
         /* 简单解析逗号分隔的来源列表 */
-        char *origins_copy = AGENTRT_STRDUP(cors_origins);
+        char *origins_copy = AIRY_STRDUP(cors_origins);
         if (origins_copy) {
             size_t count = 1;
             for (char *p = origins_copy; *p; p++) {
@@ -622,19 +622,19 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
 
             if (count <= SIZE_MAX / sizeof(char *)) {
                 gateway->cors.allowed_origins =
-                    (char **)agentrt_malloc_array(count, sizeof(char *));
+                    (char **)airy_malloc_array(count, sizeof(char *));
                 if (gateway->cors.allowed_origins) {
                     char *saveptr = NULL;
                     char *token = strtok_r(origins_copy, ",", &saveptr);
                     size_t i = 0;
                     while (token && i < count) {
-                        gateway->cors.allowed_origins[i++] = AGENTRT_STRDUP(token);
+                        gateway->cors.allowed_origins[i++] = AIRY_STRDUP(token);
                         token = strtok_r(NULL, ",", &saveptr);
                     }
                     gateway->cors.allowed_origins_count = i;
                 }
             }
-            AGENTRT_FREE(origins_copy);
+            AIRY_FREE(origins_copy);
         }
     }
 
@@ -667,15 +667,15 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
         /* 可以降级为纯JSON-RPC模式 */
     }
 
-    gateway_t *gw = AGENTRT_MALLOC(sizeof(gateway_t));
+    gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
-        AGENTRT_FREE(gateway->cors.allowed_methods);
-        AGENTRT_FREE(gateway->cors.allowed_headers);
+        AIRY_FREE(gateway->cors.allowed_methods);
+        AIRY_FREE(gateway->cors.allowed_headers);
         if (gateway->cors.allowed_origins) {
             for (size_t i = 0; i < gateway->cors.allowed_origins_count; i++) {
-                AGENTRT_FREE(gateway->cors.allowed_origins[i]);
+                AIRY_FREE(gateway->cors.allowed_origins[i]);
             }
-            AGENTRT_FREE(gateway->cors.allowed_origins);
+            AIRY_FREE(gateway->cors.allowed_origins);
         }
         if (gateway->protocol_handler) {
             gateway_protocol_handler_destroy(gateway->protocol_handler);
@@ -683,8 +683,8 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
         if (gateway->rate_limiter) {
             gateway_rate_limiter_destroy(gateway->rate_limiter);
         }
-        AGENTRT_FREE(gateway->host);
-        AGENTRT_FREE(gateway);
+        AIRY_FREE(gateway->host);
+        AIRY_FREE(gateway);
         return NULL;
     }
 
@@ -699,30 +699,30 @@ int http_gateway_register_endpoint(http_gateway_t *gateway, const char *method, 
                                    gateway_endpoint_handler_t handler, void *user_data)
 {
     if (!gateway || !method || !path || !handler) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "http_gateway_register_endpoint: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
 
     if (gateway->dynamic_endpoint_count >= gateway->dynamic_endpoint_capacity) {
         size_t new_cap =
             gateway->dynamic_endpoint_capacity == 0 ? 8 : gateway->dynamic_endpoint_capacity * 2;
         http_dynamic_endpoint_t *new_arr =
-            AGENTRT_REALLOC(gateway->dynamic_endpoints, new_cap * sizeof(http_dynamic_endpoint_t));
+            AIRY_REALLOC(gateway->dynamic_endpoints, new_cap * sizeof(http_dynamic_endpoint_t));
         if (!new_arr) {
-            return AGENTRT_ERR_INVALID_PARAM;
+            return AIRY_ERR_INVALID_PARAM;
         }
         gateway->dynamic_endpoints = new_arr;
         gateway->dynamic_endpoint_capacity = new_cap;
     }
 
     http_dynamic_endpoint_t *slot = &gateway->dynamic_endpoints[gateway->dynamic_endpoint_count];
-    slot->method = AGENTRT_STRDUP(method);
-    slot->path = AGENTRT_STRDUP(path);
+    slot->method = AIRY_STRDUP(method);
+    slot->path = AIRY_STRDUP(path);
     if (!slot->method || !slot->path) {
-        AGENTRT_FREE(slot->method);
-        AGENTRT_FREE(slot->path);
-        return AGENTRT_ERR_INVALID_PARAM;
+        AIRY_FREE(slot->method);
+        AIRY_FREE(slot->path);
+        return AIRY_ERR_INVALID_PARAM;
     }
     slot->handler = handler;
     slot->user_data = user_data;

@@ -23,10 +23,10 @@
  */
 
 // @owner: team-B
-#ifndef AGENTRT_GATEWAY_H
-#define AGENTRT_GATEWAY_H
+#ifndef AIRY_RT_GATEWAY_H
+#define AIRY_RT_GATEWAY_H
 
-#include "agentrt.h"
+#include "airy_rt.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -41,7 +41,7 @@ extern "C" {
 /**
  * @brief 网关专用错误码（扩展 AgentRT 标准错误码）
  *
- * @note 网关层 API 同时返回 agentrt_error_t 和 gateway_error_t。
+ * @note 网关层 API 同时返回 airy_err_t 和 gateway_error_t。
  *       gateway_error_t 用于网关特有的错误场景。
  */
 typedef enum {
@@ -165,9 +165,9 @@ void gateway_destroy(gateway_t *gw);
  * Stdio 网关为阻塞启动（REPL 循环）。
  *
  * @param[in] gw 网关句柄
- * @return AGENTRT_SUCCESS 成功
- * @return AGENTRT_EINVAL 参数无效
- * @return AGENTRT_EBUSY 端口占用或资源忙
+ * @return AIRY_SUCCESS 成功
+ * @return AIRY_EINVAL 参数无效
+ * @return AIRY_EBUSY 端口占用或资源忙
  *
  * @pre 网关已通过 gateway_http/ws/stdio_create 创建
  * @post 网关状态变为运行中，可通过 gateway_is_running() 检查
@@ -183,7 +183,7 @@ int gateway_start(gateway_t *gw);
  * 对 NULL 或已停止的网关静默忽略。
  *
  * @param[in] gw 网关句柄（可为 NULL）
- * @return AGENTRT_SUCCESS 成功或静默忽略
+ * @return AIRY_SUCCESS 成功或静默忽略
  *
  * @post 网关停止接受新连接，is_running() 返回 false
  * @threadsafe 安全
@@ -201,8 +201,8 @@ int gateway_stop(gateway_t *gw);
  * @param[in] gw 网关句柄
  * @param[in] handler 回调函数（NULL 表示清除自定义处理器）
  * @param[in] user_data 传递给回调的用户数据
- * @return AGENTRT_SUCCESS 成功
- * @return AGENTRT_EINVAL 参数无效
+ * @return AIRY_SUCCESS 成功
+ * @return AIRY_EINVAL 参数无效
  *
  * @threadsafe 安全（原子设置）
  * @since 1.0.0
@@ -279,8 +279,8 @@ bool gateway_is_running(gateway_t *gw);
  *
  * @param[in] gw 网关句柄
  * @param[out] out_json 输出 JSON 字符串，需调用者 free()
- * @return AGENTRT_SUCCESS 成功
- * @return AGENTRT_EINVAL 参数无效
+ * @return AIRY_SUCCESS 成功
+ * @return AIRY_EINVAL 参数无效
  *
  * @ownership out_json 由函数分配，调用者必须 free()
  * @threadsafe 安全（快照式读取）
@@ -288,7 +288,7 @@ bool gateway_is_running(gateway_t *gw);
  *
  * @code
  * char* stats = NULL;
- * if (gateway_get_stats(gw, &stats) == AGENTRT_SUCCESS) {
+ * if (gateway_get_stats(gw, &stats) == AIRY_SUCCESS) {
  *     printf("Stats: %s\n", stats);
  *     free(stats);
  * }
@@ -312,16 +312,16 @@ const char *gateway_get_name(gateway_t *gw);
  *
  * 将自定义端点处理函数注册到网关的 HTTP 服务器。
  * 注册的端点优先于静态路由表中的同名路径。
- * 仅 HTTP 网关支持端点注册，其他类型返回 AGENTRT_EINVAL。
+ * 仅 HTTP 网关支持端点注册，其他类型返回 AIRY_EINVAL。
  *
  * @param[in] gw 网关句柄
  * @param[in] method HTTP 方法（如 "GET", "POST"），不能为 NULL
  * @param[in] path URL 路径（如 "/metrics"），不能为 NULL
  * @param[in] handler 端点处理回调函数，不能为 NULL
  * @param[in] user_data 传递给回调的用户数据（可为 NULL）
- * @return AGENTRT_SUCCESS 成功
- * @return AGENTRT_EINVAL 参数无效或网关类型不支持
- * @return AGENTRT_ENOMEM 内存不足
+ * @return AIRY_SUCCESS 成功
+ * @return AIRY_EINVAL 参数无效或网关类型不支持
+ * @return AIRY_ENOMEM 内存不足
  *
  * @note 应在 gateway_start() 之前调用，运行时注册需确保线程安全
  * @threadsafe 注册操作本身安全，但与请求处理并发时需注意
@@ -334,4 +334,4 @@ int gateway_register_endpoint(gateway_t *gw, const char *method, const char *pat
 }
 #endif
 
-#endif /* AGENTRT_GATEWAY_H */
+#endif /* AIRY_RT_GATEWAY_H */

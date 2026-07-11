@@ -20,7 +20,7 @@
 #include "../utils/jsonrpc.h"
 #include "../utils/syscall_router.h"
 #include "logging.h"
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 /* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
 #include <cjson_helpers.h>
@@ -82,19 +82,19 @@ typedef struct stdio_gateway {
  */
 static char *show_help(void)
 {
-    return AGENTRT_STRDUP("AgentRT Stdio Gateway - Available Commands:\n"
+    return AIRY_STRDUP("AgentRT Stdio Gateway - Available Commands:\n"
                           "  help                     - Show this help\n"
                           "  rpc <json-rpc>           - Execute JSON-RPC call\n"
                           "  stats                    - Show gateway statistics\n"
                           "  exit                     - Exit gateway\n"
                           "\n"
                           "JSON-RPC Methods:\n"
-                          "  agentrt_sys_task_submit    - Submit a task\n"
-                          "  agentrt_sys_task_query     - Query task status\n"
-                          "  agentrt_sys_memory_search  - Search memory\n"
-                          "  agentrt_sys_session_create - Create session\n"
-                          "  agentrt_sys_session_list   - List sessions\n"
-                          "  agentrt_sys_telemetry_metrics - Get metrics\n");
+                          "  airy_sys_task_submit    - Submit a task\n"
+                          "  airy_sys_task_query     - Query task status\n"
+                          "  airy_sys_memory_search  - Search memory\n"
+                          "  airy_sys_session_create - Create session\n"
+                          "  airy_sys_session_list   - List sessions\n"
+                          "  airy_sys_telemetry_metrics - Get metrics\n");
 }
 
 /**
@@ -148,10 +148,10 @@ static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
 static char *process_command(stdio_gateway_t *gateway, const char *input)
 {
     if (!input || strlen(input) == 0) {
-        return AGENTRT_STRDUP("");
+        return AIRY_STRDUP("");
     }
 
-    char *trimmed = AGENTRT_STRDUP(input);
+    char *trimmed = AIRY_STRDUP(input);
     char *start = trimmed;
     while (*start == ' ' || *start == '\t')
         start++;
@@ -161,8 +161,8 @@ static char *process_command(stdio_gateway_t *gateway, const char *input)
     *(end + 1) = '\0';
 
     if (strlen(start) == 0) {
-        AGENTRT_FREE(trimmed);
-        return AGENTRT_STRDUP("");
+        AIRY_FREE(trimmed);
+        return AIRY_STRDUP("");
     }
 
     char *response = NULL;
@@ -182,29 +182,29 @@ static char *process_command(stdio_gateway_t *gateway, const char *input)
         cJSON_Delete(stats);
     } else if (strcmp(start, "exit") == 0 || strcmp(start, "quit") == 0) {
         atomic_store(&gateway->running, false);
-        response = AGENTRT_STRDUP("Gateway shutting down...\n");
+        response = AIRY_STRDUP("Gateway shutting down...\n");
     } else if (strncmp(start, "rpc ", 4) == 0) {
         const char *json_str = start + 4;
         response = handle_jsonrpc(gateway, json_str);
     } else {
-        response = AGENTRT_STRDUP("Unknown command. Type 'help' for available commands.\n");
+        response = AIRY_STRDUP("Unknown command. Type 'help' for available commands.\n");
     }
 
-    AGENTRT_FREE(trimmed);
+    AIRY_FREE(trimmed);
     return response;
 }
 
 /* ========== 网关操作表 ========== */
 
-static agentrt_error_t stdio_gateway_start(void *gateway_impl)
+static airy_err_t stdio_gateway_start(void *gateway_impl)
 {
     stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
 
     gateway->input_buffer_pos = 0;
     atomic_store(&gateway->running, true);
 
-    AGENTRT_LOG_INFO("AgentRT Stdio Gateway started. Type 'help' for available commands.");
-    AGENTRT_LOG_DEBUG("> ");
+    AIRY_LOG_INFO("AgentRT Stdio Gateway started. Type 'help' for available commands.");
+    AIRY_LOG_DEBUG("> ");
 
     while (atomic_load(&gateway->running)) {
 #ifdef _WIN32
@@ -236,28 +236,28 @@ static agentrt_error_t stdio_gateway_start(void *gateway_impl)
                 atomic_fetch_add(&gateway->bytes_received, input_len);
 
                 if (gateway->input_buffer_pos + input_len < gateway->input_buffer_size) {
-                    AGENTRT_MEMCPY(gateway->input_buffer + gateway->input_buffer_pos, buffer, input_len);
+                    AIRY_MEMCPY(gateway->input_buffer + gateway->input_buffer_pos, buffer, input_len);
                     gateway->input_buffer_pos += input_len;
 
                     char *newline = memchr(gateway->input_buffer, '\n', gateway->input_buffer_pos);
                     if (newline) {
                         *newline = '\0';
-                        char *command_line = AGENTRT_STRDUP(gateway->input_buffer);
+                        char *command_line = AIRY_STRDUP(gateway->input_buffer);
                         gateway->input_buffer_pos -= (newline + 1 - gateway->input_buffer);
                         __builtin_memmove(gateway->input_buffer, newline + 1, gateway->input_buffer_pos);
 
                         char *response = process_command(gateway, command_line);
-                        AGENTRT_FREE(command_line);
+                        AIRY_FREE(command_line);
 
                         if (response) {
-                            AGENTRT_LOG_INFO("%s\n", response);
+                            AIRY_LOG_INFO("%s\n", response);
                             atomic_fetch_add(&gateway->bytes_sent, strlen(response));
                             atomic_fetch_add(&gateway->commands_total, 1);
-                            AGENTRT_FREE(response);
+                            AIRY_FREE(response);
                         }
 
                         if (atomic_load(&gateway->running)) {
-                            AGENTRT_LOG_DEBUG("> ");
+                            AIRY_LOG_DEBUG("> ");
                         }
                     }
                 }
@@ -265,8 +265,8 @@ static agentrt_error_t stdio_gateway_start(void *gateway_impl)
         }
     }
 
-    AGENTRT_LOG_INFO("Gateway stopped.");
-    return AGENTRT_SUCCESS;
+    AIRY_LOG_INFO("Gateway stopped.");
+    return AIRY_SUCCESS;
 }
 
 static void stdio_gateway_stop(void *gateway_impl)
@@ -284,17 +284,17 @@ static void stdio_gateway_destroy(void *gateway_impl)
     stdio_gateway_stop(gateway);
 
     if (gateway->handler_adapter) {
-        AGENTRT_FREE(gateway->handler_adapter);
+        AIRY_FREE(gateway->handler_adapter);
         gateway->handler_adapter = NULL;
     }
     gateway->handler = NULL;
     gateway->handler_data = NULL;
 
-    AGENTRT_FREE(gateway->input_buffer);
+    AIRY_FREE(gateway->input_buffer);
     gateway->input_buffer = NULL;
     gateway->input_buffer_size = 0;
 
-    AGENTRT_FREE(gateway);
+    AIRY_FREE(gateway);
 }
 
 static const char *stdio_gateway_get_name(void *gateway_impl __attribute__((unused)))
@@ -310,15 +310,15 @@ static bool stdio_gateway_is_running(void *gateway_impl)
     return atomic_load(&gateway->running);
 }
 
-static agentrt_error_t stdio_gateway_get_stats(void *gateway_impl, char **out_json)
+static airy_err_t stdio_gateway_get_stats(void *gateway_impl, char **out_json)
 {
     stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
     if (!gateway || !out_json)
-        return AGENTRT_EINVAL;
+        return AIRY_EINVAL;
 
     cJSON *stats = cJSON_CreateObject();
     if (!stats)
-        return AGENTRT_ENOMEM;
+        return AIRY_ENOMEM;
     cJSON_AddNumberToObject(stats, "commands_total", (double)atomic_load(&gateway->commands_total));
     cJSON_AddNumberToObject(stats, "commands_failed",
                             (double)atomic_load(&gateway->commands_failed));
@@ -329,30 +329,30 @@ static agentrt_error_t stdio_gateway_get_stats(void *gateway_impl, char **out_js
     cJSON_Delete(stats);
 
     if (!json_str)
-        return AGENTRT_ENOMEM;
+        return AIRY_ENOMEM;
     *out_json = json_str;
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 
 /**
  * @brief 设置请求处理回调
  */
-static agentrt_error_t
+static airy_err_t
 stdio_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler, void *user_data)
 {
     stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
     if (!gateway)
-        return AGENTRT_EINVAL;
+        return AIRY_EINVAL;
 
     if (gateway->handler_adapter) {
-        AGENTRT_FREE(gateway->handler_adapter);
+        AIRY_FREE(gateway->handler_adapter);
         gateway->handler_adapter = NULL;
     }
 
     gateway->handler = handler;
     gateway->handler_data = user_data;
 
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 
 static const gateway_ops_t stdio_gateway_ops = {.start = stdio_gateway_start,
@@ -367,7 +367,7 @@ static const gateway_ops_t stdio_gateway_ops = {.start = stdio_gateway_start,
 
 gateway_t *stdio_gateway_create(void)
 {
-    stdio_gateway_t *gateway = AGENTRT_CALLOC(1, sizeof(stdio_gateway_t));
+    stdio_gateway_t *gateway = AIRY_CALLOC(1, sizeof(stdio_gateway_t));
     if (!gateway) {
         return NULL;
     }
@@ -376,15 +376,15 @@ gateway_t *stdio_gateway_create(void)
     gateway->handler = NULL;
     gateway->handler_data = NULL;
 
-    const char *env_bs = getenv("AGENTRT_STDIO_BUFFER_SIZE");
+    const char *env_bs = getenv("AIRY_STDIO_BUFFER_SIZE");
     gateway->input_buffer_size = env_bs ? (size_t)strtoul(env_bs, NULL, 10) : 8192;
     if (gateway->input_buffer_size < 1024)
         gateway->input_buffer_size = 1024;
     if (gateway->input_buffer_size > 1048576)
         gateway->input_buffer_size = 1048576;
-    gateway->input_buffer = (char *)AGENTRT_MALLOC(gateway->input_buffer_size);
+    gateway->input_buffer = (char *)AIRY_MALLOC(gateway->input_buffer_size);
     if (!gateway->input_buffer) {
-        AGENTRT_FREE(gateway);
+        AIRY_FREE(gateway);
         return NULL;
     }
     gateway->input_buffer_pos = 0;
@@ -395,9 +395,9 @@ gateway_t *stdio_gateway_create(void)
     atomic_init(&gateway->bytes_received, 0);
     atomic_init(&gateway->bytes_sent, 0);
 
-    gateway_t *gw = AGENTRT_MALLOC(sizeof(gateway_t));
+    gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
-        AGENTRT_FREE(gateway);
+        AIRY_FREE(gateway);
         return NULL;
     }
 

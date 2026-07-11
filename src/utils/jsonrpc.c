@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 /* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
 #include <cjson_helpers.h>
@@ -27,12 +27,12 @@
 
 int gw_jsonrpc_validate_request(const cJSON *json)
 {
-#ifdef AGENTRT_HAS_CJSON
-    AGENTRT_CHECK(json != NULL, AGENTRT_ERR_NULL_POINTER, "json is NULL");
+#ifdef AIRY_HAS_CJSON
+    AIRY_CHECK(json != NULL, AIRY_ERR_NULL_POINTER, "json is NULL");
 
     if (!cJSON_HasObjectItem(json, "jsonrpc") || !cJSON_HasObjectItem(json, "method") ||
         !cJSON_HasObjectItem(json, "id")) {
-        AGENTRT_ERROR(AGENTRT_ERR_NOT_FOUND, "missing required JSON-RPC fields");
+        AIRY_ERROR(AIRY_ERR_NOT_FOUND, "missing required JSON-RPC fields");
     }
 
     const cJSON *jsonrpc = cJSON_GetObjectItemCaseSensitive(json, "jsonrpc");
@@ -40,33 +40,33 @@ int gw_jsonrpc_validate_request(const cJSON *json)
     const cJSON *id = cJSON_GetObjectItemCaseSensitive(json, "id");
 
     if (!cJSON_IsString(jsonrpc)) {
-        AGENTRT_ERROR(-2, "jsonrpc field is not a string");
+        AIRY_ERROR(-2, "jsonrpc field is not a string");
     }
     if (strcmp(jsonrpc->valuestring, "2.0") != 0) {
-        AGENTRT_ERROR(-3, "jsonrpc version is not 2.0");
+        AIRY_ERROR(-3, "jsonrpc version is not 2.0");
     }
 
     if (!cJSON_IsString(method)) {
-        AGENTRT_ERROR(-2, "method field is not a string");
+        AIRY_ERROR(-2, "method field is not a string");
     }
     if (strlen(method->valuestring) == 0) {
-        AGENTRT_ERROR(AGENTRT_ERR_INVALID_PARAM, "method is empty");
+        AIRY_ERROR(AIRY_ERR_INVALID_PARAM, "method is empty");
     }
 
     if (!cJSON_IsNumber(id) && !cJSON_IsString(id) && !cJSON_IsNull(id)) {
-        AGENTRT_ERROR(-2, "id field has invalid type");
+        AIRY_ERROR(-2, "id field has invalid type");
     }
 
     return 0;
 #else
     (void)json;
-    AGENTRT_ERROR(AGENTRT_ERR_NOT_SUPPORTED, "cJSON not available");
+    AIRY_ERROR(AIRY_ERR_NOT_SUPPORTED, "cJSON not available");
 #endif
 }
 
 const char *jsonrpc_get_method(const cJSON *json)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     if (!json) {
         return NULL;
     }
@@ -83,7 +83,7 @@ const char *jsonrpc_get_method(const cJSON *json)
 
 const cJSON *jsonrpc_get_params(const cJSON *json)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     if (!json) {
         return NULL;
     }
@@ -96,7 +96,7 @@ const cJSON *jsonrpc_get_params(const cJSON *json)
 
 const cJSON *jsonrpc_get_id(const cJSON *json)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     if (!json) {
         return NULL;
     }
@@ -109,7 +109,7 @@ const cJSON *jsonrpc_get_id(const cJSON *json)
 
 char *jsonrpc_create_success_response(const cJSON *id, cJSON *result)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         if (result)
@@ -144,7 +144,7 @@ char *jsonrpc_create_success_response(const cJSON *id, cJSON *result)
 
 char *jsonrpc_create_error_response(const cJSON *id, int code, const char *message, cJSON *data)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         if (data)
@@ -211,7 +211,7 @@ char *jsonrpc_create_method_not_found_response(const cJSON *id)
 
 char *jsonrpc_create_invalid_params_response(const cJSON *id, const char *detail)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     cJSON *data = NULL;
     if (detail) {
         data = cJSON_CreateString(detail);
@@ -226,7 +226,7 @@ char *jsonrpc_create_invalid_params_response(const cJSON *id, const char *detail
 
 char *jsonrpc_create_internal_error_response(const cJSON *id, const char *detail)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     cJSON *data = NULL;
     if (detail) {
         data = cJSON_CreateString(detail);
@@ -251,22 +251,22 @@ char *jsonrpc_create_auth_failed_response(const cJSON *id)
 
 /* P0.18.1: jsonrpc_get_error_message 已统一至 daemons/common/src/jsonrpc_helpers.c，
  * 消除 gateway_lib_obj 与 svc_common 链接时的 multiple definition 错误。
- * 声明见 jsonrpc.h:173 及 jsonrpc_helpers.h:56（AGENTRT_API 权威声明）。 */
+ * 声明见 jsonrpc.h:173 及 jsonrpc_helpers.h:56（AIRY_API 权威声明）。 */
 
 int jsonrpc_validate_batch_request(const cJSON *batch_json, size_t *out_count)
 {
-#ifdef AGENTRT_HAS_CJSON
-    AGENTRT_CHECK(batch_json != NULL, AGENTRT_ERR_NULL_POINTER, "batch_json is NULL");
-    AGENTRT_CHECK(out_count != NULL, AGENTRT_ERR_NULL_POINTER, "out_count is NULL");
+#ifdef AIRY_HAS_CJSON
+    AIRY_CHECK(batch_json != NULL, AIRY_ERR_NULL_POINTER, "batch_json is NULL");
+    AIRY_CHECK(out_count != NULL, AIRY_ERR_NULL_POINTER, "out_count is NULL");
     *out_count = 0;
 
-    AGENTRT_CHECK(cJSON_IsArray(batch_json), AGENTRT_ERR_INVALID_PARAM,
+    AIRY_CHECK(cJSON_IsArray(batch_json), AIRY_ERR_INVALID_PARAM,
                   "batch_json is not an array");
 
     size_t count = cJSON_GetArraySize(batch_json);
-    AGENTRT_CHECK(count > 0, AGENTRT_ERR_INVALID_PARAM, "batch is empty");
+    AIRY_CHECK(count > 0, AIRY_ERR_INVALID_PARAM, "batch is empty");
     if (count > JSONRPC_MAX_BATCH_SIZE)
-        AGENTRT_ERROR(-3, "batch exceeds max size");
+        AIRY_ERROR(-3, "batch exceeds max size");
 
     int has_invalid = 0;
     for (size_t i = 0; i < count; i++) {
@@ -282,7 +282,7 @@ int jsonrpc_validate_batch_request(const cJSON *batch_json, size_t *out_count)
 #else
     (void)batch_json;
     (void)out_count;
-    AGENTRT_ERROR(AGENTRT_ERR_NOT_SUPPORTED, "cJSON not available");
+    AIRY_ERROR(AIRY_ERR_NOT_SUPPORTED, "cJSON not available");
 #endif
 }
 
@@ -290,7 +290,7 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                             char *(*handler)(const cJSON *request, void *user_data),
                             void *user_data)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     if (!batch_json || !handler || !cJSON_IsArray(batch_json)) {
         return NULL;
     }
@@ -315,7 +315,7 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                     cJSON_AddItemToArray(responses, parsed);
                     parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
                 } while (0);
-                AGENTRT_FREE(err_resp);
+                AIRY_FREE(err_resp);
             }
             continue;
         }
@@ -346,7 +346,7 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                     cJSON_AddItemToArray(responses, parsed);
                     parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
                 } while (0);
-                AGENTRT_FREE(err_resp);
+                AIRY_FREE(err_resp);
             }
             continue;
         }
@@ -371,10 +371,10 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                         cJSON_AddItemToArray(responses, err_parsed);
                         err_parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
                     } while (0);
-                    AGENTRT_FREE(err_resp_str);
+                    AIRY_FREE(err_resp_str);
                 }
             }
-            AGENTRT_FREE(resp_str);
+            AIRY_FREE(resp_str);
         } else {
             const cJSON *id = jsonrpc_get_id(item);
             char *err_resp = jsonrpc_create_internal_error_response(id, "Handler returned NULL");
@@ -385,7 +385,7 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                     cJSON_AddItemToArray(responses, parsed);
                     parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
                 } while (0);
-                AGENTRT_FREE(err_resp);
+                AIRY_FREE(err_resp);
             }
         }
     }
@@ -403,7 +403,7 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
 
 char *jsonrpc_create_notification(const char *method, cJSON *params)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     if (!method || strlen(method) == 0)
         return NULL;
 
@@ -434,7 +434,7 @@ char *jsonrpc_create_notification(const char *method, cJSON *params)
 
 bool gw_jsonrpc_is_notification(const cJSON *json)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     if (!json || !cJSON_IsObject(json))
         return false;
 
@@ -447,7 +447,7 @@ bool gw_jsonrpc_is_notification(const cJSON *json)
 
 char *jsonrpc_create_notification_params(const char *method, const char *params_json)
 {
-#ifdef AGENTRT_HAS_CJSON
+#ifdef AIRY_HAS_CJSON
     if (!method || strlen(method) == 0)
         return NULL;
 

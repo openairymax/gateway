@@ -83,7 +83,7 @@ void gateway_protocol_handler_destroy(gateway_protocol_handler_t handler);
  */
 rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                                              const char *request_data, size_t request_size,
-                                             agentrt_protocol_type_t protocol_type,
+                                             airy_protocol_type_t protocol_type,
                                              int (*custom_handler)(const char *, char **, void *),
                                              void *handler_data);
 
@@ -120,7 +120,7 @@ int gateway_protocol_handler_get_stats(gateway_protocol_handler_t handler, char 
  * @param request_size 请求数据大小
  * @return 检测到的协议类型，或UNIFIED_PROTOCOL_UNKNOWN如果无法检测
  */
-agentrt_protocol_type_t gateway_protocol_detect(const char *request_data, size_t request_size);
+airy_protocol_type_t gateway_protocol_detect(const char *request_data, size_t request_size);
 
 /**
  * @brief 检测是否为JSON-RPC请求
@@ -169,7 +169,7 @@ int gateway_protocol_is_openai(const char *request_data, size_t request_size);
  */
 int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
                                         const char *request_data, size_t request_size,
-                                        agentrt_protocol_type_t protocol_type, char **jsonrpc_out);
+                                        airy_protocol_type_t protocol_type, char **jsonrpc_out);
 
 /**
  * @brief 将JSON-RPC响应转换为目标协议格式
@@ -181,7 +181,7 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
  */
 int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
                                           const char *jsonrpc_response,
-                                          agentrt_protocol_type_t target_protocol,
+                                          airy_protocol_type_t target_protocol,
                                           char **target_response);
 
 // ============================================================================

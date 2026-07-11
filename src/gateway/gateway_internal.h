@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 // @owner: team-B
-#ifndef AGENTRT_GATEWAY_INTERNAL_H
-#define AGENTRT_GATEWAY_INTERNAL_H
+#ifndef AIRY_RT_GATEWAY_INTERNAL_H
+#define AIRY_RT_GATEWAY_INTERNAL_H
 
 #include <stdbool.h>
 #include <stddef.h>

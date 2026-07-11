@@ -149,12 +149,12 @@ typedef struct ws_message {
 static ws_message_t *ws_message_create(ws_message_type_t type, const char *session_id,
                                        cJSON *payload)
 {
-    ws_message_t *msg = AGENTRT_CALLOC(1, sizeof(ws_message_t));
+    ws_message_t *msg = AIRY_CALLOC(1, sizeof(ws_message_t));
     if (!msg)
         return NULL;
 
     msg->type = type;
-    msg->session_id = session_id ? AGENTRT_STRDUP(session_id) : NULL;
+    msg->session_id = session_id ? AIRY_STRDUP(session_id) : NULL;
     msg->payload = payload ? cJSON_Duplicate(payload, 1) : NULL;
     msg->timestamp_ns = gateway_time_ns();
 
@@ -171,16 +171,16 @@ static void ws_message_destroy(ws_message_t *msg)
         return;
 
     if (msg->session_id)
-        AGENTRT_FREE(msg->session_id);
+        AIRY_FREE(msg->session_id);
     if (msg->payload)
         cJSON_Delete(msg->payload);
-    AGENTRT_FREE(msg);
+    AIRY_FREE(msg);
 }
 
 /**
  * @brief 序列化WebSocket消息为JSON字符串
  * @param msg 消息结构指针
- * @return JSON字符串，需调用者AGENTRT_FREE()
+ * @return JSON字符串，需调用者AIRY_FREE()
  */
 static char *ws_message_to_json(ws_message_t *msg)
 {
@@ -236,21 +236,21 @@ static char *ws_message_to_json(ws_message_t *msg)
 static int ws_send_message(struct lws *wsi, ws_message_t *msg)
 {
     if (!wsi || !msg) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "ws_send_message: IO error");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
 
     char *json_str = ws_message_to_json(msg);
     if (!json_str) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
+        return AIRY_ERR_UNKNOWN;
     }
 
     size_t out_len = strlen(json_str);
     int result = lws_write(wsi, (unsigned char *)json_str, out_len, LWS_WRITE_TEXT);
 
-    AGENTRT_FREE(json_str);
+    AIRY_FREE(json_str);
     return result;
 }
 
@@ -260,14 +260,14 @@ static int ws_rpc_handler_adapter(const char *request_json, char **response_json
 {
     ws_gateway_t *gw = (ws_gateway_t *)ctx;
     if (!gw || !gw->handler) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "ws_rpc_handler_adapter: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     char *result = gw->handler((void *)request_json, gw->handler_data);
     if (!result) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
+        return AIRY_ERR_UNKNOWN;
     }
     *response_json = result;
     return 0;
@@ -281,7 +281,7 @@ static int ws_rpc_handler_adapter(const char *request_json, char **response_json
  *
  * @param gateway 网关实例
  * @param request JSON-RPC请求对象
- * @return JSON响应字符串，需调用者AGENTRT_FREE()
+ * @return JSON响应字符串，需调用者AIRY_FREE()
  */
 static char *handle_rpc_request(ws_gateway_t *gateway, cJSON *request)
 {
@@ -320,11 +320,11 @@ static char *handle_rpc_request(ws_gateway_t *gateway, cJSON *request)
 static int handle_ws_established(ws_gateway_t *gateway, ws_connection_context_t **context_ptr,
                                  void **user)
 {
-    ws_connection_context_t *context = AGENTRT_CALLOC(1, sizeof(ws_connection_context_t));
+    ws_connection_context_t *context = AIRY_CALLOC(1, sizeof(ws_connection_context_t));
     if (!context) {
-        agentrt_error_push_ex(AGENTRT_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
                               "handle_ws_established: allocation failed");
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     context->wsi = (struct lws *)*user;
@@ -369,17 +369,17 @@ static int handle_ws_rpc_request(ws_gateway_t *gateway, ws_connection_context_t 
 {
     char *response = handle_rpc_request(gateway, rpc_request);
     if (!response) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "handle_ws_rpc_request: IO error");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
 
     /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
     CJSON_PARSE_GUARD(response_json, response, {
-        AGENTRT_FREE(response);
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        AIRY_FREE(response);
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "cJSON_Parse: parse error");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     });
 
     ws_message_t *response_msg =
@@ -391,7 +391,7 @@ static int handle_ws_rpc_request(ws_gateway_t *gateway, ws_connection_context_t 
         ws_message_destroy(response_msg);
     }
 
-    AGENTRT_FREE(response);
+    AIRY_FREE(response);
     return 0;
 }
 
@@ -409,9 +409,9 @@ static int handle_ws_unknown_message(struct lws *wsi, const char *unknown_type)
 
     char *error_json = jsonrpc_create_error_response(NULL, -32600, err_buf, NULL);
     if (!error_json) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "jsonrpc_create_error_response returned NULL");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
 
     ws_message_t *error_msg = ws_message_create(WS_MSG_TYPE_ERROR, NULL, NULL);
@@ -425,7 +425,7 @@ static int handle_ws_unknown_message(struct lws *wsi, const char *unknown_type)
         ws_message_destroy(error_msg);
     }
 
-    AGENTRT_FREE(error_json);
+    AIRY_FREE(error_json);
     return 0;
 }
 
@@ -444,10 +444,10 @@ static int handle_ws_closed(ws_gateway_t *gateway, ws_connection_context_t **con
     atomic_fetch_sub(&gateway->connections_active, 1);
 
     if (context->session_id)
-        AGENTRT_FREE(context->session_id);
+        AIRY_FREE(context->session_id);
     if (context->remote_addr)
-        AGENTRT_FREE(context->remote_addr);
-    AGENTRT_FREE(context);
+        AIRY_FREE(context->remote_addr);
+    AIRY_FREE(context);
 
     *context_ptr = NULL;
 
@@ -481,9 +481,9 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
     case LWS_CALLBACK_RECEIVE:
         if (!context) {
-            agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                                   "handle_ws_established: failed");
-            return AGENTRT_ERR_UNKNOWN;
+            return AIRY_ERR_UNKNOWN;
         }
 
         if (len > gateway->max_request_size) {
@@ -496,11 +496,11 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     ws_send_message(wsi, error_msg);
                     ws_message_destroy(error_msg);
                 }
-                AGENTRT_FREE(error_json);
+                AIRY_FREE(error_json);
             }
-            agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                                   "ws_send_message: IO error");
-            return AGENTRT_ERR_UNKNOWN;
+            return AIRY_ERR_UNKNOWN;
         }
 
         /* 更新统计信息 */
@@ -522,7 +522,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     ws_send_message(wsi, error_msg);
                     ws_message_destroy(error_msg);
                 }
-                AGENTRT_FREE(error_json);
+                AIRY_FREE(error_json);
             }
             return 0;
         });
@@ -566,12 +566,12 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
 /* ========== 网关操作表 ========== */
 
-static agentrt_error_t ws_gateway_start(void *gateway_impl)
+static airy_err_t ws_gateway_start(void *gateway_impl)
 {
     ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
 
     struct lws_context_creation_info info;
-    AGENTRT_MEMSET(&info, 0, sizeof(info));
+    AIRY_MEMSET(&info, 0, sizeof(info));
     info.port = gateway->port;
     info.iface = gateway->host;
     info.protocols = ws_protocols;
@@ -579,12 +579,12 @@ static agentrt_error_t ws_gateway_start(void *gateway_impl)
 
     gateway->context = lws_create_context(&info);
     if (!gateway->context) {
-        return AGENTRT_EBUSY;
+        return AIRY_EBUSY;
     }
 
     atomic_store(&gateway->running, true);
 
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 
 static void ws_gateway_stop(void *gateway_impl)
@@ -606,17 +606,17 @@ static void ws_gateway_destroy(void *gateway_impl)
     ws_gateway_stop(gateway);
 
     if (gateway->handler_adapter) {
-        AGENTRT_FREE(gateway->handler_adapter);
+        AIRY_FREE(gateway->handler_adapter);
         gateway->handler_adapter = NULL;
     }
     gateway->handler = NULL;
     gateway->handler_data = NULL;
 
     if (gateway->host) {
-        AGENTRT_FREE(gateway->host);
+        AIRY_FREE(gateway->host);
     }
 
-    AGENTRT_FREE(gateway);
+    AIRY_FREE(gateway);
 }
 
 static const char *ws_gateway_get_name(void *gateway_impl __attribute__((unused)))
@@ -632,15 +632,15 @@ static bool ws_gateway_is_running(void *gateway_impl)
     return atomic_load(&gateway->running);
 }
 
-static agentrt_error_t ws_gateway_get_stats(void *gateway_impl, char **out_json)
+static airy_err_t ws_gateway_get_stats(void *gateway_impl, char **out_json)
 {
     ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
     if (!gateway || !out_json)
-        return AGENTRT_EINVAL;
+        return AIRY_EINVAL;
 
     cJSON *stats = cJSON_CreateObject();
     if (!stats)
-        return AGENTRT_ENOMEM;
+        return AIRY_ENOMEM;
 
     cJSON_AddNumberToObject(stats, "connections_total",
                             (double)atomic_load(&gateway->connections_total));
@@ -654,28 +654,28 @@ static agentrt_error_t ws_gateway_get_stats(void *gateway_impl, char **out_json)
     cJSON_Delete(stats);
 
     if (!json_str)
-        return AGENTRT_ENOMEM;
+        return AIRY_ENOMEM;
 
     *out_json = json_str;
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 
-static agentrt_error_t ws_gateway_set_handler(void *gateway_impl,
+static airy_err_t ws_gateway_set_handler(void *gateway_impl,
                                               gateway_internal_handler_t handler, void *user_data)
 {
     ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
     if (!gateway)
-        return AGENTRT_EINVAL;
+        return AIRY_EINVAL;
 
     if (gateway->handler_adapter) {
-        AGENTRT_FREE(gateway->handler_adapter);
+        AIRY_FREE(gateway->handler_adapter);
         gateway->handler_adapter = NULL;
     }
 
     gateway->handler = handler;
     gateway->handler_data = user_data;
 
-    return AGENTRT_SUCCESS;
+    return AIRY_SUCCESS;
 }
 
 static const gateway_ops_t ws_gateway_ops = {.start = ws_gateway_start,
@@ -704,19 +704,19 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
         return NULL;
     }
 
-    ws_gateway_t *gateway = AGENTRT_CALLOC(1, sizeof(ws_gateway_t));
+    ws_gateway_t *gateway = AIRY_CALLOC(1, sizeof(ws_gateway_t));
     if (!gateway) {
         return NULL;
     }
 
     gateway->port = port;
-    gateway->host = AGENTRT_STRDUP(host);
+    gateway->host = AIRY_STRDUP(host);
     gateway->handler_adapter = NULL;
     gateway->handler = NULL;
     gateway->handler_data = NULL;
 
     if (!gateway->host) {
-        AGENTRT_FREE(gateway);
+        AIRY_FREE(gateway);
         return NULL;
     }
 
@@ -729,10 +729,10 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
 
     gateway->max_request_size = 10 * 1024 * 1024; /* 10MB */
 
-    gateway_t *gw = AGENTRT_MALLOC(sizeof(gateway_t));
+    gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
-        AGENTRT_FREE(gateway->host);
-        AGENTRT_FREE(gateway);
+        AIRY_FREE(gateway->host);
+        AIRY_FREE(gateway);
         return NULL;
     }
 

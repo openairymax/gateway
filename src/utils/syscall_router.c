@@ -27,8 +27,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define RUNTIME_LOCK() agentrt_mutex_lock(&g_runtime.mutex)
-#define RUNTIME_UNLOCK() agentrt_mutex_unlock(&g_runtime.mutex)
+#define RUNTIME_LOCK() airy_mtx_lock(&g_runtime.mutex)
+#define RUNTIME_UNLOCK() airy_mtx_unlock(&g_runtime.mutex)
 
 /**
  * @brief 路由任务管理相关系统调用
@@ -36,9 +36,9 @@
 static char *route_task_methods(const char *method, cJSON *params, cJSON *request_id)
 {
     cJSON *result = NULL;
-    agentrt_error_t err = AGENTRT_SUCCESS;
+    airy_err_t err = AIRY_SUCCESS;
 
-    if (strcmp(method, "agentrt_sys_task_submit") == 0) {
+    if (strcmp(method, "airy_sys_task_submit") == 0) {
         cJSON *input = cJSON_GetObjectItem(params, "input");
         cJSON *timeout = cJSON_GetObjectItem(params, "timeout_ms");
 
@@ -49,15 +49,15 @@ static char *route_task_methods(const char *method, cJSON *params, cJSON *reques
 
         char *out_result = NULL;
         uint32_t timeout_ms = timeout ? (uint32_t)timeout->valueint : 0;
-        err = agentrt_sys_task_submit(input->valuestring, strlen(input->valuestring), timeout_ms,
+        err = airy_sys_task_submit(input->valuestring, strlen(input->valuestring), timeout_ms,
                                       &out_result);
 
-        if (err == AGENTRT_SUCCESS && out_result) {
+        if (err == AIRY_SUCCESS && out_result) {
             result = cJSON_CreateObject();
             cJSON_AddStringToObject(result, "result", out_result);
-            AGENTRT_FREE(out_result);
+            AIRY_FREE(out_result);
         }
-    } else if (strcmp(method, "agentrt_sys_task_query") == 0) {
+    } else if (strcmp(method, "airy_sys_task_query") == 0) {
         cJSON *task_id = cJSON_GetObjectItem(params, "task_id");
 
         if (!task_id || !cJSON_IsString(task_id)) {
@@ -66,13 +66,13 @@ static char *route_task_methods(const char *method, cJSON *params, cJSON *reques
         }
 
         int status = 0;
-        err = agentrt_sys_task_query(task_id->valuestring, &status);
+        err = airy_sys_task_query(task_id->valuestring, &status);
 
-        if (err == AGENTRT_SUCCESS) {
+        if (err == AIRY_SUCCESS) {
             result = cJSON_CreateObject();
             cJSON_AddNumberToObject(result, "status", status);
         }
-    } else if (strcmp(method, "agentrt_sys_task_wait") == 0) {
+    } else if (strcmp(method, "airy_sys_task_wait") == 0) {
         cJSON *task_id = cJSON_GetObjectItem(params, "task_id");
         cJSON *timeout = cJSON_GetObjectItem(params, "timeout_ms");
 
@@ -83,14 +83,14 @@ static char *route_task_methods(const char *method, cJSON *params, cJSON *reques
 
         char *out_result = NULL;
         uint32_t timeout_ms = timeout ? (uint32_t)timeout->valueint : 0;
-        err = agentrt_sys_task_wait(task_id->valuestring, timeout_ms, &out_result);
+        err = airy_sys_task_wait(task_id->valuestring, timeout_ms, &out_result);
 
-        if (err == AGENTRT_SUCCESS && out_result) {
+        if (err == AIRY_SUCCESS && out_result) {
             result = cJSON_CreateObject();
             cJSON_AddStringToObject(result, "result", out_result);
-            AGENTRT_FREE(out_result);
+            AIRY_FREE(out_result);
         }
-    } else if (strcmp(method, "agentrt_sys_task_cancel") == 0) {
+    } else if (strcmp(method, "airy_sys_task_cancel") == 0) {
         cJSON *task_id = cJSON_GetObjectItem(params, "task_id");
 
         if (!task_id || !cJSON_IsString(task_id)) {
@@ -98,15 +98,15 @@ static char *route_task_methods(const char *method, cJSON *params, cJSON *reques
                                                  "Invalid params: task_id required", NULL);
         }
 
-        err = agentrt_sys_task_cancel(task_id->valuestring);
-        if (err == AGENTRT_SUCCESS) {
+        err = airy_sys_task_cancel(task_id->valuestring);
+        if (err == AIRY_SUCCESS) {
             result = cJSON_CreateObject();
             cJSON_AddBoolToObject(result, "cancelled", true);
         }
     }
 
     /* 处理错误 */
-    if (err != AGENTRT_SUCCESS) {
+    if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
         snprintf(err_msg, sizeof(err_msg), "System call failed: %d", err);
@@ -122,9 +122,9 @@ static char *route_task_methods(const char *method, cJSON *params, cJSON *reques
 static char *route_memory_methods(const char *method, cJSON *params, cJSON *request_id)
 {
     cJSON *result = NULL;
-    agentrt_error_t err = AGENTRT_SUCCESS;
+    airy_err_t err = AIRY_SUCCESS;
 
-    if (strcmp(method, "agentrt_sys_memory_write") == 0) {
+    if (strcmp(method, "airy_sys_memory_write") == 0) {
         cJSON *data = cJSON_GetObjectItem(params, "data");
         cJSON *metadata = cJSON_GetObjectItem(params, "metadata");
 
@@ -135,18 +135,18 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
 
         char *out_record_id = NULL;
         const char *meta_str = metadata ? cJSON_PrintUnformatted(metadata) : NULL;
-        err = agentrt_sys_memory_write(data->valuestring, strlen(data->valuestring), meta_str,
+        err = airy_sys_memory_write(data->valuestring, strlen(data->valuestring), meta_str,
                                        &out_record_id);
 
         if (meta_str)
-            AGENTRT_FREE((void *)meta_str);
+            AIRY_FREE((void *)meta_str);
 
-        if (err == AGENTRT_SUCCESS && out_record_id) {
+        if (err == AIRY_SUCCESS && out_record_id) {
             result = cJSON_CreateObject();
             cJSON_AddStringToObject(result, "record_id", out_record_id);
-            AGENTRT_FREE(out_record_id);
+            AIRY_FREE(out_record_id);
         }
-    } else if (strcmp(method, "agentrt_sys_memory_search") == 0) {
+    } else if (strcmp(method, "airy_sys_memory_search") == 0) {
         cJSON *query = cJSON_GetObjectItem(params, "query");
         cJSON *limit = cJSON_GetObjectItem(params, "limit");
 
@@ -160,9 +160,9 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
         size_t count = 0;
         uint32_t lim = limit ? (uint32_t)limit->valueint : 10;
 
-        err = agentrt_sys_memory_search(query->valuestring, lim, &record_ids, &scores, &count);
+        err = airy_sys_memory_search(query->valuestring, lim, &record_ids, &scores, &count);
 
-        if (err == AGENTRT_SUCCESS) {
+        if (err == AIRY_SUCCESS) {
             result = cJSON_CreateObject();
             cJSON *results = cJSON_CreateArray();
             for (size_t i = 0; i < count; i++) {
@@ -170,14 +170,14 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
                 cJSON_AddStringToObject(item, "record_id", record_ids[i]);
                 cJSON_AddNumberToObject(item, "score", scores[i]);
                 cJSON_AddItemToArray(results, item);
-                AGENTRT_FREE(record_ids[i]);
+                AIRY_FREE(record_ids[i]);
             }
             cJSON_AddItemToObject(result, "results", results);
             cJSON_AddNumberToObject(result, "total", count);
-            AGENTRT_FREE(record_ids);
-            AGENTRT_FREE(scores);
+            AIRY_FREE(record_ids);
+            AIRY_FREE(scores);
         }
-    } else if (strcmp(method, "agentrt_sys_memory_get") == 0) {
+    } else if (strcmp(method, "airy_sys_memory_get") == 0) {
         cJSON *record_id = cJSON_GetObjectItem(params, "record_id");
 
         if (!record_id || !cJSON_IsString(record_id)) {
@@ -187,15 +187,15 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
 
         void *out_data = NULL;
         size_t out_len = 0;
-        err = agentrt_sys_memory_get(record_id->valuestring, &out_data, &out_len);
+        err = airy_sys_memory_get(record_id->valuestring, &out_data, &out_len);
 
-        if (err == AGENTRT_SUCCESS && out_data) {
+        if (err == AIRY_SUCCESS && out_data) {
             result = cJSON_CreateObject();
             cJSON_AddStringToObject(result, "data", (char *)out_data);
             cJSON_AddNumberToObject(result, "length", out_len);
-            AGENTRT_FREE(out_data);
+            AIRY_FREE(out_data);
         }
-    } else if (strcmp(method, "agentrt_sys_memory_delete") == 0) {
+    } else if (strcmp(method, "airy_sys_memory_delete") == 0) {
         cJSON *record_id = cJSON_GetObjectItem(params, "record_id");
 
         if (!record_id || !cJSON_IsString(record_id)) {
@@ -203,15 +203,15 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
                                                  "Invalid params: record_id required", NULL);
         }
 
-        err = agentrt_sys_memory_delete(record_id->valuestring);
-        if (err == AGENTRT_SUCCESS) {
+        err = airy_sys_memory_delete(record_id->valuestring);
+        if (err == AIRY_SUCCESS) {
             result = cJSON_CreateObject();
             cJSON_AddBoolToObject(result, "deleted", true);
         }
     }
 
     /* 处理错误 */
-    if (err != AGENTRT_SUCCESS) {
+    if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
         snprintf(err_msg, sizeof(err_msg), "System call failed: %d", err);
@@ -227,24 +227,24 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
 static char *route_session_methods(const char *method, cJSON *params, cJSON *request_id)
 {
     cJSON *result = NULL;
-    agentrt_error_t err = AGENTRT_SUCCESS;
+    airy_err_t err = AIRY_SUCCESS;
 
-    if (strcmp(method, "agentrt_sys_session_create") == 0) {
+    if (strcmp(method, "airy_sys_session_create") == 0) {
         cJSON *metadata = cJSON_GetObjectItem(params, "metadata");
         char *out_session_id = NULL;
         const char *meta_str = metadata ? cJSON_PrintUnformatted(metadata) : NULL;
 
-        err = agentrt_sys_session_create(meta_str, &out_session_id);
+        err = airy_sys_session_create(meta_str, &out_session_id);
 
         if (meta_str)
-            AGENTRT_FREE((void *)meta_str);
+            AIRY_FREE((void *)meta_str);
 
-        if (err == AGENTRT_SUCCESS && out_session_id) {
+        if (err == AIRY_SUCCESS && out_session_id) {
             result = cJSON_CreateObject();
             cJSON_AddStringToObject(result, "session_id", out_session_id);
-            AGENTRT_FREE(out_session_id);
+            AIRY_FREE(out_session_id);
         }
-    } else if (strcmp(method, "agentrt_sys_session_get") == 0) {
+    } else if (strcmp(method, "airy_sys_session_get") == 0) {
         cJSON *session_id = cJSON_GetObjectItem(params, "session_id");
 
         if (!session_id || !cJSON_IsString(session_id)) {
@@ -253,13 +253,13 @@ static char *route_session_methods(const char *method, cJSON *params, cJSON *req
         }
 
         char *out_info = NULL;
-        err = agentrt_sys_session_get(session_id->valuestring, &out_info);
+        err = airy_sys_session_get(session_id->valuestring, &out_info);
 
-        if (err == AGENTRT_SUCCESS && out_info) {
+        if (err == AIRY_SUCCESS && out_info) {
             result = cJSON_Parse(out_info);
-            AGENTRT_FREE(out_info);
+            AIRY_FREE(out_info);
         }
-    } else if (strcmp(method, "agentrt_sys_session_close") == 0) {
+    } else if (strcmp(method, "airy_sys_session_close") == 0) {
         cJSON *session_id = cJSON_GetObjectItem(params, "session_id");
 
         if (!session_id || !cJSON_IsString(session_id)) {
@@ -267,28 +267,28 @@ static char *route_session_methods(const char *method, cJSON *params, cJSON *req
                                                  "Invalid params: session_id required", NULL);
         }
 
-        err = agentrt_sys_session_close(session_id->valuestring);
-        if (err == AGENTRT_SUCCESS) {
+        err = airy_sys_session_close(session_id->valuestring);
+        if (err == AIRY_SUCCESS) {
             result = cJSON_CreateObject();
             cJSON_AddBoolToObject(result, "closed", true);
         }
-    } else if (strcmp(method, "agentrt_sys_session_list") == 0) {
+    } else if (strcmp(method, "airy_sys_session_list") == 0) {
         char **sessions = NULL;
         size_t session_count = 0;
-        err = agentrt_sys_session_list(&sessions, &session_count);
+        err = airy_sys_session_list(&sessions, &session_count);
 
-        if (err == AGENTRT_SUCCESS && sessions) {
+        if (err == AIRY_SUCCESS && sessions) {
             result = cJSON_CreateArray();
             for (size_t i = 0; i < session_count && sessions[i]; i++) {
                 cJSON_AddItemToArray(result, cJSON_CreateString(sessions[i]));
-                AGENTRT_FREE(sessions[i]);
+                AIRY_FREE(sessions[i]);
             }
-            AGENTRT_FREE(sessions);
+            AIRY_FREE(sessions);
         }
     }
 
     /* 处理错误 */
-    if (err != AGENTRT_SUCCESS) {
+    if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
         snprintf(err_msg, sizeof(err_msg), "System call failed: %d", err);
@@ -304,30 +304,30 @@ static char *route_session_methods(const char *method, cJSON *params, cJSON *req
 static char *route_telemetry_methods(const char *method, cJSON *params, cJSON *request_id)
 {
     cJSON *result = NULL;
-    agentrt_error_t err = AGENTRT_SUCCESS;
+    airy_err_t err = AIRY_SUCCESS;
 
-    if (strcmp(method, "agentrt_sys_telemetry_metrics") == 0) {
+    if (strcmp(method, "airy_sys_telemetry_metrics") == 0) {
         char *out_metrics = NULL;
-        err = agentrt_sys_telemetry_metrics(&out_metrics);
+        err = airy_sys_telemetry_metrics(&out_metrics);
 
-        if (err == AGENTRT_SUCCESS && out_metrics) {
+        if (err == AIRY_SUCCESS && out_metrics) {
             result = cJSON_Parse(out_metrics);
-            AGENTRT_FREE(out_metrics);
+            AIRY_FREE(out_metrics);
         }
-    } else if (strcmp(method, "agentrt_sys_telemetry_traces") == 0) {
+    } else if (strcmp(method, "airy_sys_telemetry_traces") == 0) {
         cJSON *trace_id = cJSON_GetObjectItem(params, "trace_id");
         const char *tid = (trace_id && cJSON_IsString(trace_id)) ? trace_id->valuestring : NULL;
         char *out_traces = NULL;
-        err = agentrt_sys_telemetry_traces(tid, &out_traces);
+        err = airy_sys_telemetry_traces(tid, &out_traces);
 
-        if (err == AGENTRT_SUCCESS && out_traces) {
+        if (err == AIRY_SUCCESS && out_traces) {
             result = cJSON_Parse(out_traces);
-            AGENTRT_FREE(out_traces);
+            AIRY_FREE(out_traces);
         }
     }
 
     /* 处理错误 */
-    if (err != AGENTRT_SUCCESS) {
+    if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
         snprintf(err_msg, sizeof(err_msg), "System call failed: %d", err);
@@ -343,9 +343,9 @@ static char *route_telemetry_methods(const char *method, cJSON *params, cJSON *r
 static char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id)
 {
     cJSON *result = NULL;
-    agentrt_error_t err = AGENTRT_SUCCESS;
+    airy_err_t err = AIRY_SUCCESS;
 
-    if (strcmp(method, "agentrt_sys_agent_spawn") == 0) {
+    if (strcmp(method, "airy_sys_agent_spawn") == 0) {
         cJSON *spec = cJSON_GetObjectItem(params, "agent_spec");
 
         if (!spec || !cJSON_IsString(spec)) {
@@ -355,17 +355,17 @@ static char *route_agent_methods(const char *method, cJSON *params, cJSON *reque
 
         char *out_agent_id = NULL;
         const char *spec_str = cJSON_PrintUnformatted(spec);
-        err = agentrt_sys_agent_spawn(spec_str, &out_agent_id);
+        err = airy_sys_agent_spawn(spec_str, &out_agent_id);
 
         if (spec_str)
-            AGENTRT_FREE((void *)spec_str);
+            AIRY_FREE((void *)spec_str);
 
-        if (err == AGENTRT_SUCCESS && out_agent_id) {
+        if (err == AIRY_SUCCESS && out_agent_id) {
             result = cJSON_CreateObject();
             cJSON_AddStringToObject(result, "agent_id", out_agent_id);
-            AGENTRT_FREE(out_agent_id);
+            AIRY_FREE(out_agent_id);
         }
-    } else if (strcmp(method, "agentrt_sys_agent_terminate") == 0) {
+    } else if (strcmp(method, "airy_sys_agent_terminate") == 0) {
         cJSON *agent_id = cJSON_GetObjectItem(params, "agent_id");
 
         if (!agent_id || !cJSON_IsString(agent_id)) {
@@ -373,12 +373,12 @@ static char *route_agent_methods(const char *method, cJSON *params, cJSON *reque
                                                  "Invalid params: agent_id required", NULL);
         }
 
-        err = agentrt_sys_agent_terminate(agent_id->valuestring);
-        if (err == AGENTRT_SUCCESS) {
+        err = airy_sys_agent_terminate(agent_id->valuestring);
+        if (err == AIRY_SUCCESS) {
             result = cJSON_CreateObject();
             cJSON_AddBoolToObject(result, "terminated", true);
         }
-    } else if (strcmp(method, "agentrt_sys_agent_invoke") == 0) {
+    } else if (strcmp(method, "airy_sys_agent_invoke") == 0) {
         cJSON *agent_id = cJSON_GetObjectItem(params, "agent_id");
         cJSON *input = cJSON_GetObjectItem(params, "input");
 
@@ -390,35 +390,35 @@ static char *route_agent_methods(const char *method, cJSON *params, cJSON *reque
         const char *input_str = input && cJSON_IsString(input) ? input->valuestring : "";
         char *out_output = NULL;
 
-        err = agentrt_sys_agent_invoke(agent_id->valuestring, input_str, strlen(input_str),
+        err = airy_sys_agent_invoke(agent_id->valuestring, input_str, strlen(input_str),
                                        &out_output);
 
-        if (err == AGENTRT_SUCCESS && out_output) {
+        if (err == AIRY_SUCCESS && out_output) {
             result = cJSON_CreateObject();
             cJSON_AddStringToObject(result, "output", out_output);
-            AGENTRT_FREE(out_output);
+            AIRY_FREE(out_output);
         }
-    } else if (strcmp(method, "agentrt_sys_agent_list") == 0) {
+    } else if (strcmp(method, "airy_sys_agent_list") == 0) {
         char **agent_ids = NULL;
         size_t count = 0;
 
-        err = agentrt_sys_agent_list(&agent_ids, &count);
+        err = airy_sys_agent_list(&agent_ids, &count);
 
-        if (err == AGENTRT_SUCCESS) {
+        if (err == AIRY_SUCCESS) {
             result = cJSON_CreateObject();
             cJSON *ids = cJSON_CreateArray();
             for (size_t i = 0; i < count; i++) {
                 cJSON_AddItemToArray(ids, cJSON_CreateString(agent_ids[i]));
-                AGENTRT_FREE(agent_ids[i]);
+                AIRY_FREE(agent_ids[i]);
             }
             cJSON_AddItemToObject(result, "agent_ids", ids);
             cJSON_AddNumberToObject(result, "total", count);
-            AGENTRT_FREE(agent_ids);
+            AIRY_FREE(agent_ids);
         }
     }
 
     /* 处理错误 */
-    if (err != AGENTRT_SUCCESS) {
+    if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
         snprintf(err_msg, sizeof(err_msg), "System call failed: %d", err);
@@ -440,15 +440,15 @@ char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id
     }
 
     /* 根据方法前缀分发到对应的处理函数 */
-    if (strncmp(method, "agentrt_sys_task_", 18) == 0) {
+    if (strncmp(method, "airy_sys_task_", 18) == 0) {
         return route_task_methods(method, params, request_id);
-    } else if (strncmp(method, "agentrt_sys_memory_", 20) == 0) {
+    } else if (strncmp(method, "airy_sys_memory_", 20) == 0) {
         return route_memory_methods(method, params, request_id);
-    } else if (strncmp(method, "agentrt_sys_session_", 20) == 0) {
+    } else if (strncmp(method, "airy_sys_session_", 20) == 0) {
         return route_session_methods(method, params, request_id);
-    } else if (strncmp(method, "agentrt_sys_telemetry_", 22) == 0) {
+    } else if (strncmp(method, "airy_sys_telemetry_", 22) == 0) {
         return route_telemetry_methods(method, params, request_id);
-    } else if (strncmp(method, "agentrt_sys_agent_", 18) == 0) {
+    } else if (strncmp(method, "airy_sys_agent_", 18) == 0) {
         return route_agent_methods(method, params, request_id);
     }
 
@@ -497,12 +497,12 @@ static unsigned long hash_fn(const char *str)
 
 static int ht_init(hash_table_t *ht, size_t capacity)
 {
-    ht->entries = (hash_entry_t *)AGENTRT_CALLOC(capacity, sizeof(hash_entry_t));
+    ht->entries = (hash_entry_t *)AIRY_CALLOC(capacity, sizeof(hash_entry_t));
     if (!ht->entries) {
         ht->capacity = 0;
-        agentrt_error_push_ex(AGENTRT_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
                               "ht_init: allocation failed");
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
     ht->capacity = capacity;
     ht->count = 0;
@@ -514,9 +514,9 @@ static void ht_destroy(hash_table_t *ht)
     if (!ht->entries)
         return;
     for (size_t i = 0; i < ht->capacity; i++) {
-        AGENTRT_FREE(ht->entries[i].key);
+        AIRY_FREE(ht->entries[i].key);
     }
-    AGENTRT_FREE(ht->entries);
+    AIRY_FREE(ht->entries);
     ht->entries = NULL;
     ht->capacity = 0;
     ht->count = 0;
@@ -530,7 +530,7 @@ static bool ht_insert(hash_table_t *ht, const char *key, size_t index)
     for (size_t i = 0; i < ht->capacity; i++) {
         size_t pos = (h + i) % ht->capacity;
         if (!ht->entries[pos].occupied) {
-            ht->entries[pos].key = AGENTRT_STRDUP(key);
+            ht->entries[pos].key = AIRY_STRDUP(key);
             ht->entries[pos].index = index;
             ht->entries[pos].occupied = true;
             ht->count++;
@@ -543,23 +543,23 @@ static bool ht_insert(hash_table_t *ht, const char *key, size_t index)
 static ssize_t ht_lookup(hash_table_t *ht, const char *key)
 {
     if (!ht->entries || ht->count == 0) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "ht_lookup: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     unsigned long h = hash_fn(key) % ht->capacity;
     for (size_t i = 0; i < ht->capacity; i++) {
         size_t pos = (h + i) % ht->capacity;
         if (!ht->entries[pos].occupied) {
-            agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                                   "hash_fn: failed");
-            return AGENTRT_ERR_UNKNOWN;
+            return AIRY_ERR_UNKNOWN;
         }
         if (strcmp(ht->entries[pos].key, key) == 0)
             return (ssize_t)ht->entries[pos].index;
     }
-    agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
-    return AGENTRT_ERR_UNKNOWN;
+    airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
+    return AIRY_ERR_UNKNOWN;
 }
 
 static void ht_remove(hash_table_t *ht, const char *key)
@@ -572,7 +572,7 @@ static void ht_remove(hash_table_t *ht, const char *key)
         if (!ht->entries[pos].occupied)
             return;
         if (strcmp(ht->entries[pos].key, key) == 0) {
-            AGENTRT_FREE(ht->entries[pos].key);
+            AIRY_FREE(ht->entries[pos].key);
             ht->entries[pos].key = NULL;
             ht->entries[pos].occupied = false;
             ht->entries[pos].index = 0;
@@ -638,13 +638,13 @@ static struct {
     hash_table_t agent_index;
     uint64_t total_tasks_submitted;
     uint64_t total_memory_writes;
-    agentrt_mutex_t mutex;
+    airy_mtx_t mutex;
     bool initialized;
 } g_runtime = {0};
 
 static void __attribute__((constructor)) runtime_init(void)
 {
-    agentrt_mutex_init(&g_runtime.mutex);
+    airy_mtx_init(&g_runtime.mutex);
 
     const char *env;
     g_max_tasks = MAX_TASKS_DEFAULT;
@@ -652,41 +652,41 @@ static void __attribute__((constructor)) runtime_init(void)
     g_max_sessions = MAX_SESSIONS_DEFAULT;
     g_max_agents = MAX_AGENTS_DEFAULT;
 
-    env = getenv("AGENTRT_MAX_TASKS");
+    env = getenv("AIRY_MAX_TASKS");
     if (env) {
         unsigned long v = strtoul(env, NULL, 10);
         if (v > 0 && v < 65536)
             g_max_tasks = (size_t)v;
     }
-    env = getenv("AGENTRT_MAX_RECORDS");
+    env = getenv("AIRY_MAX_RECORDS");
     if (env) {
         unsigned long v = strtoul(env, NULL, 10);
         if (v > 0 && v < 65536)
             g_max_records = (size_t)v;
     }
-    env = getenv("AGENTRT_MAX_SESSIONS");
+    env = getenv("AIRY_MAX_SESSIONS");
     if (env) {
         unsigned long v = strtoul(env, NULL, 10);
         if (v > 0 && v < 65536)
             g_max_sessions = (size_t)v;
     }
-    env = getenv("AGENTRT_MAX_AGENTS");
+    env = getenv("AIRY_MAX_AGENTS");
     if (env) {
         unsigned long v = strtoul(env, NULL, 10);
         if (v > 0 && v < 65536)
             g_max_agents = (size_t)v;
     }
 
-    g_runtime.tasks = (task_entry_t *)AGENTRT_CALLOC(g_max_tasks, sizeof(task_entry_t));
-    g_runtime.records = (memory_record_t *)AGENTRT_CALLOC(g_max_records, sizeof(memory_record_t));
-    g_runtime.sessions = (session_entry_t *)AGENTRT_CALLOC(g_max_sessions, sizeof(session_entry_t));
-    g_runtime.agents = (agent_entry_t *)AGENTRT_CALLOC(g_max_agents, sizeof(agent_entry_t));
+    g_runtime.tasks = (task_entry_t *)AIRY_CALLOC(g_max_tasks, sizeof(task_entry_t));
+    g_runtime.records = (memory_record_t *)AIRY_CALLOC(g_max_records, sizeof(memory_record_t));
+    g_runtime.sessions = (session_entry_t *)AIRY_CALLOC(g_max_sessions, sizeof(session_entry_t));
+    g_runtime.agents = (agent_entry_t *)AIRY_CALLOC(g_max_agents, sizeof(agent_entry_t));
     if (!g_runtime.tasks || !g_runtime.records || !g_runtime.sessions || !g_runtime.agents) {
-        AGENTRT_LOG_ERROR("syscall_router: runtime_init calloc failed");
-        AGENTRT_FREE(g_runtime.tasks);
-        AGENTRT_FREE(g_runtime.records);
-        AGENTRT_FREE(g_runtime.sessions);
-        AGENTRT_FREE(g_runtime.agents);
+        AIRY_LOG_ERROR("syscall_router: runtime_init calloc failed");
+        AIRY_FREE(g_runtime.tasks);
+        AIRY_FREE(g_runtime.records);
+        AIRY_FREE(g_runtime.sessions);
+        AIRY_FREE(g_runtime.agents);
         g_runtime.tasks = NULL;
         g_runtime.records = NULL;
         g_runtime.sessions = NULL;
@@ -701,10 +701,10 @@ static void __attribute__((constructor)) runtime_init(void)
         ht_destroy(&g_runtime.record_index);
         ht_destroy(&g_runtime.session_index);
         ht_destroy(&g_runtime.agent_index);
-        AGENTRT_FREE(g_runtime.tasks);
-        AGENTRT_FREE(g_runtime.records);
-        AGENTRT_FREE(g_runtime.sessions);
-        AGENTRT_FREE(g_runtime.agents);
+        AIRY_FREE(g_runtime.tasks);
+        AIRY_FREE(g_runtime.records);
+        AIRY_FREE(g_runtime.sessions);
+        AIRY_FREE(g_runtime.agents);
         g_runtime.tasks = NULL;
         g_runtime.records = NULL;
         g_runtime.sessions = NULL;
@@ -718,36 +718,36 @@ static void __attribute__((destructor)) runtime_cleanup(void)
 {
     /* 释放每个 task entry 的字符串字段 */
     for (size_t i = 0; i < g_runtime.task_count; i++) {
-        AGENTRT_FREE(g_runtime.tasks[i].task_id);
-        AGENTRT_FREE(g_runtime.tasks[i].input);
-        AGENTRT_FREE(g_runtime.tasks[i].result);
+        AIRY_FREE(g_runtime.tasks[i].task_id);
+        AIRY_FREE(g_runtime.tasks[i].input);
+        AIRY_FREE(g_runtime.tasks[i].result);
     }
     /* 释放每个 memory record 的字符串字段 */
     for (size_t i = 0; i < g_runtime.record_count; i++) {
-        AGENTRT_FREE(g_runtime.records[i].record_id);
-        AGENTRT_FREE(g_runtime.records[i].data);
-        AGENTRT_FREE(g_runtime.records[i].metadata);
+        AIRY_FREE(g_runtime.records[i].record_id);
+        AIRY_FREE(g_runtime.records[i].data);
+        AIRY_FREE(g_runtime.records[i].metadata);
     }
     /* 释放每个 session entry 的字符串字段 */
     for (size_t i = 0; i < g_runtime.session_count; i++) {
-        AGENTRT_FREE(g_runtime.sessions[i].session_id);
-        AGENTRT_FREE(g_runtime.sessions[i].metadata);
+        AIRY_FREE(g_runtime.sessions[i].session_id);
+        AIRY_FREE(g_runtime.sessions[i].metadata);
     }
     /* 释放每个 agent entry 的字符串字段 */
     for (size_t i = 0; i < g_runtime.agent_count; i++) {
-        AGENTRT_FREE(g_runtime.agents[i].agent_id);
-        AGENTRT_FREE(g_runtime.agents[i].spec);
+        AIRY_FREE(g_runtime.agents[i].agent_id);
+        AIRY_FREE(g_runtime.agents[i].spec);
     }
 
-    agentrt_mutex_destroy(&g_runtime.mutex);
+    airy_mtx_destroy(&g_runtime.mutex);
     ht_destroy(&g_runtime.task_index);
     ht_destroy(&g_runtime.record_index);
     ht_destroy(&g_runtime.session_index);
     ht_destroy(&g_runtime.agent_index);
-    AGENTRT_FREE(g_runtime.tasks);
-    AGENTRT_FREE(g_runtime.records);
-    AGENTRT_FREE(g_runtime.sessions);
-    AGENTRT_FREE(g_runtime.agents);
+    AIRY_FREE(g_runtime.tasks);
+    AIRY_FREE(g_runtime.records);
+    AIRY_FREE(g_runtime.sessions);
+    AIRY_FREE(g_runtime.agents);
     g_runtime.tasks = NULL;
     g_runtime.records = NULL;
     g_runtime.sessions = NULL;
@@ -765,25 +765,25 @@ static const char *generate_uuid(void)
 }
 
 /* Task 管理 */
-agentrt_error_t agentrt_sys_task_submit(const char *input, size_t len, uint32_t timeout_ms,
+airy_err_t airy_sys_task_submit(const char *input, size_t len, uint32_t timeout_ms,
                                         char **out_result)
 {
     if (!input || !out_result)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     if (g_runtime.task_count >= g_max_tasks) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     task_entry_t *task = &g_runtime.tasks[g_runtime.task_count++];
-    task->task_id = AGENTRT_STRDUP(generate_uuid());
+    task->task_id = AIRY_STRDUP(generate_uuid());
     if (len > MAX_INPUT_SIZE) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
-    task->input = AGENTRT_STRNDUP(input, len);
+    task->input = AIRY_STRNDUP(input, len);
     task->input_len = len;
     task->status = 1;
     task->result = NULL;
@@ -800,35 +800,35 @@ agentrt_error_t agentrt_sys_task_submit(const char *input, size_t len, uint32_t 
     *out_result = cJSON_PrintUnformatted(resp);
     cJSON_Delete(resp);
 
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
-agentrt_error_t agentrt_sys_task_query(const char *task_id, int *status)
+airy_err_t airy_sys_task_query(const char *task_id, int *status)
 {
     if (!task_id || !status)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.task_index, task_id);
     if (idx >= 0 && (size_t)idx < g_runtime.task_count) {
         *status = g_runtime.tasks[idx].status;
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
     *status = -1;
-    return AGENTRT_ERR_NOT_FOUND;
+    return AIRY_ERR_NOT_FOUND;
 }
 
-agentrt_error_t agentrt_sys_task_wait(const char *task_id, uint32_t timeout_ms, char **out_result)
+airy_err_t airy_sys_task_wait(const char *task_id, uint32_t timeout_ms, char **out_result)
 {
     if (!task_id || !out_result)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.task_index, task_id);
     if (idx >= 0 && (size_t)idx < g_runtime.task_count) {
         g_runtime.tasks[idx].status = 2;
-        g_runtime.tasks[idx].result = AGENTRT_STRDUP("{\"output\":\"processed\",\"exit_code\":0}");
+        g_runtime.tasks[idx].result = AIRY_STRDUP("{\"output\":\"processed\",\"exit_code\":0}");
 
         cJSON *resp = cJSON_CreateObject();
         cJSON_AddStringToObject(resp, "task_id", task_id);
@@ -837,66 +837,66 @@ agentrt_error_t agentrt_sys_task_wait(const char *task_id, uint32_t timeout_ms, 
         *out_result = cJSON_PrintUnformatted(resp);
         cJSON_Delete(resp);
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    *out_result = AGENTRT_STRDUP("{}");
-    return AGENTRT_ERR_NOT_FOUND;
+    *out_result = AIRY_STRDUP("{}");
+    return AIRY_ERR_NOT_FOUND;
 }
 
-agentrt_error_t agentrt_sys_task_cancel(const char *task_id)
+airy_err_t airy_sys_task_cancel(const char *task_id)
 {
     if (!task_id)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.task_index, task_id);
     if (idx >= 0 && (size_t)idx < g_runtime.task_count) {
         g_runtime.tasks[idx].status = 4;
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    return AGENTRT_ERR_NOT_FOUND;
+    return AIRY_ERR_NOT_FOUND;
 }
 
 /* Memory 管理 */
-agentrt_error_t agentrt_sys_memory_write(const void *data, size_t len, const char *metadata,
+airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metadata,
                                          char **out_record_id)
 {
     if (!data || !len || !out_record_id)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     if (g_runtime.record_count >= g_max_records) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     memory_record_t *rec = &g_runtime.records[g_runtime.record_count++];
-    rec->record_id = AGENTRT_STRDUP(generate_uuid());
-    rec->data = AGENTRT_MALLOC(len);
+    rec->record_id = AIRY_STRDUP(generate_uuid());
+    rec->data = AIRY_MALLOC(len);
     if (!rec->data) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
-    AGENTRT_MEMCPY(rec->data, data, len);
+    AIRY_MEMCPY(rec->data, data, len);
     rec->len = len;
-    rec->metadata = metadata ? AGENTRT_STRDUP(metadata) : NULL;
+    rec->metadata = metadata ? AIRY_STRDUP(metadata) : NULL;
     rec->score = 1.0f;
     rec->created_at = time(NULL);
     ht_insert(&g_runtime.record_index, rec->record_id, g_runtime.record_count - 1);
     g_runtime.total_memory_writes++;
-    *out_record_id = AGENTRT_STRDUP(rec->record_id);
+    *out_record_id = AIRY_STRDUP(rec->record_id);
     RUNTIME_UNLOCK();
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
-agentrt_error_t agentrt_sys_memory_search(const char *query, uint32_t limit, char ***record_ids,
+airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***record_ids,
                                           float **scores, size_t *count)
 {
     if (!record_ids || !scores || !count)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     size_t found = 0;
@@ -904,101 +904,101 @@ agentrt_error_t agentrt_sys_memory_search(const char *query, uint32_t limit, cha
     if (max_results > g_runtime.record_count)
         max_results = g_runtime.record_count;
 
-    *record_ids = (char **)AGENTRT_CALLOC(max_results, sizeof(char *));
-    *scores = (float *)AGENTRT_CALLOC(max_results, sizeof(float));
+    *record_ids = (char **)AIRY_CALLOC(max_results, sizeof(char *));
+    *scores = (float *)AIRY_CALLOC(max_results, sizeof(float));
     if (!*record_ids || !*scores) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     for (size_t i = 0; i < g_runtime.record_count && found < max_results; i++) {
         if (!query || strlen(query) == 0 ||
             (g_runtime.records[i].metadata &&
              strstr(g_runtime.records[i].metadata, query) != NULL)) {
-            (*record_ids)[found] = AGENTRT_STRDUP(g_runtime.records[i].record_id);
+            (*record_ids)[found] = AIRY_STRDUP(g_runtime.records[i].record_id);
             (*scores)[found] = g_runtime.records[i].score;
             found++;
         }
     }
     *count = found;
     RUNTIME_UNLOCK();
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
-agentrt_error_t agentrt_sys_memory_get(const char *record_id, void **out_data, size_t *out_len)
+airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *out_len)
 {
     if (!record_id || !out_data || !out_len)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.record_index, record_id);
     if (idx >= 0 && (size_t)idx < g_runtime.record_count) {
-        *out_data = AGENTRT_MALLOC(g_runtime.records[idx].len + 1);
+        *out_data = AIRY_MALLOC(g_runtime.records[idx].len + 1);
         if (!*out_data) {
             RUNTIME_UNLOCK();
-            return AGENTRT_ERR_OUT_OF_MEMORY;
+            return AIRY_ERR_OUT_OF_MEMORY;
         }
-        AGENTRT_MEMCPY(*out_data, g_runtime.records[idx].data, g_runtime.records[idx].len);
+        AIRY_MEMCPY(*out_data, g_runtime.records[idx].data, g_runtime.records[idx].len);
         ((char *)*out_data)[g_runtime.records[idx].len] = '\0';
         *out_len = g_runtime.records[idx].len;
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    *out_data = AGENTRT_STRDUP("");
+    *out_data = AIRY_STRDUP("");
     *out_len = 0;
-    return AGENTRT_ERR_NOT_FOUND;
+    return AIRY_ERR_NOT_FOUND;
 }
 
-agentrt_error_t agentrt_sys_memory_delete(const char *record_id)
+airy_err_t airy_sys_memory_delete(const char *record_id)
 {
     if (!record_id)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.record_index, record_id);
     if (idx >= 0 && (size_t)idx < g_runtime.record_count) {
         ht_remove(&g_runtime.record_index, record_id);
-        AGENTRT_FREE(g_runtime.records[idx].record_id);
-        AGENTRT_FREE(g_runtime.records[idx].data);
-        AGENTRT_FREE(g_runtime.records[idx].metadata);
+        AIRY_FREE(g_runtime.records[idx].record_id);
+        AIRY_FREE(g_runtime.records[idx].data);
+        AIRY_FREE(g_runtime.records[idx].metadata);
         __builtin_memmove(&g_runtime.records[idx], &g_runtime.records[idx + 1],
                 (g_runtime.record_count - idx - 1) * sizeof(memory_record_t));
         g_runtime.record_count--;
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    return AGENTRT_ERR_NOT_FOUND;
+    return AIRY_ERR_NOT_FOUND;
 }
 
 /* Session 管理 */
-agentrt_error_t agentrt_sys_session_create(const char *metadata, char **out_session_id)
+airy_err_t airy_sys_session_create(const char *metadata, char **out_session_id)
 {
     if (!out_session_id)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     if (g_runtime.session_count >= g_max_sessions) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     session_entry_t *sess = &g_runtime.sessions[g_runtime.session_count++];
-    sess->session_id = AGENTRT_STRDUP(generate_uuid());
-    sess->metadata = metadata ? AGENTRT_STRDUP(metadata) : NULL;
+    sess->session_id = AIRY_STRDUP(generate_uuid());
+    sess->metadata = metadata ? AIRY_STRDUP(metadata) : NULL;
     sess->created_at = time(NULL);
     sess->last_accessed = sess->created_at;
-    *out_session_id = AGENTRT_STRDUP(sess->session_id);
+    *out_session_id = AIRY_STRDUP(sess->session_id);
     ht_insert(&g_runtime.session_index, sess->session_id, g_runtime.session_count - 1);
     RUNTIME_UNLOCK();
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
-agentrt_error_t agentrt_sys_session_get(const char *session_id, char **out_info)
+airy_err_t airy_sys_session_get(const char *session_id, char **out_info)
 {
     if (!session_id || !out_info)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.session_index, session_id);
@@ -1014,59 +1014,59 @@ agentrt_error_t agentrt_sys_session_get(const char *session_id, char **out_info)
         *out_info = cJSON_PrintUnformatted(info);
         cJSON_Delete(info);
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    *out_info = AGENTRT_STRDUP("{}");
-    return AGENTRT_ERR_NOT_FOUND;
+    *out_info = AIRY_STRDUP("{}");
+    return AIRY_ERR_NOT_FOUND;
 }
 
-agentrt_error_t agentrt_sys_session_close(const char *session_id)
+airy_err_t airy_sys_session_close(const char *session_id)
 {
     if (!session_id)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.session_index, session_id);
     if (idx >= 0 && (size_t)idx < g_runtime.session_count) {
         ht_remove(&g_runtime.session_index, session_id);
-        AGENTRT_FREE(g_runtime.sessions[idx].session_id);
-        AGENTRT_FREE(g_runtime.sessions[idx].metadata);
+        AIRY_FREE(g_runtime.sessions[idx].session_id);
+        AIRY_FREE(g_runtime.sessions[idx].metadata);
         __builtin_memmove(&g_runtime.sessions[idx], &g_runtime.sessions[idx + 1],
                 (g_runtime.session_count - idx - 1) * sizeof(session_entry_t));
         g_runtime.session_count--;
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    return AGENTRT_ERR_NOT_FOUND;
+    return AIRY_ERR_NOT_FOUND;
 }
 
-agentrt_error_t agentrt_sys_session_list(char ***sessions, size_t *count)
+airy_err_t airy_sys_session_list(char ***sessions, size_t *count)
 {
     if (!sessions || !count)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
-    *sessions = (char **)AGENTRT_CALLOC(g_runtime.session_count, sizeof(char *));
+    *sessions = (char **)AIRY_CALLOC(g_runtime.session_count, sizeof(char *));
     if (!*sessions && g_runtime.session_count > 0) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     for (size_t i = 0; i < g_runtime.session_count; i++) {
-        (*sessions)[i] = AGENTRT_STRDUP(g_runtime.sessions[i].session_id);
+        (*sessions)[i] = AIRY_STRDUP(g_runtime.sessions[i].session_id);
     }
     *count = g_runtime.session_count;
     RUNTIME_UNLOCK();
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
 /* Telemetry */
-agentrt_error_t agentrt_sys_telemetry_metrics(char **out_metrics)
+airy_err_t airy_sys_telemetry_metrics(char **out_metrics)
 {
     if (!out_metrics)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     cJSON *metrics = cJSON_CreateObject();
@@ -1086,13 +1086,13 @@ agentrt_error_t agentrt_sys_telemetry_metrics(char **out_metrics)
     *out_metrics = cJSON_PrintUnformatted(metrics);
     RUNTIME_UNLOCK();
     cJSON_Delete(metrics);
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
-agentrt_error_t agentrt_sys_telemetry_traces(const char *trace_id, char **out_traces)
+airy_err_t airy_sys_telemetry_traces(const char *trace_id, char **out_traces)
 {
     if (!out_traces)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     cJSON *traces = cJSON_CreateArray();
     if (trace_id && strlen(trace_id) > 0) {
@@ -1107,61 +1107,61 @@ agentrt_error_t agentrt_sys_telemetry_traces(const char *trace_id, char **out_tr
 
     *out_traces = cJSON_PrintUnformatted(traces);
     cJSON_Delete(traces);
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
 /* Agent 管理 */
-agentrt_error_t agentrt_sys_agent_spawn(const char *spec, char **out_agent_id)
+airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
 {
     if (!spec || !out_agent_id)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     if (g_runtime.agent_count >= g_max_agents) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     agent_entry_t *agent = &g_runtime.agents[g_runtime.agent_count++];
-    agent->agent_id = AGENTRT_STRDUP(generate_uuid());
-    agent->spec = AGENTRT_STRDUP(spec);
+    agent->agent_id = AIRY_STRDUP(generate_uuid());
+    agent->spec = AIRY_STRDUP(spec);
     agent->status = 1;
     agent->spawned_at = time(NULL);
-    *out_agent_id = AGENTRT_STRDUP(agent->agent_id);
+    *out_agent_id = AIRY_STRDUP(agent->agent_id);
     ht_insert(&g_runtime.agent_index, agent->agent_id, g_runtime.agent_count - 1);
     RUNTIME_UNLOCK();
-    return AGENTRT_OK;
+    return AIRY_OK;
 }
 
-agentrt_error_t agentrt_sys_agent_terminate(const char *agent_id)
+airy_err_t airy_sys_agent_terminate(const char *agent_id)
 {
     if (!agent_id)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.agent_index, agent_id);
     if (idx >= 0 && (size_t)idx < g_runtime.agent_count) {
         g_runtime.agents[idx].status = 3;
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    return AGENTRT_ERR_NOT_FOUND;
+    return AIRY_ERR_NOT_FOUND;
 }
 
-agentrt_error_t agentrt_sys_agent_invoke(const char *agent_id, const char *input, size_t len,
+airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t len,
                                          char **out_output)
 {
     if (!agent_id || !input || !out_output)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.agent_index, agent_id);
     if (idx >= 0 && (size_t)idx < g_runtime.agent_count) {
         if (g_runtime.agents[idx].status != 1) {
-            *out_output = AGENTRT_STRDUP("{\"error\":\"Agent not running\"}");
+            *out_output = AIRY_STRDUP("{\"error\":\"Agent not running\"}");
             RUNTIME_UNLOCK();
-            return AGENTRT_ERR_STATE_ERROR;
+            return AIRY_ERR_STATE_ERROR;
         }
 
         cJSON *result = cJSON_CreateObject();
@@ -1171,29 +1171,29 @@ agentrt_error_t agentrt_sys_agent_invoke(const char *agent_id, const char *input
         *out_output = cJSON_PrintUnformatted(result);
         cJSON_Delete(result);
         RUNTIME_UNLOCK();
-        return AGENTRT_OK;
+        return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    *out_output = AGENTRT_STRDUP("{\"error\":\"Agent not found\"}");
-    return AGENTRT_ERR_NOT_FOUND;
+    *out_output = AIRY_STRDUP("{\"error\":\"Agent not found\"}");
+    return AIRY_ERR_NOT_FOUND;
 }
 
-agentrt_error_t agentrt_sys_agent_list(char ***agent_ids, size_t *count)
+airy_err_t airy_sys_agent_list(char ***agent_ids, size_t *count)
 {
     if (!agent_ids || !count)
-        return AGENTRT_ERR_INVALID_PARAM;
+        return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
-    *agent_ids = (char **)AGENTRT_CALLOC(g_runtime.agent_count, sizeof(char *));
+    *agent_ids = (char **)AIRY_CALLOC(g_runtime.agent_count, sizeof(char *));
     if (!*agent_ids && g_runtime.agent_count > 0) {
         RUNTIME_UNLOCK();
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     for (size_t i = 0; i < g_runtime.agent_count; i++) {
-        (*agent_ids)[i] = AGENTRT_STRDUP(g_runtime.agents[i].agent_id);
+        (*agent_ids)[i] = AIRY_STRDUP(g_runtime.agents[i].agent_id);
     }
     *count = g_runtime.agent_count;
     RUNTIME_UNLOCK();
-    return AGENTRT_OK;
+    return AIRY_OK;
 }

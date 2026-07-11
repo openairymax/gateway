@@ -44,16 +44,16 @@ int gw_protocol_bridge_create(const gw_protocol_bridge_config_t *config,
                               gw_protocol_bridge_handle_t *out_handle)
 {
     if (!config || !out_handle) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_create: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
 
-    struct gw_protocol_bridge_s *bridge = AGENTRT_CALLOC(1, sizeof(struct gw_protocol_bridge_s));
+    struct gw_protocol_bridge_s *bridge = AIRY_CALLOC(1, sizeof(struct gw_protocol_bridge_s));
     if (!bridge) {
-        agentrt_error_push_ex(AGENTRT_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
                               "allocation failed");
-        return AGENTRT_ERR_OUT_OF_MEMORY;
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
 
     bridge->config = *config;
@@ -67,7 +67,7 @@ int gw_protocol_bridge_create(const gw_protocol_bridge_config_t *config,
     bridge->ext_framework = NULL;
 
     bridge->initialized = true;
-    AGENTRT_MEMSET(&bridge->stats, 0, sizeof(bridge->stats));
+    AIRY_MEMSET(&bridge->stats, 0, sizeof(bridge->stats));
 
     *out_handle = bridge;
     return 0;
@@ -79,13 +79,13 @@ void gw_protocol_bridge_destroy(gw_protocol_bridge_handle_t handle)
         return;
     struct gw_protocol_bridge_s *bridge = (struct gw_protocol_bridge_s *)handle;
     if (bridge->router)
-        AGENTRT_FREE(bridge->router);
+        AIRY_FREE(bridge->router);
     if (bridge->registry)
-        AGENTRT_FREE(bridge->registry);
+        AIRY_FREE(bridge->registry);
     if (bridge->ext_framework)
-        AGENTRT_FREE(bridge->ext_framework);
+        AIRY_FREE(bridge->ext_framework);
     bridge->initialized = false;
-    AGENTRT_FREE(bridge);
+    AIRY_FREE(bridge);
 }
 
 bool gw_protocol_bridge_is_ready(gw_protocol_bridge_handle_t handle)
@@ -102,20 +102,20 @@ int gw_protocol_bridge_register_handler(gw_protocol_bridge_handle_t bridge,
                                         void *(*handler)(const void *, size_t, size_t *))
 {
     if (!bridge || !handler || proto_type >= GW_PROTO_COUNT) {
-        agentrt_error_push_ex(AGENTRT_ERR_BUFFER_TOO_SMALL, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_BUFFER_TOO_SMALL, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_register_handler: capacity exceeded");
-        return AGENTRT_ERR_BUFFER_TOO_SMALL;
+        return AIRY_ERR_BUFFER_TOO_SMALL;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
     if (!b->initialized) {
-        agentrt_error_push_ex(AGENTRT_ERR_STATE_ERROR, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_STATE_ERROR, __FILE__, __LINE__, __func__,
                               "not initialized");
-        return AGENTRT_ERR_STATE_ERROR;
+        return AIRY_ERR_STATE_ERROR;
     }
 
     b->handlers[proto_type] = (void *)(uintptr_t)handler;
     if (endpoint_pattern) {
-        AGENTRT_STRNCPY_TERM(b->handler_patterns[proto_type], endpoint_pattern, sizeof(b->handler_patterns[proto_type]));
+        AIRY_STRNCPY_TERM(b->handler_patterns[proto_type], endpoint_pattern, sizeof(b->handler_patterns[proto_type]));
     }
     return 0;
 }
@@ -124,9 +124,9 @@ int gw_protocol_bridge_set_default_handler(gw_protocol_bridge_handle_t bridge,
                                            void *(*handler)(const void *, size_t, size_t *))
 {
     if (!bridge) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_set_default_handler: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
     b->default_handler = (void *)(uintptr_t)handler;
@@ -142,13 +142,13 @@ int gw_protocol_bridge_detect_protocol(gw_protocol_bridge_handle_t bridge, const
                                        gw_detection_result_t *out_result)
 {
     if (!bridge || !data || !out_result) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_detect_protocol: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
 
-    AGENTRT_MEMSET(out_result, 0, sizeof(*out_result));
+    AIRY_MEMSET(out_result, 0, sizeof(*out_result));
 
     double confidence = 50.0;
     gw_proto_type_t detected = GW_PROTO_JSONRPC;
@@ -231,7 +231,7 @@ done:
 
     static const char *type_names[] = {"jsonrpc",    "mcp",      "a2a",   "openai",
                                        "openjiuwen", "openclaw", "claude"};
-    AGENTRT_STRNCPY_TERM(out_result->type_name, type_names[detected], sizeof(out_result->type_name));
+    AIRY_STRNCPY_TERM(out_result->type_name, type_names[detected], sizeof(out_result->type_name));
 
     b->stats.total_requests++;
     if (detected < GW_PROTO_COUNT) {
@@ -252,20 +252,20 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
                                        gw_processed_response_t *out_response)
 {
     if (!bridge || !incoming || !out_response) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_process_request: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
     if (!b->initialized) {
-        agentrt_error_push_ex(AGENTRT_ERR_STATE_ERROR, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_STATE_ERROR, __FILE__, __LINE__, __func__,
                               "not initialized");
-        return AGENTRT_ERR_STATE_ERROR;
+        return AIRY_ERR_STATE_ERROR;
     }
 
-    AGENTRT_MEMSET(out_response, 0, sizeof(*out_response));
+    AIRY_MEMSET(out_response, 0, sizeof(*out_response));
 
-    uint64_t start_ns = agentrt_time_ns();
+    uint64_t start_ns = airy_time_ns();
 
     gw_detection_result_t detection;
     int det_ret = gw_protocol_bridge_detect_protocol(bridge, incoming->raw_data, incoming->raw_size,
@@ -273,25 +273,25 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
 
     if (det_ret != 0) {
         out_response->status_code = 400;
-        out_response->response_data = AGENTRT_STRDUP("{\"error\":\"Protocol detection failed\"}");
+        out_response->response_data = AIRY_STRDUP("{\"error\":\"Protocol detection failed\"}");
         if (out_response->response_data) {
             out_response->response_size = strlen(out_response->response_data);
         }
-        out_response->content_type = AGENTRT_STRDUP("application/json");
-        out_response->detected_protocol = AGENTRT_STRDUP("unknown");
+        out_response->content_type = AIRY_STRDUP("application/json");
+        out_response->detected_protocol = AIRY_STRDUP("unknown");
         return det_ret;
     }
 
-    out_response->detected_protocol = AGENTRT_STRDUP(detection.type_name);
+    out_response->detected_protocol = AIRY_STRDUP(detection.type_name);
 
     unified_message_t source_msg;
-    AGENTRT_MEMSET(&source_msg, 0, sizeof(source_msg));
+    AIRY_MEMSET(&source_msg, 0, sizeof(source_msg));
     source_msg.protocol = PROTOCOL_HTTP;
-    AGENTRT_STRNCPY_TERM(source_msg.protocol_name, detection.type_name, sizeof(source_msg.protocol_name));
+    AIRY_STRNCPY_TERM(source_msg.protocol_name, detection.type_name, sizeof(source_msg.protocol_name));
     source_msg.payload = (void *)incoming->raw_data;
     source_msg.payload_size = incoming->raw_size;
     if (incoming->x_trace_id) {
-        AGENTRT_STRNCPY_TERM(source_msg.metadata.trace_id, incoming->x_trace_id, sizeof(source_msg.metadata.trace_id));
+        AIRY_STRNCPY_TERM(source_msg.metadata.trace_id, incoming->x_trace_id, sizeof(source_msg.metadata.trace_id));
     }
 
     if (b->handlers[detection.detected_type]) {
@@ -304,19 +304,19 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
         /* SEC-02: 前置大小校验防超大响应缓冲区溢出 */
         if (result && resp_size > 0) {
             if (resp_size > BRIDGE_MAX_RESPONSE_SIZE) {
-                agentrt_error_push_ex(AGENTRT_ERR_OVERFLOW, __FILE__, __LINE__, __func__,
+                airy_err_push_ex(AIRY_ERR_OVERFLOW, __FILE__, __LINE__, __func__,
                                       "handler response size %zu exceeds max %zu",
                                       resp_size, (size_t)BRIDGE_MAX_RESPONSE_SIZE);
-                AGENTRT_FREE(result);
-                return AGENTRT_ERR_OVERFLOW;
+                AIRY_FREE(result);
+                return AIRY_ERR_OVERFLOW;
             }
-            out_response->response_data = (char *)AGENTRT_MALLOC(resp_size + 1);
+            out_response->response_data = (char *)AIRY_MALLOC(resp_size + 1);
             if (out_response->response_data) {
-                AGENTRT_MEMCPY(out_response->response_data, result, resp_size);
+                AIRY_MEMCPY(out_response->response_data, result, resp_size);
                 out_response->response_data[resp_size] = '\0';
                 out_response->response_size = resp_size;
             }
-            AGENTRT_FREE(result);
+            AIRY_FREE(result);
         }
         out_response->status_code = 200;
         out_response->transformed = false;
@@ -329,19 +329,19 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
         /* SEC-02: 前置大小校验防超大响应缓冲区溢出 */
         if (result && resp_size > 0) {
             if (resp_size > BRIDGE_MAX_RESPONSE_SIZE) {
-                agentrt_error_push_ex(AGENTRT_ERR_OVERFLOW, __FILE__, __LINE__, __func__,
+                airy_err_push_ex(AIRY_ERR_OVERFLOW, __FILE__, __LINE__, __func__,
                                       "default_handler response size %zu exceeds max %zu",
                                       resp_size, (size_t)BRIDGE_MAX_RESPONSE_SIZE);
-                AGENTRT_FREE(result);
-                return AGENTRT_ERR_OVERFLOW;
+                AIRY_FREE(result);
+                return AIRY_ERR_OVERFLOW;
             }
-            out_response->response_data = (char *)AGENTRT_MALLOC(resp_size + 1);
+            out_response->response_data = (char *)AIRY_MALLOC(resp_size + 1);
             if (out_response->response_data) {
-                AGENTRT_MEMCPY(out_response->response_data, result, resp_size);
+                AIRY_MEMCPY(out_response->response_data, result, resp_size);
                 out_response->response_data[resp_size] = '\0';
                 out_response->response_size = resp_size;
             }
-            AGENTRT_FREE(result);
+            AIRY_FREE(result);
         }
         out_response->status_code = 200;
         out_response->transformed = false;
@@ -354,9 +354,9 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
             b->stats.transformations_performed++;
 
             if (target_msg.payload && target_msg.payload_size > 0) {
-                out_response->response_data = AGENTRT_MALLOC(target_msg.payload_size + 1);
+                out_response->response_data = AIRY_MALLOC(target_msg.payload_size + 1);
                 if (out_response->response_data) {
-                    AGENTRT_MEMCPY(out_response->response_data, target_msg.payload,
+                    AIRY_MEMCPY(out_response->response_data, target_msg.payload,
                            target_msg.payload_size);
                     out_response->response_data[target_msg.payload_size] = '\0';
                     out_response->response_size = target_msg.payload_size;
@@ -365,15 +365,15 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
             out_response->status_code = 200;
         } else {
             out_response->response_data =
-                AGENTRT_STRDUP("{\"error\":\"No handler and transformation failed\"}");
+                AIRY_STRDUP("{\"error\":\"No handler and transformation failed\"}");
             out_response->response_size = strlen(out_response->response_data);
             out_response->status_code = 500;
         }
     }
 
-    out_response->content_type = AGENTRT_STRDUP("application/json");
+    out_response->content_type = AIRY_STRDUP("application/json");
 
-    uint64_t end_ns = agentrt_time_ns();
+    uint64_t end_ns = airy_time_ns();
     out_response->process_time_ns = end_ns - start_ns;
 
     uint64_t total_time = b->stats.total_requests > 0 ? b->stats.avg_process_time_ns : 0;
@@ -389,12 +389,12 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
 int gw_protocol_bridge_get_stats(gw_protocol_bridge_handle_t bridge, gw_bridge_stats_t *out_stats)
 {
     if (!bridge || !out_stats) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_get_stats: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
-    AGENTRT_MEMCPY(out_stats, &b->stats, sizeof(*out_stats));
+    AIRY_MEMCPY(out_stats, &b->stats, sizeof(*out_stats));
 
     static const char *names[] = {"jsonrpc",    "mcp",      "a2a",   "openai",
                                   "openjiuwen", "openclaw", "claude"};
@@ -408,19 +408,19 @@ int gw_protocol_bridge_get_stats(gw_protocol_bridge_handle_t bridge, gw_bridge_s
                                (unsigned long long)b->stats.requests_by_proto[i]);
         }
     }
-    AGENTRT_STRNCPY_TERM(out_stats->active_protocols, buf, sizeof(out_stats->active_protocols));
+    AIRY_STRNCPY_TERM(out_stats->active_protocols, buf, sizeof(out_stats->active_protocols));
     return 0;
 }
 
 int gw_protocol_bridge_reset_stats(gw_protocol_bridge_handle_t bridge)
 {
     if (!bridge) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_reset_stats: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
-    AGENTRT_MEMSET(&b->stats, 0, sizeof(b->stats));
+    AIRY_MEMSET(&b->stats, 0, sizeof(b->stats));
     return 0;
 }
 
@@ -435,7 +435,7 @@ char *gw_protocol_bridge_diagnose(gw_protocol_bridge_handle_t bridge)
 
     int registry_count = 0;
 
-    char *diag = AGENTRT_MALLOC(3072);
+    char *diag = AIRY_MALLOC(3072);
     if (!diag)
         return NULL;
 
@@ -491,11 +491,11 @@ int gw_protocol_bridge_list_registry_protocols(gw_protocol_bridge_handle_t bridg
                                                char **protocols_json)
 {
     if (!bridge || !protocols_json) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_list_registry_protocols: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
-    *protocols_json = AGENTRT_STRDUP("{\"registered_protocols\":[],\"total\":0}");
+    *protocols_json = AIRY_STRDUP("{\"registered_protocols\":[],\"total\":0}");
     return 0;
 }
 
@@ -503,18 +503,18 @@ int gw_protocol_bridge_load_extensions_from_config(gw_protocol_bridge_handle_t b
                                                    const char *config_json)
 {
     if (!bridge || !config_json) {
-        agentrt_error_push_ex(AGENTRT_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_load_extensions_from_config: failed");
-        return AGENTRT_ERR_UNKNOWN;
+        return AIRY_ERR_UNKNOWN;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
 
     if (!b->ext_framework) {
         b->ext_framework = proto_ext_framework_create();
         if (!b->ext_framework) {
-            agentrt_error_push_ex(AGENTRT_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+            airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
                                   "operation failed");
-            return AGENTRT_ERR_OUT_OF_MEMORY;
+            return AIRY_ERR_OUT_OF_MEMORY;
         }
     }
 
@@ -525,20 +525,20 @@ int gw_protocol_bridge_register_extension_adapter(gw_protocol_bridge_handle_t br
                                                   gw_proto_type_t proto_type, void *handler)
 {
     if (!bridge || !handler || proto_type >= GW_PROTO_COUNT) {
-        agentrt_error_push_ex(AGENTRT_ERR_BUFFER_TOO_SMALL, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_BUFFER_TOO_SMALL, __FILE__, __LINE__, __func__,
                               "gw_protocol_bridge_register_extension_adapter: capacity exceeded");
-        return AGENTRT_ERR_BUFFER_TOO_SMALL;
+        return AIRY_ERR_BUFFER_TOO_SMALL;
     }
     struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
     if (!b->initialized) {
-        agentrt_error_push_ex(AGENTRT_ERR_STATE_ERROR, __FILE__, __LINE__, __func__,
+        airy_err_push_ex(AIRY_ERR_STATE_ERROR, __FILE__, __LINE__, __func__,
                               "not initialized");
-        return AGENTRT_ERR_STATE_ERROR;
+        return AIRY_ERR_STATE_ERROR;
     }
 
     b->handlers[proto_type] = handler;
     static const char *patterns[] = {
         "/rpc", "/mcp", "/a2a", "/v1/chat/completions", "/openjiuwen", "/openclaw", "/v1/messages"};
-    AGENTRT_STRNCPY_TERM(b->handler_patterns[proto_type], patterns[proto_type], sizeof(b->handler_patterns[proto_type]));
+    AIRY_STRNCPY_TERM(b->handler_patterns[proto_type], patterns[proto_type], sizeof(b->handler_patterns[proto_type]));
     return 0;
 }
