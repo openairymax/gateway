@@ -131,9 +131,9 @@ External client
 
 | Dependency | Source | Purpose |
 |------------|--------|---------|
-| **protocols** | `agentrt/protocols/` | Protocol router / gateway / registry interfaces; A2A / MCP / OpenAI adapters — linked as `agentrt_protocols` |
-| **atoms** | `agentrt/atoms/` | CoreKern types and IPC primitives; `atoms/syscall` is the dispatch target for `syscall_router`; `atoms/memory` linked as `agentrt_memory` |
-| **commons** | `agentrt/commons/` | Platform abstraction, types, error framework, logging, sync, memory macros — linked as `agentrt_common` |
+| **protocols** | `agentrt/protocols/` | Protocol router / gateway / registry interfaces; A2A / MCP / OpenAI adapters — linked as `airy_protocols` |
+| **atoms** | `agentrt/atoms/` | CoreKern types and IPC primitives; `atoms/syscall` is the dispatch target for `syscall_router`; `atoms/memory` linked as `airy_memory` |
+| **commons** | `agentrt/commons/` | Platform abstraction, types, error framework, logging, sync, memory macros — linked as `airy_common` |
 | **cupolas** | `agentrt/cupolas/` | Logical upstream: gateway invokes cupolas for request authentication and input sanitization at the protocol boundary |
 | cJSON | external | JSON parsing — **hard dependency** as of Airymax 0.1.1 (stub library is not supported) |
 | libmicrohttpd | external | HTTP server (≥ 0.9.70) |
@@ -174,10 +174,10 @@ cmake --install /tmp/gateway-build --prefix /opt/airymax
 
 | Dependency | Conditional Macro | Behavior When Missing |
 |------------|-------------------|-----------------------|
-| cJSON | `AGENTRT_HAS_CJSON` | **Hard failure** — gateway module is skipped with `FATAL_ERROR` (Airymax 0.1.1 disallows stub libraries) |
-| libmicrohttpd | `AGENTRT_HAS_MICROHTTPD` | HTTP gateway unavailable |
-| libwebsockets | `AGENTRT_HAS_LIBWEBSOCKETS` | WebSocket gateway unavailable |
-| libcurl | `AGENTRT_HAS_CURL` | Benchmark runs in simulation mode |
+| cJSON | `AIRY_HAS_CJSON` | **Hard failure** — gateway module is skipped with `FATAL_ERROR` (Airymax 0.1.1 disallows stub libraries) |
+| libmicrohttpd | `AIRY_HAS_MICROHTTPD` | HTTP gateway unavailable |
+| libwebsockets | `AIRY_HAS_LIBWEBSOCKETS` | WebSocket gateway unavailable |
+| libcurl | `AIRY_HAS_CURL` | Benchmark runs in simulation mode |
 
 **Build artifacts:**
 

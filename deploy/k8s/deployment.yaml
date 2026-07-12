@@ -1,6 +1,6 @@
 # Copyright (c) 2026 SPHARX. All Rights Reserved.
 # Kubernetes Deployment for AgentRT gateway Module
-# Version: 0.1.0
+# Version: 0.1.1
 
 apiVersion: apps/v1
 kind: Deployment
@@ -10,7 +10,7 @@ metadata:
   labels:
     app.kubernetes.io/name: agentrt-gateway
     app.kubernetes.io/component: gateway
-    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/version: "0.1.1"
 spec:
   replicas: 3
   selector:

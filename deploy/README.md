@@ -31,9 +31,9 @@ deploy/
 
 | 配置项 | Development | Staging | Production |
 |--------|-------------|---------|------------|
-| `AGENTRT_LOG_LEVEL` | DEBUG | INFO | WARN |
-| `AGENTRT_MAX_SESSIONS` | 100 | 500 | 1000 |
-| `AGENTRT_SESSION_TIMEOUT` | 3600 | 1800 | 900 |
+| `AIRY_LOG_LEVEL` | DEBUG | INFO | WARN |
+| `AIRY_MAX_SESSIONS` | 100 | 500 | 1000 |
+| `AIRY_SESSION_TIMEOUT` | 3600 | 1800 | 900 |
 
 ConfigMap 挂载到容器 `/etc/agentrt/gateway`。
 
@@ -99,17 +99,17 @@ kubectl apply -f k8s/service.yaml
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `AGENTRT_MODULE` | `gateway` | 模块标识 |
-| `AGENTRT_LOG_LEVEL` | `INFO` | 日志级别（DEBUG/INFO/WARN/ERROR） |
-| `AGENTRT_HTTP_PORT` | `8080` | HTTP 监听端口 |
-| `AGENTRT_WS_PORT` | `8081` | WebSocket 监听端口 |
-| `AGENTRT_METRICS_PORT` | `9090` | Prometheus 指标端口 |
-| `AGENTRT_MAX_SESSIONS` | `1000` | 最大会话数 |
-| `AGENTRT_SESSION_TIMEOUT` | `900` | 会话超时（秒） |
-| `AGENTRT_REDIS_HOST` | - | Redis 主机地址 |
-| `AGENTRT_REDIS_PORT` | `6379` | Redis 端口 |
-| `AGENTRT_JWT_SECRET` | - | JWT 签名密钥（从 Secret 挂载） |
-| `AGENTRT_ENABLE_AUTH` | - | 是否启用认证 |
+| `AIRY_MODULE` | `gateway` | 模块标识 |
+| `AIRY_LOG_LEVEL` | `INFO` | 日志级别（DEBUG/INFO/WARN/ERROR） |
+| `AIRY_HTTP_PORT` | `8080` | HTTP 监听端口 |
+| `AIRY_WS_PORT` | `8081` | WebSocket 监听端口 |
+| `AIRY_METRICS_PORT` | `9090` | Prometheus 指标端口 |
+| `AIRY_MAX_SESSIONS` | `1000` | 最大会话数 |
+| `AIRY_SESSION_TIMEOUT` | `900` | 会话超时（秒） |
+| `AIRY_REDIS_HOST` | - | Redis 主机地址 |
+| `AIRY_REDIS_PORT` | `6379` | Redis 端口 |
+| `AIRY_JWT_SECRET` | - | JWT 签名密钥（从 Secret 挂载） |
+| `AIRY_ENABLE_AUTH` | - | 是否启用认证 |
 | `ENABLE_METRICS` | `true` | 是否启用 Prometheus 指标 |
 | `ENABLE_TRACING` | `true` | 是否启用链路追踪 |
 
@@ -125,7 +125,7 @@ kubectl apply -f k8s/service.yaml
 ## 监控集成
 
 - **Prometheus**：通过注解 `prometheus.io/scrape: "true"` 自动发现，采集端口 9090
-- **Grafana**：预配置 AgentRT 仪表盘（`docker/monitoring/grafana_agentrt_dashboard.json`）
+- **Grafana**：预配置 AgentRT 仪表盘（`docker/monitoring/grafana_airy_dashboard.json`）
 - **告警规则**：`docker/monitoring/alerts.yml` 定义网关专用告警
 
 ## 依赖关系
