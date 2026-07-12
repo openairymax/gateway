@@ -131,9 +131,9 @@ gateway/
 
 | 依赖 | 来源 | 用途 |
 |------|------|------|
-| **protocols** | `agentrt/protocols/` | 协议路由器 / 网关 / 注册中心接口；A2A / MCP / OpenAI 适配器——链接为 `agentrt_protocols` |
-| **atoms** | `agentrt/atoms/` | CoreKern 类型与 IPC 原语；`atoms/syscall` 是 `syscall_router` 的派发目标；`atoms/memory` 链接为 `agentrt_memory` |
-| **commons** | `agentrt/commons/` | 平台抽象、类型、错误框架、日志、同步、内存宏——链接为 `agentrt_common` |
+| **protocols** | `agentrt/protocols/` | 协议路由器 / 网关 / 注册中心接口；A2A / MCP / OpenAI 适配器——链接为 `airy_protocols` |
+| **atoms** | `agentrt/atoms/` | CoreKern 类型与 IPC 原语；`atoms/syscall` 是 `syscall_router` 的派发目标；`atoms/memory` 链接为 `airy_memory` |
+| **commons** | `agentrt/commons/` | 平台抽象、类型、错误框架、日志、同步、内存宏——链接为 `airy_common` |
 | **cupolas** | `agentrt/cupolas/` | 逻辑上游：网关在协议边界调用 cupolas 进行请求鉴权与输入净化 |
 | cJSON | 外部 | JSON 解析——Airymax 0.1.1 起**硬依赖**（不允许桩库） |
 | libmicrohttpd | 外部 | HTTP 服务器（≥ 0.9.70） |
@@ -174,10 +174,10 @@ cmake --install /tmp/gateway-build --prefix /opt/airymax
 
 | 依赖 | 条件宏 | 缺失时行为 |
 |------|--------|-----------|
-| cJSON | `AGENTRT_HAS_CJSON` | **硬失败**——网关模块以 `FATAL_ERROR` 跳过（Airymax 0.1.1 不允许桩库） |
-| libmicrohttpd | `AGENTRT_HAS_MICROHTTPD` | HTTP 网关不可用 |
-| libwebsockets | `AGENTRT_HAS_LIBWEBSOCKETS` | WebSocket 网关不可用 |
-| libcurl | `AGENTRT_HAS_CURL` | 基准测试使用模拟模式 |
+| cJSON | `AIRY_HAS_CJSON` | **硬失败**——网关模块以 `FATAL_ERROR` 跳过（Airymax 0.1.1 不允许桩库） |
+| libmicrohttpd | `AIRY_HAS_MICROHTTPD` | HTTP 网关不可用 |
+| libwebsockets | `AIRY_HAS_LIBWEBSOCKETS` | WebSocket 网关不可用 |
+| libcurl | `AIRY_HAS_CURL` | 基准测试使用模拟模式 |
 
 **构建产物：**
 
