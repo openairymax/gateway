@@ -107,33 +107,21 @@ static bool is_cors_origin_allowed(const http_gateway_t *gateway, const char *or
 }
 
 /**
- * @brief 生成 HTTP 响应（安全CORS版本）
+ * @brief 应用 CORS 响应头
+ *
+ * 根据网关CORS配置和请求Origin头，自动设置CORS响应头。
+ * 应在所有直接创建MHD_Response的地方调用（配合 gateway_apply_security_headers）。
+ *
  * @param gateway HTTP网关实例
  * @param connection MHD连接对象
- * @param status_code HTTP 状态码
- * @param content 响应内容
- * @param content_len 内容长度
- * @return MHD 响应对象
+ * @param response MHD响应对象
  */
-static struct MHD_Response *__attribute__((used))
-create_http_response_ex(http_gateway_t *gateway, struct MHD_Connection *connection,
-                        int status_code __attribute__((unused)), const char *content,
-                        size_t content_len)
+void gateway_apply_cors_headers(http_gateway_t *gateway, struct MHD_Connection *connection,
+                                struct MHD_Response *response)
 {
+    if (!gateway || !connection || !response)
+        return;
 
-    struct MHD_Response *response =
-        MHD_create_response_from_buffer(content_len, (void *)content, MHD_RESPMEM_MUST_COPY);
-
-    if (!response) {
-        return NULL;
-    }
-
-    MHD_add_response_header(response, "Content-Type", "application/json");
-    MHD_add_response_header(response, "Server", "AgentRT-gateway/1.0");
-
-    gateway_apply_security_headers(response);
-
-    /* 安全的 CORS 头设置 */
     const char *origin = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
     if (is_cors_origin_allowed(gateway, origin)) {
         MHD_add_response_header(response, "Access-Control-Allow-Origin", origin);
@@ -154,6 +142,34 @@ create_http_response_ex(http_gateway_t *gateway, struct MHD_Connection *connecti
             MHD_add_response_header(response, "Access-Control-Max-Age", max_age_str);
         }
     }
+}
+
+/**
+ * @brief 生成 HTTP 响应（安全CORS版本）
+ * @param gateway HTTP网关实例
+ * @param connection MHD连接对象
+ * @param status_code HTTP 状态码
+ * @param content 响应内容
+ * @param content_len 内容长度
+ * @return MHD 响应对象
+ */
+struct MHD_Response *create_http_response_ex(http_gateway_t *gateway, struct MHD_Connection *connection,
+                        int status_code __attribute__((unused)), const char *content,
+                        size_t content_len)
+{
+
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(content_len, (void *)content, MHD_RESPMEM_MUST_COPY);
+
+    if (!response) {
+        return NULL;
+    }
+
+    MHD_add_response_header(response, "Content-Type", "application/json");
+    MHD_add_response_header(response, "Server", "AgentRT-gateway/1.0");
+
+    gateway_apply_security_headers(response);
+    gateway_apply_cors_headers(gateway, connection, response);
 
     return response;
 }

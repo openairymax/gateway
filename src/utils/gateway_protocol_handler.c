@@ -12,7 +12,7 @@
 #include "gateway_protocol_handler.h"
 
 #include "error.h"
-#include "gateway_compat.h"
+#include "error.h"
 #include "jsonrpc.h"
 #include "memory_compat.h"
 #include "safe_string_utils.h"

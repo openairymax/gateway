@@ -22,7 +22,7 @@
 #define strdup _strdup
 #endif
 
-#include "gateway_compat.h"
+#include "error.h"
 #include "gateway_rate_limiter.h"
 #include "gateway_utils.h"
 #include "memory_compat.h"

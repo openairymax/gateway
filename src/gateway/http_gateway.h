@@ -122,6 +122,21 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
 struct MHD_Response *create_http_response(int status_code, const char *content, size_t content_len);
 
 /**
+ * @brief 创建HTTP响应（安全CORS版本）
+ *
+ * 根据网关CORS配置自动设置CORS响应头，所有路由处理函数应优先使用此函数。
+ *
+ * @param gateway HTTP网关实例（用于CORS配置）
+ * @param connection MHD连接对象（用于获取Origin头）
+ * @param status_code HTTP状态码（当前未使用，保留供未来扩展）
+ * @param content 响应内容
+ * @param content_len 内容长度
+ * @return MHD响应对象
+ */
+struct MHD_Response *create_http_response_ex(http_gateway_t *gateway, struct MHD_Connection *connection,
+                                              int status_code, const char *content, size_t content_len);
+
+/**
  * @brief HTTP请求处理回调函数类型
  */
 typedef int (*http_request_handler_t)(void *cls, struct MHD_Connection *connection, const char *url,
@@ -144,6 +159,19 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
  * @param response MHD响应对象
  */
 void gateway_apply_security_headers(struct MHD_Response *response);
+
+/**
+ * @brief 应用CORS响应头
+ *
+ * 根据网关CORS配置和请求Origin头，自动设置CORS响应头。
+ * 应在所有直接创建MHD_Response的地方调用（配合 gateway_apply_security_headers）。
+ *
+ * @param gateway HTTP网关实例
+ * @param connection MHD连接对象
+ * @param response MHD响应对象
+ */
+void gateway_apply_cors_headers(http_gateway_t *gateway, struct MHD_Connection *connection,
+                                struct MHD_Response *response);
 
 /**
  * @brief 解析JSON请求体
