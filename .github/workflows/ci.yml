@@ -11,16 +11,34 @@ permissions:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Install build dependencies
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libsqlite3-dev libcjson-dev libyaml-dev libcurl4-openssl-dev libssl-dev libmicrohttpd-dev
+          sudo apt-get install -y build-essential cmake libsqlite3-dev libcjson-dev libyaml-dev libcurl4-openssl-dev libssl-dev
+
+      - name: Install build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake cjson sqlite3 libyaml curl openssl 2>/dev/null || echo "[INFO] Some brew packages may already be installed"
+
+      - name: Install build dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "[INFO] Windows runner — dependency checks only (no native build in this CI)"
 
       - name: License check
         run: |

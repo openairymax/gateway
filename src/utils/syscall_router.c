@@ -15,7 +15,7 @@
 #include "syscall_router.h"
 
 #include "error.h"
-#include "gateway_compat.h"
+#include "error.h"
 #include "jsonrpc.h"
 #include "logging.h"
 #include "memory_compat.h"

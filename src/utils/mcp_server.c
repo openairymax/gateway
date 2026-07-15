@@ -4,7 +4,7 @@
 #include "mcp_server.h"
 
 #include "error.h"
-#include "gateway_compat.h"
+#include "error.h"
 #include "memory_compat.h"
 
 #include <stdio.h>

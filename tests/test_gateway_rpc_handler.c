@@ -22,7 +22,7 @@
 #include "jsonrpc.h"
 #include "memory_compat.h"
 #include "error.h"
-#include "gateway_compat.h"
+#include "error.h"
 
 #include <assert.h>
 #include <stdio.h>

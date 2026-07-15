@@ -52,7 +52,7 @@
 #endif
 #include "memory_compat.h"
 #include "error.h"
-#include "gateway_compat.h"
+#include "error.h"
 #include "sync_compat.h"  /* P0.18.3: 用 sync 抽象替代 pthread_mutex */
 
 /* ========== 常量定义 ========== */

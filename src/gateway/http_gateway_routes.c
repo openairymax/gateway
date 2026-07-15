@@ -60,7 +60,7 @@ static int parse_headers(void *cls __attribute__((unused)),
  * @brief 处理 JSON-RPC POST 请求 (CC=3)
  */
 int handle_post_jsonrpc(http_gateway_t *gateway,
-                        struct MHD_Connection *connection __attribute__((unused)),
+                        struct MHD_Connection *connection,
                         http_request_context_t *context)
 {
 
@@ -68,12 +68,12 @@ int handle_post_jsonrpc(http_gateway_t *gateway,
     if (!json_response) {
         const char *err_msg = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":"
                               "\"Internal error\"},\"id\":null}";
-        struct MHD_Response *response = create_http_response(500, err_msg, strlen(err_msg));
+        struct MHD_Response *response = create_http_response_ex(gateway, connection, 500, err_msg, strlen(err_msg));
         int ret = MHD_queue_response(connection, 500, response);
         MHD_destroy_response(response);
         return ret;
     }
-    struct MHD_Response *response = create_http_response(200, json_response, strlen(json_response));
+    struct MHD_Response *response = create_http_response_ex(gateway, connection, 200, json_response, strlen(json_response));
 
     uint64_t response_time_ns = gateway_time_ns() - context->start_time_ns;
     LOG_DEBUG("请求处理耗时: %lu ns", response_time_ns);
@@ -91,7 +91,7 @@ int handle_post_jsonrpc(http_gateway_t *gateway,
 /**
  * @brief 处理 OPTIONS 请求（CORS 预检）(CC=2)
  */
-int handle_options_preflight(http_gateway_t *gateway __attribute__((unused)),
+int handle_options_preflight(http_gateway_t *gateway,
                              struct MHD_Connection *connection,
                              http_request_context_t *context __attribute__((unused)))
 {
@@ -99,15 +99,8 @@ int handle_options_preflight(http_gateway_t *gateway __attribute__((unused)),
     struct MHD_Response *response =
         MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 
-    MHD_add_response_header(response, "Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    MHD_add_response_header(response, "Access-Control-Allow-Headers",
-                            "Content-Type, Authorization, X-Request-ID");
-    MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-
-    MHD_add_response_header(response, "X-Content-Type-Options", "nosniff");
-    MHD_add_response_header(response, "X-Frame-Options", "DENY");
-    MHD_add_response_header(response, "X-XSS-Protection", "1; mode=block");
-    MHD_add_response_header(response, "Cache-Control", "no-store");
+    gateway_apply_security_headers(response);
+    gateway_apply_cors_headers(gateway, connection, response);
 
     int ret = MHD_queue_response(connection, 200, response);
     MHD_destroy_response(response);
@@ -184,7 +177,7 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
 {
 
     const char *health_json = "{\"status\":\"healthy\",\"service\":\"gateway\"}";
-    struct MHD_Response *response = create_http_response(200, health_json, strlen(health_json));
+    struct MHD_Response *response = create_http_response_ex(gateway, connection, 200, health_json, strlen(health_json));
 
     atomic_fetch_add(&gateway->requests_total, 1);
 
@@ -204,7 +197,7 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
     if (!gateway_verify_api_key(connection, gateway)) {
         const char *err_json =
             "{\"error\":{\"code\":-32001,\"message\":\"Unauthorized: API key required\"}}";
-        struct MHD_Response *response = create_http_response(401, err_json, strlen(err_json));
+        struct MHD_Response *response = create_http_response_ex(gateway, connection, 401, err_json, strlen(err_json));
         int ret = MHD_queue_response(connection, 401, response);
         MHD_destroy_response(response);
         atomic_fetch_add(&gateway->requests_failed, 1);
@@ -218,7 +211,7 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
         metrics_json = AIRY_STRDUP("{\"error\":\"failed to get metrics\"}");
     }
 
-    struct MHD_Response *response = create_http_response(200, metrics_json, strlen(metrics_json));
+    struct MHD_Response *response = create_http_response_ex(gateway, connection, 200, metrics_json, strlen(metrics_json));
     AIRY_FREE(metrics_json);
 
     atomic_fetch_add(&gateway->requests_total, 1);
@@ -232,13 +225,13 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
 /**
  * @brief 处理 404 Not Found (CC=2)
  */
-int handle_not_found(http_gateway_t *gateway __attribute__((unused)),
+int handle_not_found(http_gateway_t *gateway,
                      struct MHD_Connection *connection, http_request_context_t *context)
 {
 
     char *error_response = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
     struct MHD_Response *response =
-        create_http_response(404, error_response, strlen(error_response));
+        create_http_response_ex(gateway, connection, 404, error_response, strlen(error_response));
     AIRY_FREE(error_response);
 
     atomic_fetch_add(&gateway->requests_failed, 1);
@@ -259,7 +252,7 @@ int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *con
 
     char *error_response = jsonrpc_create_error_response(NULL, -413, "Request too large", NULL);
     struct MHD_Response *response =
-        create_http_response(413, error_response, strlen(error_response));
+        create_http_response_ex(gateway, connection, 413, error_response, strlen(error_response));
     AIRY_FREE(error_response);
 
     atomic_fetch_add(&gateway->requests_failed, 1);
@@ -280,7 +273,7 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
 
     char *error_response = jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
     struct MHD_Response *response =
-        create_http_response(400, error_response, strlen(error_response));
+        create_http_response_ex(gateway, connection, 400, error_response, strlen(error_response));
     AIRY_FREE(error_response);
 
     atomic_fetch_add(&gateway->requests_failed, 1);
@@ -380,6 +373,7 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
         if (response) {
             MHD_add_response_header(response, "Content-Type", resp.content_type);
             gateway_apply_security_headers(response);
+            gateway_apply_cors_headers(gateway, connection, response);
             ret = MHD_queue_response(connection, resp.status_code, response);
             MHD_destroy_response(response);
         }
@@ -392,6 +386,7 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
         if (response) {
             MHD_add_response_header(response, "Content-Type", "application/json");
             gateway_apply_security_headers(response);
+            gateway_apply_cors_headers(gateway, connection, response);
             ret = MHD_queue_response(connection, 500, response);
             MHD_destroy_response(response);
         }
@@ -458,6 +453,8 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
                 strlen(error_response), (void *)error_response, MHD_RESPMEM_PERSISTENT);
             MHD_add_response_header(response, "Content-Type", "application/json");
             MHD_add_response_header(response, "Server", "AgentRT-gateway/1.0");
+            gateway_apply_security_headers(response);
+            gateway_apply_cors_headers(gateway, connection, response);
             int ret = MHD_queue_response(connection, 429, response);
             MHD_destroy_response(response);
             return ret;
@@ -478,6 +475,8 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
             struct MHD_Response *response = MHD_create_response_from_buffer(
                 strlen(error_response), (void *)error_response, MHD_RESPMEM_PERSISTENT);
             MHD_add_response_header(response, "Content-Type", "application/json");
+            gateway_apply_security_headers(response);
+            gateway_apply_cors_headers(gateway, connection, response);
             int ret = MHD_queue_response(connection, 400, response);
             MHD_destroy_response(response);
             return ret;
