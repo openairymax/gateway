@@ -43,7 +43,7 @@
 #include <unistd.h>
 #endif
 
-#include "memory_compat.h"
+#include "airy_memory.h"
 
 /* ========== 辅助函数（使用 gateway_utils.h 中的公共实现） ========== */
 

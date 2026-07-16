@@ -23,7 +23,7 @@
 #include "../utils/jsonrpc.h"
 #include "../utils/syscall_router.h"
 #include "error.h"
-#include "memory_compat.h"
+#include "airy_memory.h"
 
 #ifdef GATEWAY_HAS_HTTP
 

@@ -14,7 +14,7 @@
 #include "error.h"
 #include "error.h"
 #include "jsonrpc.h"
-#include "memory_compat.h"
+#include "airy_memory.h"
 #include "safe_string_utils.h"
 #include "syscall_router.h"
 

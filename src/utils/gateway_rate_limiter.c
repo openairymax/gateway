@@ -25,7 +25,7 @@
 #include "error.h"
 #include "gateway_rate_limiter.h"
 #include "gateway_utils.h"
-#include "memory_compat.h"
+#include "airy_memory.h"
 #include "platform.h"
 
 #include <stdlib.h>
