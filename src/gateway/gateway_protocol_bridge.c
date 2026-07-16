@@ -8,7 +8,7 @@
 
 #include "gateway_protocol_bridge.h"
 
-#include "memory_compat.h"
+#include "airy_memory.h"
 #include "protocol_extension_framework.h"
 #include "protocol_registry.h"
 #include "unified_protocol.h"

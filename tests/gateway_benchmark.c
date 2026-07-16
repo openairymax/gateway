@@ -50,10 +50,12 @@
 #ifdef USE_CURL
 #include <curl/curl.h>
 #endif
-#include "memory_compat.h"
+#include "airy_memory.h"
 #include "error.h"
 #include "error.h"
-#include "sync_compat.h"  /* P0.18.3: 用 sync 抽象替代 pthread_mutex */
+/* d8 清理：移除 sync_compat.h。本文件使用 airy_mtx_t + airy_mtx_* 函数 + AIRY_MUTEX_LOCK_GUARD
+ * RAII 守卫，均由 platform.h 提供（通过 airy_memory.h → error.h → types.h → platform.h
+ * 间接包含）。RAII 守卫已从 sync_compat.h 迁移到 platform.h。 */
 
 /* ========== 常量定义 ========== */
 

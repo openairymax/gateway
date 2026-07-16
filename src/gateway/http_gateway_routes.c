@@ -21,7 +21,7 @@
 #include "http_gateway.h"
 #include "jsonrpc.h"
 #include "logging.h"
-#include "memory_compat.h"
+#include "airy_memory.h"
 #include "syscall_router.h"
 #include "syscalls.h"
 

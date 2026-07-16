@@ -20,7 +20,7 @@
 // @owner: team-B
 #include "gateway_rpc_handler.h"
 #include "jsonrpc.h"
-#include "memory_compat.h"
+#include "airy_memory.h"
 #include "error.h"
 #include "error.h"
 

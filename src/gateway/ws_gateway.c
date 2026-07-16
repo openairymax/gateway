@@ -48,7 +48,7 @@
 #include <sys/time.h>
 #endif
 
-#include "memory_compat.h"
+#include "airy_memory.h"
 #include "error.h"
 
 /* ========== 前向声明 ========== */
