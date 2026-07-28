@@ -468,7 +468,7 @@ char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id
 #define MAX_SESSIONS_DEFAULT 64
 #include <airymax/sched.h>
 
-#define MAX_AGENTS_DEFAULT MAC_MAX_AGENTS
+#define MAX_AGENTS_DEFAULT AIRY_CAP_MAX_AGENTS
 #define MAX_INPUT_SIZE 4096
 
 static size_t g_max_tasks = 0;
