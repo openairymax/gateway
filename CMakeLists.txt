@@ -37,6 +37,7 @@ set(GATEWAY_SOURCES
     src/gateway/gateway_api.c
     src/gateway/http_gateway.c
     src/gateway/http_gateway_routes.c
+    src/gateway/http2_gateway.c
     src/gateway/ws_gateway.c
     src/gateway/stdio_gateway.c
     src/gateway/gateway_protocol_bridge.c
@@ -52,6 +53,7 @@ set(GATEWAY_SOURCES
 set(GATEWAY_HEADERS
     src/gateway/gateway.h
     src/gateway/http_gateway.h
+    src/gateway/http2_gateway.h
     src/gateway/ws_gateway.h
     src/gateway/stdio_gateway.h
     src/utils/jsonrpc.h
@@ -62,6 +64,25 @@ set(GATEWAY_HEADERS
     src/utils/gateway_rate_limiter.h
 )
 
+# ========== nghttp2 检测（HTTP/2 支持） ==========
+# 头文件位于项目本地 commons/include/third_party/nghttp2/
+# 运行时库可能只有 .so.14（无开发版 .so 软链接）
+find_library(NGHTTP2_LIBRARY NAMES nghttp2)
+if(NOT NGHTTP2_LIBRARY)
+    # 回退：查找版本化运行时库文件
+    find_file(NGHTTP2_LIBRARY
+        NAMES libnghttp2.so.14 libnghttp2.so.19 libnghttp2.so
+        PATHS /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib
+    )
+endif()
+if(NGHTTP2_LIBRARY)
+    set(AIRY_HAS_HTTP2 TRUE CACHE BOOL "nghttp2 available")
+    airy_print_ok("[GATEWAY]   nghttp2 found: ${NGHTTP2_LIBRARY} (HTTP/2 gateway enabled)")
+else()
+    set(AIRY_HAS_HTTP2 FALSE CACHE BOOL "nghttp2 available")
+    airy_print_warn("[GATEWAY]   nghttp2 not found, HTTP/2 gateway disabled")
+endif()
+
 # ========== 库目标 ==========
 add_library(gateway STATIC ${GATEWAY_SOURCES})
 
@@ -71,6 +92,16 @@ target_compile_definitions(gateway PUBLIC AIRY_HAS_CJSON=1)
 if(AIRY_HAS_LIBWEBSOCKETS)
     set_source_files_properties(
         src/gateway/ws_gateway.c
+        PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
+    )
+endif()
+
+# nghttp2 头文件内部使用 malloc/free/memcpy/memset 等函数，
+# 在 AIRY_COMPLIANCE_STRICT 模式下会被 banned_functions.h 毒化，
+# 需通过 AIRY_COMPLIANCE_IMPL 豁免（与 ws_gateway.c 同策略）。
+if(AIRY_HAS_HTTP2)
+    set_source_files_properties(
+        src/gateway/http2_gateway.c
         PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
     )
 endif()
@@ -108,6 +139,10 @@ target_include_directories(gateway
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         # R-09-124: cjson (system library)
         ${CJSON_INCLUDE_DIRS}/cjson
+        # nghttp2 头文件（HTTP/2 支持）— 项目本地副本
+        # 头文件位于 commons/include/third_party/nghttp2/nghttp2.h
+        # include 路径需指向 third_party/ 以解析 <nghttp2/nghttp2.h>
+        ${COMMONS_DIR}/include/third_party
 )
 
 # P0.18.1: svc_common 提供 jsonrpc_get_error_message（jsonrpc_helpers.c），
@@ -146,6 +181,13 @@ if(AIRY_HAS_LIBWEBSOCKETS)
     endif()
 endif()
 
+# nghttp2 链接（HTTP/2 支持）
+# 使用完整路径避免消费者链接时找不到 -lnghttp2（系统仅有 .so.14 无 .so 软链接）
+if(AIRY_HAS_HTTP2 AND NGHTTP2_LIBRARY)
+    target_link_libraries(gateway PRIVATE ${NGHTTP2_LIBRARY})
+    target_compile_definitions(gateway PRIVATE AIRY_HAS_HTTP2=1)
+endif()
+
 # ========== 安装 ==========
 install(TARGETS gateway
     ARCHIVE DESTINATION lib
@@ -160,6 +202,7 @@ install(FILES
 install(FILES
     src/gateway/gateway.h
     src/gateway/http_gateway.h
+    src/gateway/http2_gateway.h
     src/gateway/ws_gateway.h
     src/gateway/stdio_gateway.h
     src/utils/jsonrpc.h
