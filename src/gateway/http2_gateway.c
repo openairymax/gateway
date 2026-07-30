@@ -23,6 +23,7 @@
  */
 
 // @owner: team-B
+#define LOG_TAG "http2_gateway"
 #include "http2_gateway.h"
 
 #include "../../../commons/utils/error/include/error.h"
@@ -115,6 +116,7 @@ static http2_stream_context_t *http2_stream_create(int32_t stream_id)
     }
     ctx->stream_id = stream_id;
     ctx->response_status = 200;
+    LOG_DEBUG("stream created: stream_id=%d", stream_id);
     return ctx;
 }
 
@@ -125,6 +127,9 @@ static void http2_stream_destroy(http2_stream_context_t *ctx)
 {
     if (!ctx)
         return;
+
+    LOG_DEBUG("stream destroyed: stream_id=%d, req_body=%zuB, resp_body=%zuB, status=%d",
+              ctx->stream_id, ctx->request_body_len, ctx->response_body_len, ctx->response_status);
 
     AIRY_FREE(ctx->method);
     AIRY_FREE(ctx->path);
@@ -500,20 +505,29 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
 
     if (!ctx || ctx->response_sent_flag) {
+        LOG_WARN("process_request skipped: ctx=%p, already_sent=%d", (void *)ctx,
+                 ctx ? ctx->response_sent_flag : 0);
         return;
     }
 
     char *response_json = NULL;
 
+    LOG_INFO("processing request: stream_id=%d, method=%s, path=%s, body_len=%zu",
+             ctx->stream_id, ctx->method ? ctx->method : "(null)",
+             ctx->path ? ctx->path : "(null)", ctx->request_body_len);
+
     /* 路由分发 */
     if (ctx->method && strcmp(ctx->method, "POST") == 0) {
         /* POST / → JSON-RPC */
         if (ctx->request_body_len > gw->base.max_request_size) {
+            LOG_WARN("request too large: %zu > %zu (stream_id=%d)",
+                     ctx->request_body_len, gw->base.max_request_size, ctx->stream_id);
             ctx->response_status = 413;
             response_json = jsonrpc_create_error_response(NULL, -413, "Request too large", NULL);
         } else {
             response_json = http2_handle_jsonrpc(gw, ctx);
             if (!response_json) {
+                LOG_ERROR("jsonrpc handler returned NULL (stream_id=%d)", ctx->stream_id);
                 ctx->response_status = 500;
                 response_json = jsonrpc_create_error_response(NULL, -32603,
                                                               "Internal error", NULL);
@@ -521,14 +535,20 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
         }
     } else if (ctx->method && strcmp(ctx->method, "GET") == 0) {
         if (ctx->path && strcmp(ctx->path, "/health") == 0) {
+            LOG_DEBUG("health check request (stream_id=%d)", ctx->stream_id);
             response_json = http2_handle_health();
         } else {
+            LOG_WARN("GET path not found: %s (stream_id=%d)",
+                     ctx->path ? ctx->path : "(null)", ctx->stream_id);
             ctx->response_status = 404;
             response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
         }
     } else if (ctx->method && strcmp(ctx->method, "OPTIONS") == 0) {
+        LOG_DEBUG("OPTIONS preflight request (stream_id=%d)", ctx->stream_id);
         response_json = http2_handle_preflight();
     } else {
+        LOG_WARN("unsupported method: %s (stream_id=%d)",
+                 ctx->method ? ctx->method : "(null)", ctx->stream_id);
         ctx->response_status = 404;
         response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
     }
@@ -550,7 +570,9 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
     atomic_fetch_add(&gw->base.bytes_sent, ctx->response_body_len);
 
     /* 提交响应 */
-    http2_submit_response_impl(session, ctx, gw);
+    int submit_ret = http2_submit_response_impl(session, ctx, gw);
+    LOG_INFO("response submitted: stream_id=%d, status=%d, resp_len=%zu, ret=%d",
+             ctx->stream_id, ctx->response_status, ctx->response_body_len, submit_ret);
 }
 
 /* ========== nghttp2 回调实现 ========== */
@@ -677,12 +699,17 @@ static int http2_on_frame_recv(nghttp2_session *session, const nghttp2_frame *fr
 static int http2_on_stream_close(nghttp2_session *session, int32_t stream_id,
                                  uint32_t error_code, void *user_data)
 {
-    (void)error_code;
     (void)user_data;
 
     http2_stream_context_t *ctx =
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
     if (ctx) {
+        if (error_code != NGHTTP2_NO_ERROR) {
+            LOG_WARN("stream closed with error: stream_id=%d, error_code=%u (%s)",
+                     stream_id, error_code, nghttp2_http2_strerror(error_code));
+        } else {
+            LOG_DEBUG("stream closed normally: stream_id=%d", stream_id);
+        }
         http2_stream_destroy(ctx);
         nghttp2_session_set_stream_user_data(session, stream_id, NULL);
     }
@@ -769,12 +796,14 @@ static http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd
     ret = nghttp2_submit_settings(sess->session, NGHTTP2_FLAG_NONE, settings_entries,
                                   num_entries);
     if (ret != 0) {
-        LOG_ERROR("nghttp2_submit_settings failed: %s", nghttp2_strerror(ret));
+        LOG_ERROR("nghttp2_submit_settings failed: %s (fd=%d)", nghttp2_strerror(ret), fd);
         nghttp2_session_del(sess->session);
         AIRY_FREE(sess);
         return NULL;
     }
 
+    LOG_INFO("HTTP/2 session created: fd=%d, max_streams=%u, window=%d",
+             fd, gw->max_concurrent_streams, HTTP2_INITIAL_WINDOW_SIZE);
     return sess;
 }
 
@@ -786,6 +815,8 @@ static void http2_session_destroy(http2_gateway_session_t *sess)
     if (!sess)
         return;
 
+    LOG_INFO("HTTP/2 session destroying: fd=%d", sess->fd);
+
     if (sess->session) {
         nghttp2_session_del(sess->session);
         sess->session = NULL;
@@ -794,6 +825,14 @@ static void http2_session_destroy(http2_gateway_session_t *sess)
     if (sess->fd >= 0) {
         close(sess->fd);
         sess->fd = -1;
+    }
+
+    /* P0 修复: 释放部分写入缓冲区 */
+    if (sess->pending_send_buf) {
+        AIRY_FREE(sess->pending_send_buf);
+        sess->pending_send_buf = NULL;
+        sess->pending_send_len = 0;
+        sess->pending_send_offset = 0;
     }
 
     AIRY_FREE(sess);
@@ -820,18 +859,26 @@ static int http2_session_recv_data(http2_gateway_session_t *sess)
 
     if (nread == 0) {
         /* 对端关闭连接 */
+        LOG_INFO("peer closed connection: fd=%d", sess->fd);
         return 1;
     }
 
     sess->last_activity_ns = gateway_time_ns();
     atomic_fetch_add(&sess->gateway->base.bytes_received, (uint64_t)nread);
+    LOG_DEBUG("recv %zd bytes on fd=%d", nread, sess->fd);
 
     /* 送入 nghttp2 处理 */
     ssize_t processed = nghttp2_session_mem_recv(sess->session, buf, (size_t)nread);
     if (processed < 0) {
-        LOG_ERROR("nghttp2_session_mem_recv failed: %s (fd=%d)",
-                  nghttp2_strerror((int)processed), sess->fd);
+        LOG_ERROR("nghttp2_session_mem_recv failed: %s (fd=%d, processed=%zd/%zd)",
+                  nghttp2_strerror((int)processed), sess->fd, processed, nread);
         return -1;
+    }
+
+    /* nghttp2 可能未消费全部数据（如连接前言中多余字节），记录但不视为错误 */
+    if ((size_t)processed < (size_t)nread) {
+        LOG_DEBUG("nghttp2 partial recv: processed=%zd/%zd bytes (fd=%d)",
+                  processed, nread, sess->fd);
     }
 
     return 0;
@@ -839,29 +886,91 @@ static int http2_session_recv_data(http2_gateway_session_t *sess)
 
 /**
  * @brief 将 nghttp2 待发送数据写入 socket
+ *
+ * P0 修复: 原实现在 write() 部分写入时直接调用 nghttp2_session_mem_send()
+ * 获取下一块数据，导致未写完的数据丢失。修复方案：
+ *   1. 先尝试 flush pending_send_buf 中的残留数据
+ *   2. 只有当 pending_send_buf 为空时才调用 nghttp2_session_mem_send
+ *   3. 如果 write() 部分写入，将剩余数据缓存到 pending_send_buf
+ *   4. 下次 POLLOUT 时从 pending_send_buf 继续发送
+ *
  * @return 0 正常，负数错误
  */
 static int http2_session_send_data(http2_gateway_session_t *sess)
 {
+    /* Step 1: 先 flush pending buffer 中的残留数据 */
+    if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
+        size_t remaining = sess->pending_send_len - sess->pending_send_offset;
+        ssize_t written = write(sess->fd, sess->pending_send_buf + sess->pending_send_offset,
+                                remaining);
+
+        if (written < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                LOG_DEBUG("pending flush deferred: fd=%d, remaining=%zu", sess->fd, remaining);
+                return 0;
+            }
+            LOG_ERROR("pending write failed on fd %d: %s", sess->fd, strerror(errno));
+            return -1;
+        }
+
+        sess->pending_send_offset += (size_t)written;
+        sess->last_activity_ns = gateway_time_ns();
+        atomic_fetch_add(&sess->gateway->base.bytes_sent, (uint64_t)written);
+        LOG_DEBUG("pending flush: wrote %zd/%zu bytes (fd=%d)", written, remaining, sess->fd);
+
+        if (sess->pending_send_offset < sess->pending_send_len) {
+            /* Socket buffer 仍满，等下次 POLLOUT */
+            return 0;
+        }
+
+        /* Pending buffer 全部发送完毕，释放 */
+        AIRY_FREE(sess->pending_send_buf);
+        sess->pending_send_buf = NULL;
+        sess->pending_send_len = 0;
+        sess->pending_send_offset = 0;
+    }
+
+    /* Step 2: 从 nghttp2 获取新数据并发送 */
     const uint8_t *data_ptr = NULL;
     ssize_t send_len = nghttp2_session_mem_send(sess->session, &data_ptr);
 
     while (send_len > 0 && data_ptr) {
-        ssize_t written = write(sess->fd, data_ptr, (size_t)send_len);
-        if (written < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                /* socket 发送缓冲区满，等待下次 POLLOUT */
-                break;
+        size_t total = (size_t)send_len;
+        size_t offset = 0;
+
+        /* 尝试写入全部数据 */
+        while (offset < total) {
+            ssize_t written = write(sess->fd, data_ptr + offset, total - offset);
+
+            if (written < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                    /* Socket buffer 满，将剩余数据缓存到 pending_send_buf */
+                    size_t remaining = total - offset;
+                    sess->pending_send_buf = AIRY_MALLOC(remaining);
+                    if (!sess->pending_send_buf) {
+                        LOG_ERROR("pending buffer alloc failed: fd=%d, size=%zu",
+                                  sess->fd, remaining);
+                        return -1;
+                    }
+                    memcpy(sess->pending_send_buf, data_ptr + offset, remaining);
+                    sess->pending_send_len = remaining;
+                    sess->pending_send_offset = 0;
+                    LOG_WARN("partial write: buffered %zu bytes for fd=%d (total=%zu, sent=%zu)",
+                             remaining, sess->fd, total, offset);
+                    return 0;
+                }
+                LOG_ERROR("write failed on fd %d: %s", sess->fd, strerror(errno));
+                return -1;
             }
-            LOG_ERROR("write failed on fd %d: %s", sess->fd, strerror(errno));
-            return -1;
+
+            offset += (size_t)written;
         }
 
-        if (written > 0) {
-            sess->last_activity_ns = gateway_time_ns();
-            atomic_fetch_add(&sess->gateway->base.bytes_sent, (uint64_t)written);
-        }
+        sess->last_activity_ns = gateway_time_ns();
+        atomic_fetch_add(&sess->gateway->base.bytes_sent, (uint64_t)total);
+        LOG_DEBUG("send %zu bytes on fd=%d", total, sess->fd);
 
+        /* 当前 chunk 全部发送完毕，获取下一块 */
         send_len = nghttp2_session_mem_send(sess->session, &data_ptr);
     }
 
@@ -936,8 +1045,8 @@ static void http2_event_loop_accept(http2_gateway_t *gw)
 
     /* 连接数限制 */
     if (gw->session_count >= gw->max_concurrent_streams) {
-        LOG_WARN("HTTP/2 connection limit reached (%u), rejecting new connection",
-                 gw->max_concurrent_streams);
+        LOG_WARN("connection limit reached (%zu/%u), rejecting new connection",
+                 gw->session_count, gw->max_concurrent_streams);
         close(fd);
         return;
     }
@@ -972,8 +1081,8 @@ static void http2_event_loop_accept(http2_gateway_t *gw)
 
     char ip_buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &addr.sin_addr, ip_buf, sizeof(ip_buf));
-    LOG_DEBUG("HTTP/2 connection accepted from %s:%d (fd=%d, sessions=%zu)", ip_buf,
-              ntohs(addr.sin_port), fd, gw->session_count);
+    LOG_INFO("connection accepted: %s:%d → fd=%d (sessions=%zu/%u)",
+             ip_buf, ntohs(addr.sin_port), fd, gw->session_count, gw->max_concurrent_streams);
 }
 
 /**
@@ -993,7 +1102,9 @@ static void http2_event_loop_cleanup(http2_gateway_t *gw)
         /* 检查超时 */
         if (!should_close && timeout_ns > 0) {
             if ((now - sess->last_activity_ns) > timeout_ns) {
-                LOG_DEBUG("HTTP/2 session timeout (fd=%d)", sess->fd);
+                LOG_INFO("session timeout: fd=%d, idle=%llums",
+                         sess->fd,
+                         (unsigned long long)((now - sess->last_activity_ns) / 1000000ULL));
                 should_close = true;
             }
         }
@@ -1002,11 +1113,17 @@ static void http2_event_loop_cleanup(http2_gateway_t *gw)
         if (!should_close) {
             if (!nghttp2_session_want_read(sess->session) &&
                 !nghttp2_session_want_write(sess->session)) {
+                LOG_DEBUG("nghttp2 session done: fd=%d (no more read/write)", sess->fd);
                 should_close = true;
             }
         }
 
         if (should_close) {
+            /* 检查是否有未发送完毕的 pending buffer */
+            if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
+                LOG_WARN("closing session with %zu bytes unsent: fd=%d",
+                         sess->pending_send_len - sess->pending_send_offset, sess->fd);
+            }
             /* 发送 GOAWAY 帧 */
             if (sess->session) {
                 nghttp2_submit_goaway(sess->session, NGHTTP2_FLAG_NONE,
@@ -1059,6 +1176,11 @@ static void *http2_event_loop(void *arg)
                 events |= POLLOUT;
             }
 
+            /* P0 修复: 如果有 pending_send_buf 未发送完毕，必须监听 POLLOUT */
+            if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
+                events |= POLLOUT;
+            }
+
             /* 如果既不想读也不想写，但会话还活着，仍然监听读（用于检测对端关闭） */
             if (events == 0) {
                 events = POLLIN;
@@ -1097,6 +1219,11 @@ static void *http2_event_loop(void *arg)
 
             if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 /* 连接错误或挂起，关闭会话 */
+                LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)",
+                         sess->fd, revents,
+                         (revents & POLLERR) ? "ERR " : "",
+                         (revents & POLLHUP) ? "HUP " : "",
+                         (revents & POLLNVAL) ? "NVAL" : "");
                 http2_gateway_remove_session(gw, i);
                 continue;
             }
