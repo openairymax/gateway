@@ -71,6 +71,13 @@ typedef struct http2_gateway_session {
     uint64_t connect_time_ns;   /**< 连接建立时间 */
     uint64_t last_activity_ns;  /**< 最后活动时间 */
     bool closing;               /**< 标记为关闭中 */
+
+    /* P0 修复: 部分写入缓冲区。
+     * nghttp2_session_mem_send() 返回数据后认为已被消费，
+     * 但 write() 可能只写入部分字节。剩余数据必须缓存到下次 POLLOUT。 */
+    uint8_t *pending_send_buf;   /**< 未发送完毕的数据缓冲区 */
+    size_t pending_send_len;     /**< 缓冲区中数据总长度 */
+    size_t pending_send_offset;  /**< 已写入偏移量 */
 } http2_gateway_session_t;
 
 /**
