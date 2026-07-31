@@ -14,6 +14,7 @@
 // @owner: team-B
 #include "syscall_router.h"
 
+#include "daemon_rpc_client.h"
 #include "error.h"
 #include "error.h"
 #include "jsonrpc.h"
@@ -21,11 +22,25 @@
 #include "airy_memory.h"
 #include "platform.h"
 #include "string_compat.h"
+#include "svc_logger.h"
 #include "syscalls.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Phase 3：执行体集中化重构 — daemon Unix socket 路径
+ *
+ * airy_sys_memory_* / airy_sys_agent_* 已迁移至 mem_d / agent_d 守护进程，
+ * 本文件内仅保留 thin IPC client 转发逻辑。socket 路径与 daemon 端约定一致
+ * （见 daemons/mem_d/src/main.c 与 daemons/agent_d/src/main.c）。 */
+#ifndef AIRY_MEM_D_SOCKET
+#define AIRY_MEM_D_SOCKET AIRY_RUNTIME_DIR "/mem.sock"
+#endif
+#ifndef AIRY_AGENT_D_SOCKET
+#define AIRY_AGENT_D_SOCKET AIRY_RUNTIME_DIR "/agent.sock"
+#endif
+#define AIRY_DAEMON_RPC_TIMEOUT_MS 30000
 
 #define RUNTIME_LOCK() airy_mtx_lock(&g_runtime.mutex)
 #define RUNTIME_UNLOCK() airy_mtx_unlock(&g_runtime.mutex)
@@ -464,17 +479,13 @@ char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id
 
 
 #define MAX_TASKS_DEFAULT 256
-#define MAX_RECORDS_DEFAULT 1024
 #define MAX_SESSIONS_DEFAULT 64
 #include <airymax/sched.h>
 
-#define MAX_AGENTS_DEFAULT AIRY_CAP_MAX_AGENTS
 #define MAX_INPUT_SIZE 4096
 
 static size_t g_max_tasks = 0;
-static size_t g_max_records = 0;
 static size_t g_max_sessions = 0;
-static size_t g_max_agents = 0;
 
 typedef struct {
     char *key;
@@ -603,43 +614,20 @@ typedef struct {
 } task_entry_t;
 
 typedef struct {
-    char *record_id;
-    void *data;
-    size_t len;
-    char *metadata;
-    float score;
-    time_t created_at;
-} memory_record_t;
-
-typedef struct {
     char *session_id;
     char *metadata;
     time_t created_at;
     time_t last_accessed;
 } session_entry_t;
 
-typedef struct {
-    char *agent_id;
-    char *spec;
-    int status;
-    time_t spawned_at;
-} agent_entry_t;
-
 static struct {
     task_entry_t *tasks;
     size_t task_count;
     hash_table_t task_index;
-    memory_record_t *records;
-    size_t record_count;
-    hash_table_t record_index;
     session_entry_t *sessions;
     size_t session_count;
     hash_table_t session_index;
-    agent_entry_t *agents;
-    size_t agent_count;
-    hash_table_t agent_index;
     uint64_t total_tasks_submitted;
-    uint64_t total_memory_writes;
     airy_mtx_t mutex;
     bool initialized;
 } g_runtime = {0};
@@ -650,9 +638,7 @@ static void __attribute__((constructor)) runtime_init(void)
 
     const char *env;
     g_max_tasks = MAX_TASKS_DEFAULT;
-    g_max_records = MAX_RECORDS_DEFAULT;
     g_max_sessions = MAX_SESSIONS_DEFAULT;
-    g_max_agents = MAX_AGENTS_DEFAULT;
 
     env = getenv("AIRY_MAX_TASKS");
     if (env) {
@@ -660,57 +646,33 @@ static void __attribute__((constructor)) runtime_init(void)
         if (v > 0 && v < 65536)
             g_max_tasks = (size_t)v;
     }
-    env = getenv("AIRY_MAX_RECORDS");
-    if (env) {
-        unsigned long v = strtoul(env, NULL, 10);
-        if (v > 0 && v < 65536)
-            g_max_records = (size_t)v;
-    }
     env = getenv("AIRY_MAX_SESSIONS");
     if (env) {
         unsigned long v = strtoul(env, NULL, 10);
         if (v > 0 && v < 65536)
             g_max_sessions = (size_t)v;
     }
-    env = getenv("AIRY_MAX_AGENTS");
-    if (env) {
-        unsigned long v = strtoul(env, NULL, 10);
-        if (v > 0 && v < 65536)
-            g_max_agents = (size_t)v;
-    }
+    /* Phase 3：memory/agent 容量由 mem_d/agent_d 守护进程独立管理，
+     * AIRY_MAX_RECORDS / AIRY_MAX_AGENTS 环境变量转发至对应 daemon 解析。 */
 
     g_runtime.tasks = (task_entry_t *)AIRY_CALLOC(g_max_tasks, sizeof(task_entry_t));
-    g_runtime.records = (memory_record_t *)AIRY_CALLOC(g_max_records, sizeof(memory_record_t));
     g_runtime.sessions = (session_entry_t *)AIRY_CALLOC(g_max_sessions, sizeof(session_entry_t));
-    g_runtime.agents = (agent_entry_t *)AIRY_CALLOC(g_max_agents, sizeof(agent_entry_t));
-    if (!g_runtime.tasks || !g_runtime.records || !g_runtime.sessions || !g_runtime.agents) {
+    if (!g_runtime.tasks || !g_runtime.sessions) {
         AIRY_LOG_ERROR("syscall_router: runtime_init calloc failed");
         AIRY_FREE(g_runtime.tasks);
-        AIRY_FREE(g_runtime.records);
         AIRY_FREE(g_runtime.sessions);
-        AIRY_FREE(g_runtime.agents);
         g_runtime.tasks = NULL;
-        g_runtime.records = NULL;
         g_runtime.sessions = NULL;
-        g_runtime.agents = NULL;
         return;
     }
     if (ht_init(&g_runtime.task_index, g_max_tasks * 2) != 0 ||
-        ht_init(&g_runtime.record_index, g_max_records * 2) != 0 ||
-        ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0 ||
-        ht_init(&g_runtime.agent_index, g_max_agents * 2) != 0) {
+        ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
         ht_destroy(&g_runtime.task_index);
-        ht_destroy(&g_runtime.record_index);
         ht_destroy(&g_runtime.session_index);
-        ht_destroy(&g_runtime.agent_index);
         AIRY_FREE(g_runtime.tasks);
-        AIRY_FREE(g_runtime.records);
         AIRY_FREE(g_runtime.sessions);
-        AIRY_FREE(g_runtime.agents);
         g_runtime.tasks = NULL;
-        g_runtime.records = NULL;
         g_runtime.sessions = NULL;
-        g_runtime.agents = NULL;
         return;
     }
     g_runtime.initialized = true;
@@ -724,36 +686,20 @@ static void __attribute__((destructor)) runtime_cleanup(void)
         AIRY_FREE(g_runtime.tasks[i].input);
         AIRY_FREE(g_runtime.tasks[i].result);
     }
-    /* 释放每个 memory record 的字符串字段 */
-    for (size_t i = 0; i < g_runtime.record_count; i++) {
-        AIRY_FREE(g_runtime.records[i].record_id);
-        AIRY_FREE(g_runtime.records[i].data);
-        AIRY_FREE(g_runtime.records[i].metadata);
-    }
     /* 释放每个 session entry 的字符串字段 */
     for (size_t i = 0; i < g_runtime.session_count; i++) {
         AIRY_FREE(g_runtime.sessions[i].session_id);
         AIRY_FREE(g_runtime.sessions[i].metadata);
     }
-    /* 释放每个 agent entry 的字符串字段 */
-    for (size_t i = 0; i < g_runtime.agent_count; i++) {
-        AIRY_FREE(g_runtime.agents[i].agent_id);
-        AIRY_FREE(g_runtime.agents[i].spec);
-    }
+    /* Phase 3：memory/agent 资源由 mem_d/agent_d 守护进程独立管理 */
 
     airy_mtx_destroy(&g_runtime.mutex);
     ht_destroy(&g_runtime.task_index);
-    ht_destroy(&g_runtime.record_index);
     ht_destroy(&g_runtime.session_index);
-    ht_destroy(&g_runtime.agent_index);
     AIRY_FREE(g_runtime.tasks);
-    AIRY_FREE(g_runtime.records);
     AIRY_FREE(g_runtime.sessions);
-    AIRY_FREE(g_runtime.agents);
     g_runtime.tasks = NULL;
-    g_runtime.records = NULL;
     g_runtime.sessions = NULL;
-    g_runtime.agents = NULL;
     g_runtime.initialized = false;
 }
 
@@ -862,36 +808,57 @@ airy_err_t airy_sys_task_cancel(const char *task_id)
     return AIRY_ERR_NOT_FOUND;
 }
 
-/* Memory 管理 */
+/* Memory 管理 — Phase 3：thin IPC client 转发至 mem_d 守护进程
+ *
+ * 保持原 airy_sys_memory_* 函数签名与 ABI 兼容；运行时通过 Unix socket
+ * 向 mem_d 发送 JSON-RPC 请求（mem.write/search/get/delete），解析响应后
+ * 按原 C ABI 返回。daemon 不可达时返回 AIRY_ERR_FAIL，由调用方降级处理。 */
 airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metadata,
                                          char **out_record_id)
 {
     if (!data || !len || !out_record_id)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    if (g_runtime.record_count >= g_max_records) {
-        RUNTIME_UNLOCK();
-        return AIRY_ERR_OUT_OF_MEMORY;
+    *out_record_id = NULL;
+
+    /* 构造 params: {data: <string>, metadata?: <object>} */
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "data", (const char *)data);
+    if (metadata && metadata[0] != '\0') {
+        cJSON *meta = cJSON_Parse(metadata);
+        if (meta)
+            cJSON_AddItemToObject(params, "metadata", meta);
+        else
+            cJSON_AddStringToObject(params, "metadata", metadata);
     }
 
-    memory_record_t *rec = &g_runtime.records[g_runtime.record_count++];
-    rec->record_id = AIRY_STRDUP(generate_uuid());
-    rec->data = AIRY_MALLOC(len);
-    if (!rec->data) {
-        RUNTIME_UNLOCK();
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
         return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "write", params_str,
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS)
+        return rc;
+
+    /* 解析 result: {record_id: <string>} */
+    cJSON *result = cJSON_Parse(result_str);
+    AIRY_FREE(result_str);
+    if (!result) {
+        SVC_LOG_ERROR("airy_sys_memory_write: malformed result JSON");
+        return AIRY_ERR_FAIL;
     }
-    AIRY_MEMCPY(rec->data, data, len);
-    rec->len = len;
-    rec->metadata = metadata ? AIRY_STRDUP(metadata) : NULL;
-    rec->score = 1.0f;
-    rec->created_at = time(NULL);
-    ht_insert(&g_runtime.record_index, rec->record_id, g_runtime.record_count - 1);
-    g_runtime.total_memory_writes++;
-    *out_record_id = AIRY_STRDUP(rec->record_id);
-    RUNTIME_UNLOCK();
-    return AIRY_OK;
+    cJSON *rid = cJSON_GetObjectItem(result, "record_id");
+    if (!cJSON_IsString(rid)) {
+        cJSON_Delete(result);
+        return AIRY_ERR_FAIL;
+    }
+    *out_record_id = AIRY_STRDUP(rid->valuestring);
+    cJSON_Delete(result);
+    return *out_record_id ? AIRY_OK : AIRY_ERR_OUT_OF_MEMORY;
 }
 
 airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***record_ids,
@@ -900,30 +867,66 @@ airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***rec
     if (!record_ids || !scores || !count)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    size_t found = 0;
-    size_t max_results = limit ? limit : 10;
-    if (max_results > g_runtime.record_count)
-        max_results = g_runtime.record_count;
+    *record_ids = NULL;
+    *scores = NULL;
+    *count = 0;
 
-    *record_ids = (char **)AIRY_CALLOC(max_results, sizeof(char *));
-    *scores = (float *)AIRY_CALLOC(max_results, sizeof(float));
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "query", query ? query : "");
+    cJSON_AddNumberToObject(params, "limit", (double)limit);
+
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "search", params_str,
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS)
+        return rc;
+
+    /* 解析 result: {results: [{record_id, score}], total: int} */
+    cJSON *result = cJSON_Parse(result_str);
+    AIRY_FREE(result_str);
+    if (!result) {
+        SVC_LOG_ERROR("airy_sys_memory_search: malformed result JSON");
+        return AIRY_ERR_FAIL;
+    }
+    cJSON *arr = cJSON_GetObjectItem(result, "results");
+    if (!cJSON_IsArray(arr)) {
+        cJSON_Delete(result);
+        return AIRY_ERR_FAIL;
+    }
+    int n = cJSON_GetArraySize(arr);
+    if (n <= 0) {
+        cJSON_Delete(result);
+        return AIRY_OK;
+    }
+
+    *record_ids = (char **)AIRY_CALLOC((size_t)n, sizeof(char *));
+    *scores = (float *)AIRY_CALLOC((size_t)n, sizeof(float));
     if (!*record_ids || !*scores) {
-        RUNTIME_UNLOCK();
+        AIRY_FREE(*record_ids);
+        AIRY_FREE(*scores);
+        *record_ids = NULL;
+        *scores = NULL;
+        cJSON_Delete(result);
         return AIRY_ERR_OUT_OF_MEMORY;
     }
 
-    for (size_t i = 0; i < g_runtime.record_count && found < max_results; i++) {
-        if (!query || strlen(query) == 0 ||
-            (g_runtime.records[i].metadata &&
-             strstr(g_runtime.records[i].metadata, query) != NULL)) {
-            (*record_ids)[found] = AIRY_STRDUP(g_runtime.records[i].record_id);
-            (*scores)[found] = g_runtime.records[i].score;
-            found++;
-        }
+    for (int i = 0; i < n; i++) {
+        cJSON *item = cJSON_GetArrayItem(arr, i);
+        cJSON *rid = cJSON_GetObjectItem(item, "record_id");
+        cJSON *score = cJSON_GetObjectItem(item, "score");
+        if (cJSON_IsString(rid))
+            (*record_ids)[i] = AIRY_STRDUP(rid->valuestring);
+        if (score && cJSON_IsNumber(score))
+            (*scores)[i] = (float)score->valuedouble;
     }
-    *count = found;
-    RUNTIME_UNLOCK();
+    *count = (size_t)n;
+    cJSON_Delete(result);
     return AIRY_OK;
 }
 
@@ -932,24 +935,48 @@ airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *o
     if (!record_id || !out_data || !out_len)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    ssize_t idx = ht_lookup(&g_runtime.record_index, record_id);
-    if (idx >= 0 && (size_t)idx < g_runtime.record_count) {
-        *out_data = AIRY_MALLOC(g_runtime.records[idx].len + 1);
-        if (!*out_data) {
-            RUNTIME_UNLOCK();
-            return AIRY_ERR_OUT_OF_MEMORY;
-        }
-        AIRY_MEMCPY(*out_data, g_runtime.records[idx].data, g_runtime.records[idx].len);
-        ((char *)*out_data)[g_runtime.records[idx].len] = '\0';
-        *out_len = g_runtime.records[idx].len;
-        RUNTIME_UNLOCK();
-        return AIRY_OK;
-    }
-    RUNTIME_UNLOCK();
-    *out_data = AIRY_STRDUP("");
+    *out_data = NULL;
     *out_len = 0;
-    return AIRY_ERR_NOT_FOUND;
+
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "record_id", record_id);
+
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "get", params_str,
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS)
+        return rc;
+
+    cJSON *result = cJSON_Parse(result_str);
+    AIRY_FREE(result_str);
+    if (!result) {
+        SVC_LOG_ERROR("airy_sys_memory_get: malformed result JSON");
+        return AIRY_ERR_FAIL;
+    }
+    cJSON *data = cJSON_GetObjectItem(result, "data");
+    cJSON *len_field = cJSON_GetObjectItem(result, "length");
+    if (!cJSON_IsString(data)) {
+        cJSON_Delete(result);
+        return AIRY_ERR_NOT_FOUND;
+    }
+    const char *str = data->valuestring;
+    size_t slen = strlen(str);
+    *out_data = AIRY_MALLOC(slen + 1);
+    if (!*out_data) {
+        cJSON_Delete(result);
+        return AIRY_ERR_OUT_OF_MEMORY;
+    }
+    memcpy(*out_data, str, slen);
+    ((char *)*out_data)[slen] = '\0';
+    *out_len = (len_field && cJSON_IsNumber(len_field)) ? (size_t)len_field->valuedouble : slen;
+    cJSON_Delete(result);
+    return AIRY_OK;
 }
 
 airy_err_t airy_sys_memory_delete(const char *record_id)
@@ -957,21 +984,20 @@ airy_err_t airy_sys_memory_delete(const char *record_id)
     if (!record_id)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    ssize_t idx = ht_lookup(&g_runtime.record_index, record_id);
-    if (idx >= 0 && (size_t)idx < g_runtime.record_count) {
-        ht_remove(&g_runtime.record_index, record_id);
-        AIRY_FREE(g_runtime.records[idx].record_id);
-        AIRY_FREE(g_runtime.records[idx].data);
-        AIRY_FREE(g_runtime.records[idx].metadata);
-        __builtin_memmove(&g_runtime.records[idx], &g_runtime.records[idx + 1],
-                (g_runtime.record_count - idx - 1) * sizeof(memory_record_t));
-        g_runtime.record_count--;
-        RUNTIME_UNLOCK();
-        return AIRY_OK;
-    }
-    RUNTIME_UNLOCK();
-    return AIRY_ERR_NOT_FOUND;
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "record_id", record_id);
+
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "delete", params_str,
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    AIRY_FREE(params_str);
+    AIRY_FREE(result_str);
+    return rc;
 }
 
 /* Session 管理 */
@@ -1112,27 +1138,53 @@ airy_err_t airy_sys_telemetry_traces(const char *trace_id, char **out_traces)
     return AIRY_OK;
 }
 
-/* Agent 管理 */
+/* Agent 管理 — Phase 3：thin IPC client 转发至 agent_d 守护进程
+ *
+ * 保持原 airy_sys_agent_* 函数签名与 ABI 兼容；运行时通过 Unix socket
+ * 向 agent_d 发送 JSON-RPC 请求（agent.spawn/terminate/invoke/list），
+ * 解析响应后按原 C ABI 返回。daemon 不可达时返回 AIRY_ERR_FAIL。 */
 airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
 {
     if (!spec || !out_agent_id)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    if (g_runtime.agent_count >= g_max_agents) {
-        RUNTIME_UNLOCK();
-        return AIRY_ERR_OUT_OF_MEMORY;
+    *out_agent_id = NULL;
+
+    cJSON *params = cJSON_CreateObject();
+    /* spec 必须是 JSON 字符串；若调用者传入非法 JSON，作为字符串字段回退 */
+    cJSON *spec_obj = cJSON_Parse(spec);
+    if (spec_obj) {
+        cJSON_AddItemToObject(params, "agent_spec", spec_obj);
+    } else {
+        cJSON_AddStringToObject(params, "agent_spec", spec);
     }
 
-    agent_entry_t *agent = &g_runtime.agents[g_runtime.agent_count++];
-    agent->agent_id = AIRY_STRDUP(generate_uuid());
-    agent->spec = AIRY_STRDUP(spec);
-    agent->status = 1;
-    agent->spawned_at = time(NULL);
-    *out_agent_id = AIRY_STRDUP(agent->agent_id);
-    ht_insert(&g_runtime.agent_index, agent->agent_id, g_runtime.agent_count - 1);
-    RUNTIME_UNLOCK();
-    return AIRY_OK;
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "spawn", params_str,
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS)
+        return rc;
+
+    cJSON *result = cJSON_Parse(result_str);
+    AIRY_FREE(result_str);
+    if (!result) {
+        SVC_LOG_ERROR("airy_sys_agent_spawn: malformed result JSON");
+        return AIRY_ERR_FAIL;
+    }
+    cJSON *aid = cJSON_GetObjectItem(result, "agent_id");
+    if (!cJSON_IsString(aid)) {
+        cJSON_Delete(result);
+        return AIRY_ERR_FAIL;
+    }
+    *out_agent_id = AIRY_STRDUP(aid->valuestring);
+    cJSON_Delete(result);
+    return *out_agent_id ? AIRY_OK : AIRY_ERR_OUT_OF_MEMORY;
 }
 
 airy_err_t airy_sys_agent_terminate(const char *agent_id)
@@ -1140,15 +1192,20 @@ airy_err_t airy_sys_agent_terminate(const char *agent_id)
     if (!agent_id)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    ssize_t idx = ht_lookup(&g_runtime.agent_index, agent_id);
-    if (idx >= 0 && (size_t)idx < g_runtime.agent_count) {
-        g_runtime.agents[idx].status = 3;
-        RUNTIME_UNLOCK();
-        return AIRY_OK;
-    }
-    RUNTIME_UNLOCK();
-    return AIRY_ERR_NOT_FOUND;
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "agent_id", agent_id);
+
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "terminate", params_str,
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    AIRY_FREE(params_str);
+    AIRY_FREE(result_str);
+    return rc;
 }
 
 airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t len,
@@ -1157,27 +1214,47 @@ airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t
     if (!agent_id || !input || !out_output)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    ssize_t idx = ht_lookup(&g_runtime.agent_index, agent_id);
-    if (idx >= 0 && (size_t)idx < g_runtime.agent_count) {
-        if (g_runtime.agents[idx].status != 1) {
-            *out_output = AIRY_STRDUP("{\"error\":\"Agent not running\"}");
-            RUNTIME_UNLOCK();
-            return AIRY_ERR_STATE_ERROR;
-        }
+    *out_output = NULL;
 
-        cJSON *result = cJSON_CreateObject();
-        cJSON_AddStringToObject(result, "agent_id", agent_id);
-        cJSON_AddStringToObject(result, "output", "invocation processed");
-        cJSON_AddNumberToObject(result, "processing_time_ms", 5.2);
-        *out_output = cJSON_PrintUnformatted(result);
-        cJSON_Delete(result);
-        RUNTIME_UNLOCK();
-        return AIRY_OK;
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "agent_id", agent_id);
+    /* input 不一定 NUL 终止：构造 (len+1) 缓冲区并拷贝 */
+    char *input_str = (char *)AIRY_MALLOC(len + 1);
+    if (!input_str) {
+        cJSON_Delete(params);
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
-    RUNTIME_UNLOCK();
-    *out_output = AIRY_STRDUP("{\"error\":\"Agent not found\"}");
-    return AIRY_ERR_NOT_FOUND;
+    memcpy(input_str, input, len);
+    input_str[len] = '\0';
+    cJSON_AddStringToObject(params, "input", input_str);
+    AIRY_FREE(input_str);
+
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "invoke", params_str,
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS)
+        return rc;
+
+    cJSON *result = cJSON_Parse(result_str);
+    AIRY_FREE(result_str);
+    if (!result) {
+        SVC_LOG_ERROR("airy_sys_agent_invoke: malformed result JSON");
+        return AIRY_ERR_FAIL;
+    }
+    cJSON *out_field = cJSON_GetObjectItem(result, "output");
+    if (!cJSON_IsString(out_field)) {
+        cJSON_Delete(result);
+        return AIRY_ERR_FAIL;
+    }
+    *out_output = AIRY_STRDUP(out_field->valuestring);
+    cJSON_Delete(result);
+    return *out_output ? AIRY_OK : AIRY_ERR_OUT_OF_MEMORY;
 }
 
 airy_err_t airy_sys_agent_list(char ***agent_ids, size_t *count)
@@ -1185,17 +1262,43 @@ airy_err_t airy_sys_agent_list(char ***agent_ids, size_t *count)
     if (!agent_ids || !count)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
-    *agent_ids = (char **)AIRY_CALLOC(g_runtime.agent_count, sizeof(char *));
-    if (!*agent_ids && g_runtime.agent_count > 0) {
-        RUNTIME_UNLOCK();
-        return AIRY_ERR_OUT_OF_MEMORY;
+    *agent_ids = NULL;
+    *count = 0;
+
+    char *result_str = NULL;
+    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "list", "{}",
+                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    if (rc != AIRY_SUCCESS)
+        return rc;
+
+    cJSON *result = cJSON_Parse(result_str);
+    AIRY_FREE(result_str);
+    if (!result) {
+        SVC_LOG_ERROR("airy_sys_agent_list: malformed result JSON");
+        return AIRY_ERR_FAIL;
+    }
+    cJSON *arr = cJSON_GetObjectItem(result, "agent_ids");
+    if (!cJSON_IsArray(arr)) {
+        cJSON_Delete(result);
+        return AIRY_ERR_FAIL;
+    }
+    int n = cJSON_GetArraySize(arr);
+    if (n <= 0) {
+        cJSON_Delete(result);
+        return AIRY_OK;
     }
 
-    for (size_t i = 0; i < g_runtime.agent_count; i++) {
-        (*agent_ids)[i] = AIRY_STRDUP(g_runtime.agents[i].agent_id);
+    *agent_ids = (char **)AIRY_CALLOC((size_t)n, sizeof(char *));
+    if (!*agent_ids) {
+        cJSON_Delete(result);
+        return AIRY_ERR_OUT_OF_MEMORY;
     }
-    *count = g_runtime.agent_count;
-    RUNTIME_UNLOCK();
+    for (int i = 0; i < n; i++) {
+        cJSON *item = cJSON_GetArrayItem(arr, i);
+        if (cJSON_IsString(item))
+            (*agent_ids)[i] = AIRY_STRDUP(item->valuestring);
+    }
+    *count = (size_t)n;
+    cJSON_Delete(result);
     return AIRY_OK;
 }
