@@ -628,6 +628,11 @@ static struct {
     size_t session_count;
     hash_table_t session_index;
     uint64_t total_tasks_submitted;
+    /* Telemetry 遥测字段：memory/agent 实际计数由 mem_d/agent_d 独立管理
+     * （Phase 3 迁移），gateway 本地不统计，保持 0 输出。 */
+    uint64_t record_count;
+    uint64_t agent_count;
+    uint64_t total_memory_writes;
     airy_mtx_t mutex;
     bool initialized;
 } g_runtime = {0};
@@ -972,7 +977,7 @@ airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *o
         cJSON_Delete(result);
         return AIRY_ERR_OUT_OF_MEMORY;
     }
-    memcpy(*out_data, str, slen);
+    AIRY_MEMCPY(*out_data, str, slen);
     ((char *)*out_data)[slen] = '\0';
     *out_len = (len_field && cJSON_IsNumber(len_field)) ? (size_t)len_field->valuedouble : slen;
     cJSON_Delete(result);
@@ -1224,7 +1229,7 @@ airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t
         cJSON_Delete(params);
         return AIRY_ERR_OUT_OF_MEMORY;
     }
-    memcpy(input_str, input, len);
+    AIRY_MEMCPY(input_str, input, len);
     input_str[len] = '\0';
     cJSON_AddStringToObject(params, "input", input_str);
     AIRY_FREE(input_str);
