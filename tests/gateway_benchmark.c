@@ -59,7 +59,7 @@
 
 /* ========== 常量定义 ========== */
 
-#define BENCHMARK_VERSION "1.0.0"
+#define BENCHMARK_VERSION "0.1.1"
 #define MAX_CONCURRENT 500
 #define MAX_URL_LENGTH 2048
 #define MAX_PAYLOAD_SIZE (1024 * 1024)

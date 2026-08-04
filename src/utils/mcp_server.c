@@ -91,7 +91,7 @@ mcp_server_t mcp_server_create(const mcp_server_config_t *config)
         server->config = *config;
     } else {
         server->config.name = "agentrt-mcp";
-        server->config.version = "0.1.0";
+        server->config.version = "0.1.1";
         server->config.enable_tools = true;
         server->config.enable_resources = true;
         server->config.enable_prompts = true;
