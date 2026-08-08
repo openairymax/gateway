@@ -61,6 +61,16 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
                           http_request_context_t *context);
 
 /**
+ * @brief 处理 POST /api/v1/chat/stream（SSE 流式聊天）
+ *
+ * 网关作为 llm_d complete_stream 的流式转发代理：解析 OpenAI messages /
+ * JSON-RPC agent.run 简化格式请求体，直连 llm_d 拉取增量文本块并以 SSE
+ * 事件（data: <块>\n\n，EOF 后 data: [DONE]）逐块转发。
+ */
+int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
+                           http_request_context_t *context);
+
+/**
  * @brief 处理 404 Not Found
  */
 int handle_not_found(http_gateway_t *gateway, struct MHD_Connection *connection,
