@@ -241,16 +241,17 @@ int parse_json_request(http_gateway_t *gateway, http_request_context_t *context,
 
     context->json_request = cJSON_Parse(data);
     if (!context->json_request) {
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                              "cJSON_Parse: parse error");
-        return AIRY_ERR_UNKNOWN;
+        /* 非 JSON body：不视为解析错误，保留 upload_data 交 handler 兜底
+         * （OpenAI/MCP/A2A 等外部协议由 gateway_d 的协议入口做检测路由） */
+        return 0;
     }
 
     if (gw_jsonrpc_validate_request(context->json_request) != 0) {
+        /* 合法 JSON 但非 JSON-RPC 结构（如 OpenAI chat/completions）：
+         * 保留 upload_data，由协议入口 handler 检测路由 */
         cJSON_Delete(context->json_request);
         context->json_request = NULL;
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: parse error");
-        return AIRY_ERR_UNKNOWN;
+        return 0;
     }
 
     return 0;
@@ -344,6 +345,17 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
                                                 .internal_data = gateway->handler_data};
         result = gateway_rpc_handle_request(context->json_request, internal_handler_public_wrapper,
                                             &adapter);
+    } else if (context->upload_data && context->upload_data_size > 0 && gateway->handler) {
+        /* 非 JSON-RPC 原始 body（OpenAI/MCP/A2A 外部协议）：直通协议入口 handler
+         * 做协议检测路由（gateway_d 侧统一翻译，D2） */
+        char *resp = gateway->handler((void *)context->upload_data, gateway->handler_data);
+        AIRY_MEMSET(&result, 0, sizeof(result));
+        if (resp) {
+            result.response_json = resp;
+        } else {
+            result.error_code = -32603;
+            result.error_message = AIRY_STRDUP("Protocol handler failed");
+        }
     } else {
         /* 无效请求 */
         return jsonrpc_create_error_response(NULL, -32600, "Invalid request", NULL);
@@ -676,11 +688,18 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
         gateway->rate_limiter = gateway_rate_limiter_create(&rl_config);
     }
 
-    /* 初始化多协议处理器 */
-    gateway->protocol_handler = gateway_protocol_handler_create(NULL);
-    if (!gateway->protocol_handler) {
-        /* 协议处理器创建失败，但不影响基本功能 */
-        /* 可以降级为纯JSON-RPC模式 */
+    /* 初始化多协议处理器（默认关闭）
+     *
+     * 协议检测与翻译集中在 gateway_d 的协议适配器（D2），此处避免双重翻译层
+     * 重复耦合；需启用 gateway 库级转换时设 GATEWAY_PROTOCOL_HANDLER=true。 */
+    gateway->protocol_handler = NULL;
+    const char *proto_handler_env = getenv("GATEWAY_PROTOCOL_HANDLER");
+    if (proto_handler_env && strcmp(proto_handler_env, "true") == 0) {
+        gateway->protocol_handler = gateway_protocol_handler_create(NULL);
+        if (!gateway->protocol_handler) {
+            /* 协议处理器创建失败，但不影响基本功能 */
+            /* 可以降级为纯JSON-RPC模式 */
+        }
     }
 
     gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
