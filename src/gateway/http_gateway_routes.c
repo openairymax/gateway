@@ -510,8 +510,9 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         return MHD_YES;
     }
 
-    /* 阶段 3: 处理完整请求（路由分发） */
-    if (strcmp(method, "POST") == 0 && context->json_request) {
+    /* 阶段 3: 处理完整请求（路由分发）——JSON-RPC 或非 JSON-RPC 原始 body 均处理 */
+    if (strcmp(method, "POST") == 0 &&
+        (context->json_request || (context->upload_data && context->upload_data_size > 0))) {
         return handle_post_jsonrpc(gateway, connection, context);
     }
 

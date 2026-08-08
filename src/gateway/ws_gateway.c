@@ -51,6 +51,10 @@
 #include "airy_memory.h"
 #include "error.h"
 
+#ifndef _WIN32
+#include <pthread.h>
+#endif
+
 /* ========== 前向声明 ========== */
 
 struct ws_gateway;
@@ -111,6 +115,7 @@ struct ws_gateway {
     atomic_uint_fast64_t bytes_received;     /**< 接收字节数 */
 
     size_t max_request_size; /**< 最大请求大小 */
+    void *event_thread;      /**< libwebsockets 事件循环线程句柄（pthread_t*，POSIX） */
 };
 
 /* ========== 消息协议定义 ========== */
@@ -473,7 +478,13 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                        size_t len)
 {
     ws_gateway_t *gateway = (ws_gateway_t *)lws_context_user(lws_get_context(wsi));
-    ws_connection_context_t *context = (ws_connection_context_t *)*(void **)user;
+    ws_connection_context_t *context = NULL;
+
+    /* 连接建立前的回调（如 LWS_CALLBACK_PROTOCOL_INIT/DESTROY，在
+     * lws_create_context 期间触发）user 为 NULL，解引用会段错误；
+     * 仅对已建立连接的会话回调解析 per_session_data。 */
+    if (user)
+        context = (ws_connection_context_t *)*(void **)user;
 
     switch (reason) {
     case LWS_CALLBACK_ESTABLISHED:
@@ -566,6 +577,24 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
 /* ========== 网关操作表 ========== */
 
+#ifndef _WIN32
+/**
+ * @brief libwebsockets 事件循环线程
+ *
+ * lws_create_context 只创建上下文，必须持续调用 lws_service 驱动
+ * 连接收发（IRON-2：真实可用的 WebSocket 服务器，非桩）。
+ * 50ms 超时便于 running=false 后及时退出并 join。
+ */
+static void *ws_gateway_event_loop(void *arg)
+{
+    ws_gateway_t *gateway = (ws_gateway_t *)arg;
+    while (gateway && atomic_load(&gateway->running)) {
+        lws_service(gateway->context, 50);
+    }
+    return NULL;
+}
+#endif
+
 static airy_err_t ws_gateway_start(void *gateway_impl)
 {
     ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
@@ -584,6 +613,28 @@ static airy_err_t ws_gateway_start(void *gateway_impl)
 
     atomic_store(&gateway->running, true);
 
+#ifndef _WIN32
+    /* 启动事件循环线程驱动 lws_service */
+    pthread_t *thread = (pthread_t *)AIRY_MALLOC(sizeof(pthread_t));
+    if (!thread) {
+        atomic_store(&gateway->running, false);
+        lws_context_destroy(gateway->context);
+        gateway->context = NULL;
+        return AIRY_ERR_OUT_OF_MEMORY;
+    }
+    if (pthread_create(thread, NULL, ws_gateway_event_loop, gateway) != 0) {
+        AIRY_FREE(thread);
+        atomic_store(&gateway->running, false);
+        lws_context_destroy(gateway->context);
+        gateway->context = NULL;
+        return AIRY_EBUSY;
+    }
+    gateway->event_thread = thread;
+#else
+    /* Windows：事件循环由外部 lws_service 驱动 */
+    gateway->event_thread = NULL;
+#endif
+
     return AIRY_SUCCESS;
 }
 
@@ -592,6 +643,15 @@ static void ws_gateway_stop(void *gateway_impl)
     ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
 
     atomic_store(&gateway->running, false);
+
+#ifndef _WIN32
+    if (gateway->event_thread) {
+        /* 事件循环在 running=false 后 50ms 内退出，join 快速回收线程 */
+        pthread_join(*(pthread_t *)gateway->event_thread, NULL);
+        AIRY_FREE(gateway->event_thread);
+        gateway->event_thread = NULL;
+    }
+#endif
 
     if (gateway->context) {
         lws_context_destroy(gateway->context);

@@ -360,7 +360,10 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
 
     airy_protocol_type_t detected_type = protocol_type;
 
-    if (protocol_type == AIRY_PROTOCOL_A2A && handler->config.enable_protocol_detection) {
+    /* 调用方传入 AIRY_PROTOCOL_COUNT 表示"未知、需自动检测"（HTTP 层即如此）；
+     * 传 AIRY_PROTOCOL_A2A 时保留原有"指定 A2A 但内容不符则重检"的语义。 */
+    if ((protocol_type == AIRY_PROTOCOL_COUNT || protocol_type == AIRY_PROTOCOL_A2A) &&
+        handler->config.enable_protocol_detection) {
         detected_type = detect_protocol_internal(request_data, request_size);
 
         if (detected_type == AIRY_PROTOCOL_COUNT && handler->config.default_protocol) {
@@ -463,10 +466,16 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     }
 
     if (!converted_params) {
-        AIRY_FREE(method);
-        AIRY_FREE(id_str);
-        handler->conversion_errors++;
-        return create_error_result(-32700, "Protocol conversion failed", id_str ? id_str : "null");
+        /* JSON-RPC 2.0 允许无 params 的方法调用（如 ping），用空对象兜底 */
+        converted_params = cJSON_CreateObject();
+        if (!converted_params) {
+            rpc_result_t result = create_error_result(
+                -32700, "Protocol conversion failed", id_str ? id_str : "null");
+            AIRY_FREE(method);
+            AIRY_FREE(id_str);
+            handler->conversion_errors++;
+            return result;
+        }
     }
 
     char *jsonrpc_request_str = NULL;
