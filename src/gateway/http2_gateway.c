@@ -173,7 +173,7 @@ static int http2_stream_append_body(http2_stream_context_t *ctx, const uint8_t *
         ctx->request_body_cap = new_cap;
     }
 
-    memcpy(ctx->request_body + ctx->request_body_len, data, len);
+    AIRY_MEMCPY(ctx->request_body + ctx->request_body_len, data, len);
     ctx->request_body_len += len;
     return 0;
 }
@@ -190,7 +190,7 @@ static int http2_stream_set_header_str(char **dst, const uint8_t *value, size_t 
     if (!copy) {
         return AIRY_ERR_OUT_OF_MEMORY;
     }
-    memcpy(copy, value, vlen);
+    AIRY_MEMCPY(copy, value, vlen);
     copy[vlen] = '\0';
 
     AIRY_FREE(*dst);
@@ -258,7 +258,7 @@ static ssize_t http2_data_source_read_callback(nghttp2_session *session,
     }
 
     size_t to_copy = remaining < length ? remaining : length;
-    memcpy(buf, ctx->response_body + ctx->response_sent, to_copy);
+    AIRY_MEMCPY(buf, ctx->response_body + ctx->response_sent, to_copy);
     ctx->response_sent += to_copy;
 
     if (ctx->response_sent >= ctx->response_body_len) {
