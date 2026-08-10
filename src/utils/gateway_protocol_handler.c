@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 SPHARX.
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 // @owner: team-B
 /**
@@ -177,14 +177,18 @@ static cJSON *extract_openai_to_jsonrpc(const char *request_data, size_t request
         cJSON_GetObjectItem(root, "url") ? cJSON_GetObjectItem(root, "url")->valuestring : NULL;
 
     if (out_method) {
-        if (strstr(url_path, "/chat/completions")) {
+        /* P0: 请求无 "url" 字段（或非字符串）时 url_path 为 NULL，
+         * 直接 strstr(NULL, ...) 会崩溃，先判空走默认处理 */
+        if (!url_path) {
+            *out_method = AIRY_STRDUP("openai.unknown");
+        } else if (strstr(url_path, "/chat/completions")) {
             *out_method = AIRY_STRDUP("openai.chat.completions");
         } else if (strstr(url_path, "/completions")) {
             *out_method = AIRY_STRDUP("openai.completions");
         } else if (strstr(url_path, "/embeddings")) {
             *out_method = AIRY_STRDUP("openai.embeddings");
         } else {
-            *out_method = AIRY_STRDUP(url_path ? url_path : "openai.unknown");
+            *out_method = AIRY_STRDUP(url_path);
         }
     }
 

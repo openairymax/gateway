@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 SPHARX Ltd.
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 // @owner: team-B
 /**
@@ -150,6 +150,23 @@ int gw_protocol_bridge_detect_protocol(gw_protocol_bridge_handle_t bridge, const
 
     AIRY_MEMSET(out_result, 0, sizeof(*out_result));
 
+    /* P0: data 是网络接收缓冲区，不保证 '\0' 结尾，strstr/strncmp 按 NUL
+     * 扫描会越界读。若 size 范围内无 NUL，先拷贝到临时缓冲并补 '\0'，
+     * 后续扫描统一使用 NUL 结尾的 scan 副本。 */
+    const char *scan = data;
+    char *copy_buf = NULL;
+    if (size > 0 && !memchr(data, '\0', size)) {
+        copy_buf = (char *)AIRY_MALLOC(size + 1);
+        if (!copy_buf) {
+            airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+                                  "detect_protocol: buffer allocation failed");
+            return AIRY_ERR_OUT_OF_MEMORY;
+        }
+        AIRY_MEMCPY(copy_buf, data, size);
+        copy_buf[size] = '\0';
+        scan = copy_buf;
+    }
+
     double confidence = 50.0;
     gw_proto_type_t detected = GW_PROTO_JSONRPC;
     bool is_streaming = false;
@@ -169,14 +186,14 @@ int gw_protocol_bridge_detect_protocol(gw_protocol_bridge_handle_t bridge, const
             if (strstr(content_type_hint, "rpc")) {
                 detected = GW_PROTO_JSONRPC;
                 confidence += 20.0;
-            } else if (strstr(data, "\"model\"") || strstr(data, "\"messages\"")) {
+            } else if (strstr(scan, "\"model\"") || strstr(scan, "\"messages\"")) {
                 detected = GW_PROTO_OPENAI;
                 confidence += 25.0;
-            } else if ((strstr(data, "\"tools\"")) ||
-                       (strstr(data, "\"method\"") && strstr(data, "\"params\""))) {
+            } else if ((strstr(scan, "\"tools\"")) ||
+                       (strstr(scan, "\"method\"") && strstr(scan, "\"params\""))) {
                 detected = GW_PROTO_MCP;
                 confidence += 15.0;
-            } else if (strstr(data, "\"agent\"") || strstr(data, "\"task\"")) {
+            } else if (strstr(scan, "\"agent\"") || strstr(scan, "\"task\"")) {
                 detected = GW_PROTO_A2A;
                 confidence += 15.0;
             }
@@ -187,29 +204,29 @@ int gw_protocol_bridge_detect_protocol(gw_protocol_bridge_handle_t bridge, const
     }
 
     if (data && size > 0) {
-        if (strncmp(data, "{\"jsonrpc\"", 11) == 0) {
+        if (strncmp(scan, "{\"jsonrpc\"", 11) == 0) {
             detected = GW_PROTO_JSONRPC;
             confidence = 98.0;
-        } else if (strstr(data, "\"jsonrpc\":\"2.0\"")) {
+        } else if (strstr(scan, "\"jsonrpc\":\"2.0\"")) {
             detected = GW_PROTO_JSONRPC;
             confidence = 95.0;
-        } else if (strstr(data, "\"type\": \"message\"") && strstr(data, "\"role\": \"user\"")) {
+        } else if (strstr(scan, "\"type\": \"message\"") && strstr(scan, "\"role\": \"user\"")) {
             detected = GW_PROTO_MCP;
             confidence = 85.0;
-        } else if (strstr(data, "\"protocol\": \"a2a\"") || strstr(data, "\"task/delegate\"")) {
+        } else if (strstr(scan, "\"protocol\": \"a2a\"") || strstr(scan, "\"task/delegate\"")) {
             detected = GW_PROTO_A2A;
             confidence = 90.0;
-        } else if (strstr(data, "\"model\": \"gpt") || strstr(data, "\"model\": \"o1") ||
-                   (strstr(data, "\"model\"") && strstr(data, "\"openai\""))) {
+        } else if (strstr(scan, "\"model\": \"gpt") || strstr(scan, "\"model\": \"o1") ||
+                   (strstr(scan, "\"model\"") && strstr(scan, "\"openai\""))) {
             detected = GW_PROTO_OPENAI;
             confidence = 88.0;
-        } else if ((strstr(data, "\"model\"") &&
-                    (strstr(data, "\"claude-") || strstr(data, "\"anthropic\""))) ||
-                   (strstr(data, "\"max_tokens\"") && strstr(data, "\"anthropic-version"))) {
+        } else if ((strstr(scan, "\"model\"") &&
+                    (strstr(scan, "\"claude-") || strstr(scan, "\"anthropic\""))) ||
+                   (strstr(scan, "\"max_tokens\"") && strstr(scan, "\"anthropic-version"))) {
             detected = GW_PROTO_CLAUDE;
             confidence = 90.0;
-        } else if (strstr(data, "\"openclaw\"") || strstr(data, "\"cluster_mode\"") ||
-                   (strstr(data, "\"agent_id\"") && strstr(data, "\"security_level\""))) {
+        } else if (strstr(scan, "\"openclaw\"") || strstr(scan, "\"cluster_mode\"") ||
+                   (strstr(scan, "\"agent_id\"") && strstr(scan, "\"security_level\""))) {
             detected = GW_PROTO_OPENCLAW;
             confidence = 88.0;
         }
@@ -239,6 +256,8 @@ done:
     } else {
         b->stats.detection_failures++;
     }
+
+    AIRY_FREE(copy_buf);
 
     return 0;
 }

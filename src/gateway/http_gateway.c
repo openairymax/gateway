@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2026 SPHARX.
+ * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
  * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file http_gateway.c
@@ -239,7 +239,9 @@ int parse_json_request(http_gateway_t *gateway, http_request_context_t *context,
         return AIRY_ERR_UNKNOWN;
     }
 
-    context->json_request = cJSON_Parse(data);
+    /* P0: MHD upload_data 不保证 '\0' 结尾，cJSON_Parse 按 NUL 扫描会越界读；
+     * 改用 cJSON_ParseWithLength 按 size 解析 */
+    context->json_request = cJSON_ParseWithLength(data, size);
     if (!context->json_request) {
         /* 非 JSON body：不视为解析错误，保留 upload_data 交 handler 兜底
          * （OpenAI/MCP/A2A 等外部协议由 gateway_d 的协议入口做检测路由） */
