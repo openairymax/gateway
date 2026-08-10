@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2026 SPHARX.
+ * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
  * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file ws_gateway.c
@@ -522,8 +522,10 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
         atomic_fetch_add(&gateway->bytes_received, len);
 
         /* 解析JSON消息 */
-        /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
-        CJSON_PARSE_GUARD(json, (const char *)in, {
+        /* P0: lws 的 in 缓冲区不保证 '\0' 结尾，cJSON_Parse 按 NUL 扫描会越界读；
+         * 改用 cJSON_ParseWithLength 按 len 解析（CJSON_AUTO_FREE 保留自动释放） */
+        CJSON_AUTO_FREE cJSON *json = cJSON_ParseWithLength((const char *)in, len);
+        if (!json) {
             /* 解析失败，发送错误响应 */
             char *error_json = jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
             if (error_json) {
@@ -536,7 +538,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                 AIRY_FREE(error_json);
             }
             return 0;
-        });
+        }
 
         /* 提取消息类型 */
         cJSON *type = cJSON_GetObjectItem(json, "type");
@@ -646,7 +648,14 @@ static void ws_gateway_stop(void *gateway_impl)
 
 #ifndef _WIN32
     if (gateway->event_thread) {
-        /* 事件循环在 running=false 后 50ms 内退出，join 快速回收线程 */
+        /* lws_cancel_service 可从其他线程安全唤醒 lws_service 事件循环，
+         * 使 event thread 在 running=false 后立即退出。若不唤醒，事件循环
+         * 依赖下一次 poll 超时（50ms）返回，在 netlink 事件风暴等场景下
+         * lws_service 可能长时间处理事件，导致 stop 的 join 阻塞数秒，
+         * 使守护进程优雅退出超过外部停止阈值而被强制 KILL。 */
+        if (gateway->context) {
+            lws_cancel_service(gateway->context);
+        }
         pthread_join(*(pthread_t *)gateway->event_thread, NULL);
         AIRY_FREE(gateway->event_thread);
         gateway->event_thread = NULL;

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2026 SPHARX.
+ * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
  * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file http2_gateway.c
@@ -100,6 +100,7 @@ static bool http2_gateway_is_running_impl(void *impl);
 static airy_err_t http2_gateway_set_handler_impl(void *impl,
                                                   gateway_internal_handler_t handler,
                                                   void *user_data);
+static void http2_free_response_headers(nghttp2_nv *nva, size_t count);
 
 /* ========== 流上下文管理 ========== */
 
@@ -293,6 +294,11 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         nva[count].name = (uint8_t *)":status";
         nva[count].namelen = 7;
         nva[count].value = (uint8_t *)AIRY_STRDUP(status_str);
+        if (!nva[count].value) {
+            /* P0: OOM — 清理已分配项并返回错误，调用方不得提交 value=NULL 的 nv */
+            http2_free_response_headers(nva, count);
+            return (size_t)-1;
+        }
         nva[count].valuelen = strlen(status_str);
         nva[count].flags = NGHTTP2_NV_FLAG_NONE;
         count++;
@@ -303,6 +309,10 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         nva[count].name = (uint8_t *)"content-type";
         nva[count].namelen = 12;
         nva[count].value = (uint8_t *)AIRY_STRDUP("application/json");
+        if (!nva[count].value) {
+            http2_free_response_headers(nva, count);
+            return (size_t)-1;
+        }
         nva[count].valuelen = 16;
         nva[count].flags = NGHTTP2_NV_FLAG_NONE;
         count++;
@@ -313,6 +323,10 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         nva[count].name = (uint8_t *)"server";
         nva[count].namelen = 6;
         nva[count].value = (uint8_t *)AIRY_STRDUP("AgentRT-gateway/2.0");
+        if (!nva[count].value) {
+            http2_free_response_headers(nva, count);
+            return (size_t)-1;
+        }
         nva[count].valuelen = 19;
         nva[count].flags = NGHTTP2_NV_FLAG_NONE;
         count++;
@@ -323,6 +337,10 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         nva[count].name = (uint8_t *)"x-content-type-options";
         nva[count].namelen = 22;
         nva[count].value = (uint8_t *)AIRY_STRDUP("nosniff");
+        if (!nva[count].value) {
+            http2_free_response_headers(nva, count);
+            return (size_t)-1;
+        }
         nva[count].valuelen = 7;
         nva[count].flags = NGHTTP2_NV_FLAG_NONE;
         count++;
@@ -331,6 +349,10 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         nva[count].name = (uint8_t *)"x-frame-options";
         nva[count].namelen = 15;
         nva[count].value = (uint8_t *)AIRY_STRDUP("DENY");
+        if (!nva[count].value) {
+            http2_free_response_headers(nva, count);
+            return (size_t)-1;
+        }
         nva[count].valuelen = 4;
         nva[count].flags = NGHTTP2_NV_FLAG_NONE;
         count++;
@@ -339,6 +361,10 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         nva[count].name = (uint8_t *)"strict-transport-security";
         nva[count].namelen = 25;
         nva[count].value = (uint8_t *)AIRY_STRDUP("max-age=31536000; includeSubDomains");
+        if (!nva[count].value) {
+            http2_free_response_headers(nva, count);
+            return (size_t)-1;
+        }
         nva[count].valuelen = 35;
         nva[count].flags = NGHTTP2_NV_FLAG_NONE;
         count++;
@@ -347,6 +373,10 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         nva[count].name = (uint8_t *)"cache-control";
         nva[count].namelen = 13;
         nva[count].value = (uint8_t *)AIRY_STRDUP("no-store, no-cache, must-revalidate");
+        if (!nva[count].value) {
+            http2_free_response_headers(nva, count);
+            return (size_t)-1;
+        }
         nva[count].valuelen = 34;
         nva[count].flags = NGHTTP2_NV_FLAG_NONE;
         count++;
@@ -371,6 +401,10 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
             nva[count].name = (uint8_t *)"access-control-allow-origin";
             nva[count].namelen = 27;
             nva[count].value = (uint8_t *)AIRY_STRDUP(ctx->origin);
+            if (!nva[count].value) {
+                http2_free_response_headers(nva, count);
+                return (size_t)-1;
+            }
             nva[count].valuelen = strlen(ctx->origin);
             nva[count].flags = NGHTTP2_NV_FLAG_NONE;
             count++;
@@ -412,6 +446,15 @@ static int http2_submit_response_impl(nghttp2_session *session, http2_stream_con
     /* 构建响应头 */
     nghttp2_nv nva[16];
     size_t nvlen = http2_build_response_headers(ctx, gw, nva, 16);
+    if (nvlen == (size_t)-1) {
+        /* P0: 头构建 OOM — 已清理部分分配，不得提交 value=NULL 的非法 nv；
+         * 终止该流，避免 nghttp2_submit_response 崩溃 */
+        LOG_ERROR("failed to build response headers (stream_id=%d)", ctx->stream_id);
+        nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, ctx->stream_id,
+                                  NGHTTP2_INTERNAL_ERROR);
+        ctx->response_sent_flag = true;
+        return NGHTTP2_ERR_NOMEM;
+    }
 
     /* 设置 data provider */
     nghttp2_data_provider data_prd;
@@ -654,13 +697,24 @@ static int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags,
                                     void *user_data)
 {
     (void)flags;
-    (void)session;
-    (void)user_data;
 
+    http2_gateway_t *gw = (http2_gateway_t *)user_data;
     http2_stream_context_t *ctx =
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
     if (!ctx)
         return 0;
+
+    /* P0: 请求体无上限时，超大 body 会在完整接收后才被 max_request_size
+     * 校验拦截，导致内存耗尽 DoS。此处按 gw->base.max_request_size 在累加
+     * 内存前限流，超限立即 RST_STREAM 终止该流。 */
+    if (gw && ctx->request_body_len + len > gw->base.max_request_size) {
+        LOG_WARN("request body exceeds limit: %zu + %zu > %zu (stream_id=%d)",
+                 ctx->request_body_len, len, gw->base.max_request_size, stream_id);
+        ctx->response_status = 413;
+        nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, stream_id,
+                                  NGHTTP2_CANCEL);
+        return 0;
+    }
 
     int ret = http2_stream_append_body(ctx, data, len);
     if (ret != 0) {

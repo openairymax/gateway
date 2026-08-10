@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2026 SPHARX.
+ * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
  * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file gateway_rate_limiter.c
@@ -134,29 +134,20 @@ static void client_state_destroy(client_state_t *state)
 
 /**
  * @brief 查找或创建客户端状态
+ *
+ * @note P0: 调用者必须持有 limiter->table_lock。与 cleanup_expired_clients
+ * 互斥，确保 client 在 check_rate_limit 读写期间不会被并发 free（UAF）。
  */
-static client_state_t *get_or_create_client(gateway_rate_limiter_t *limiter, const char *client_key,
-                                            uint64_t now_ns)
+static client_state_t *get_or_create_client_locked(gateway_rate_limiter_t *limiter,
+                                                   const char *client_key, uint64_t now_ns)
 {
     uint32_t hash = hash_string(client_key, limiter->table_size);
-
-#ifdef _WIN32
-    airy_mtx_lock(&limiter->table_lock);
-#else
-    airy_mtx_lock(&limiter->table_lock);
-#endif
 
     /* 查找现有客户端 */
     client_state_t *current = limiter->clients_table[hash];
     while (current) {
         if (strcmp(current->client_key, client_key) == 0) {
             current->last_access_time = time(NULL);
-
-#ifdef _WIN32
-            airy_mtx_unlock(&limiter->table_lock);
-#else
-            airy_mtx_unlock(&limiter->table_lock);
-#endif
             return current;
         }
         current = current->next;
@@ -164,26 +155,14 @@ static client_state_t *get_or_create_client(gateway_rate_limiter_t *limiter, con
 
     /* 创建新客户端 */
     client_state_t *new_client = client_state_create(client_key, now_ns);
-    if (!new_client) {
-#ifdef _WIN32
-        airy_mtx_unlock(&limiter->table_lock);
-#else
-        airy_mtx_unlock(&limiter->table_lock);
-#endif
+    if (!new_client)
         return NULL;
-    }
 
     /* 插入到哈希表 */
     new_client->next = limiter->clients_table[hash];
     limiter->clients_table[hash] = new_client;
 
     atomic_fetch_add(&limiter->active_clients, 1);
-
-#ifdef _WIN32
-    airy_mtx_unlock(&limiter->table_lock);
-#else
-    airy_mtx_unlock(&limiter->table_lock);
-#endif
 
     return new_client;
 }
@@ -464,16 +443,35 @@ bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *cli
     /* 步骤 3: 可能执行清理（使用已缓存的 now） */
     maybe_cleanup_clients(limiter, now);
 
-    /* 步骤 4: 获取或创建客户端状态（内部使用自己的 time()） */
-    client_state_t *client = get_or_create_client(limiter, client_key, now_ns);
+    /* 步骤 4-5: P0 — client 的获取与状态读写必须与 cleanup_expired_clients
+     * 在同一把锁下完成。否则清理线程可能在 check_rate_limit 读写 client
+     * 期间将其 free（数据竞争 + UAF）。 */
+#ifdef _WIN32
+    airy_mtx_lock(&limiter->table_lock);
+#else
+    airy_mtx_lock(&limiter->table_lock);
+#endif
+
+    client_state_t *client = get_or_create_client_locked(limiter, client_key, now_ns);
     if (!client) {
+#ifdef _WIN32
+        airy_mtx_unlock(&limiter->table_lock);
+#else
+        airy_mtx_unlock(&limiter->table_lock);
+#endif
         /* 内存分配失败：采用可用性优先策略放行，避免内存压力导致网关全量拒绝服务。
          * 此为 fail-open 取舍——已知风险：极端 OOM 下速率限制可被绕过。 */
         return true;
     }
 
-    /* 步骤 5: 执行速率限制检查 */
-    return check_rate_limit(client, limiter, &limiter->config, now_ns);
+    bool allowed = check_rate_limit(client, limiter, &limiter->config, now_ns);
+
+#ifdef _WIN32
+    airy_mtx_unlock(&limiter->table_lock);
+#else
+    airy_mtx_unlock(&limiter->table_lock);
+#endif
+    return allowed;
 }
 
 void gateway_rate_limiter_get_stats(const gateway_rate_limiter_t *limiter, uint64_t *total_allowed,

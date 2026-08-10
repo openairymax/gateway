@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2026 SPHARX.
+ * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
  * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file syscall_router.c
@@ -491,6 +491,8 @@ typedef struct {
     char *key;
     size_t index;
     bool occupied;
+    bool deleted; /**< tombstone：删除标记。P0: 删除槽位不直接置空，
+                       否则开放寻址探测链断裂，后续 ht_lookup 会漏查元素 */
 } hash_entry_t;
 
 typedef struct {
@@ -543,9 +545,12 @@ static bool ht_insert(hash_table_t *ht, const char *key, size_t index)
     for (size_t i = 0; i < ht->capacity; i++) {
         size_t pos = (h + i) % ht->capacity;
         if (!ht->entries[pos].occupied) {
+            /* P0: tombstone 槽位（deleted=true）可复用；复用前必须复位 deleted，
+             * 否则会被 ht_lookup 跳过 */
             ht->entries[pos].key = AIRY_STRDUP(key);
             ht->entries[pos].index = index;
             ht->entries[pos].occupied = true;
+            ht->entries[pos].deleted = false;
             ht->count++;
             return true;
         }
@@ -564,6 +569,8 @@ static ssize_t ht_lookup(hash_table_t *ht, const char *key)
     for (size_t i = 0; i < ht->capacity; i++) {
         size_t pos = (h + i) % ht->capacity;
         if (!ht->entries[pos].occupied) {
+            if (ht->entries[pos].deleted)
+                continue; /* P0: tombstone — 跳过并继续探测，保证链不断裂 */
             airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                                   "hash_fn: failed");
             return AIRY_ERR_UNKNOWN;
@@ -575,20 +582,26 @@ static ssize_t ht_lookup(hash_table_t *ht, const char *key)
     return AIRY_ERR_UNKNOWN;
 }
 
-static void ht_remove(hash_table_t *ht, const char *key)
+static void __attribute__((unused)) ht_remove(hash_table_t *ht, const char *key)
 {
     if (!ht->entries || ht->count == 0)
         return;
     unsigned long h = hash_fn(key) % ht->capacity;
     for (size_t i = 0; i < ht->capacity; i++) {
         size_t pos = (h + i) % ht->capacity;
-        if (!ht->entries[pos].occupied)
+        if (!ht->entries[pos].occupied) {
+            if (ht->entries[pos].deleted)
+                continue; /* P0: tombstone — 跳过，继续探测 */
             return;
+        }
         if (strcmp(ht->entries[pos].key, key) == 0) {
             AIRY_FREE(ht->entries[pos].key);
             ht->entries[pos].key = NULL;
             ht->entries[pos].occupied = false;
             ht->entries[pos].index = 0;
+            /* P0: 用 tombstone 标记删除，保持探测链连续，
+             * 否则后续 ht_lookup 会因空槽提前终止而漏查元素 */
+            ht->entries[pos].deleted = true;
             ht->count--;
             return;
         }
@@ -730,18 +743,33 @@ airy_err_t airy_sys_task_submit(const char *input, size_t len, uint32_t timeout_
         return AIRY_ERR_OUT_OF_MEMORY;
     }
 
-    task_entry_t *task = &g_runtime.tasks[g_runtime.task_count++];
-    task->task_id = AIRY_STRDUP(generate_uuid());
+    /* P0: 参数校验前置，避免副作用先于校验（原实现先 task_count++ 再校验
+     * len，超限时留下已占用的空槽） */
     if (len > MAX_INPUT_SIZE) {
         RUNTIME_UNLOCK();
         return AIRY_ERR_OUT_OF_MEMORY;
     }
+
+    task_entry_t *task = &g_runtime.tasks[g_runtime.task_count];
+    task->task_id = AIRY_STRDUP(generate_uuid());
+    if (!task->task_id) {
+        /* P0: STRDUP 失败时不得推进计数，避免空槽与 ht_insert(NULL key) */
+        RUNTIME_UNLOCK();
+        return AIRY_ERR_OUT_OF_MEMORY;
+    }
     task->input = AIRY_STRNDUP(input, len);
+    if (!task->input) {
+        AIRY_FREE(task->task_id);
+        task->task_id = NULL;
+        RUNTIME_UNLOCK();
+        return AIRY_ERR_OUT_OF_MEMORY;
+    }
     task->input_len = len;
     task->status = 1;
     task->result = NULL;
     task->timeout_ms = timeout_ms ? timeout_ms : 30000;
     task->created_at = time(NULL);
+    g_runtime.task_count++;
     ht_insert(&g_runtime.task_index, task->task_id, g_runtime.task_count - 1);
     g_runtime.total_tasks_submitted++;
     RUNTIME_UNLOCK();
@@ -1062,12 +1090,25 @@ airy_err_t airy_sys_session_close(const char *session_id)
     RUNTIME_LOCK();
     ssize_t idx = ht_lookup(&g_runtime.session_index, session_id);
     if (idx >= 0 && (size_t)idx < g_runtime.session_count) {
-        ht_remove(&g_runtime.session_index, session_id);
         AIRY_FREE(g_runtime.sessions[idx].session_id);
         AIRY_FREE(g_runtime.sessions[idx].metadata);
         __builtin_memmove(&g_runtime.sessions[idx], &g_runtime.sessions[idx + 1],
                 (g_runtime.session_count - idx - 1) * sizeof(session_entry_t));
         g_runtime.session_count--;
+
+        /* P0: 数组左移后，原 idx 之后所有 session 的下标均已变化，而
+         * session_index 哈希表仍保存旧下标，会导致后续 session_get/close
+         * 命中错误的会话（越界/UAF）。删除后重建整个 session_index。 */
+        ht_destroy(&g_runtime.session_index);
+        if (ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
+            airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+                                  "session_index rebuild failed");
+            RUNTIME_UNLOCK();
+            return AIRY_ERR_OUT_OF_MEMORY;
+        }
+        for (size_t i = 0; i < g_runtime.session_count; i++) {
+            ht_insert(&g_runtime.session_index, g_runtime.sessions[i].session_id, i);
+        }
         RUNTIME_UNLOCK();
         return AIRY_OK;
     }

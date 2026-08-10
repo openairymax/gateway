@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2026 SPHARX.
+ * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
  * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file stdio_gateway.c
@@ -261,6 +261,13 @@ static airy_err_t stdio_gateway_start(void *gateway_impl)
                         }
                     }
                 }
+            } else {
+                /* stdin 已到达 EOF 或读取错误（例如被重定向到 /dev/null 或已关闭）。
+                 * 此时 select 仍会因 fd 恒可读而立即返回，若继续循环将导致
+                 * 100% CPU 忙循环。stdio 传输已无输入源，退出循环停止该传输。 */
+                if (feof(stdin) || ferror(stdin)) {
+                    atomic_store(&gateway->running, false);
+                }
             }
         }
     }
@@ -397,6 +404,8 @@ gateway_t *stdio_gateway_create(void)
 
     gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
+        /* P0: 先释放已分配的 input_buffer，避免泄漏 */
+        AIRY_FREE(gateway->input_buffer);
         AIRY_FREE(gateway);
         return NULL;
     }
