@@ -1,7 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file stdio_gateway.c
  * @brief Stdio网关实现 - 本地进程通信协议
@@ -9,7 +9,6 @@
  * 实现标准输入输出通信协议，通过系统调用接口与内核通信。
  * 网关层只负责协议转换，不包含业务逻辑。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
 // @owner: team-B
@@ -22,7 +21,7 @@
 #include "logging.h"
 #ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
-/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+
 #include <cjson_helpers.h>
 #endif
 
@@ -30,10 +29,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 跨平台原子操作支持 - 使用统一的 atomic_compat.h */
 #include "atomic_compat.h"
 
-/* 平台特定头文件 */
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -45,36 +42,30 @@
 
 #include "airy_memory.h"
 
-/* ========== 辅助函数（使用 gateway_utils.h 中的公共实现） ========== */
-
 /*
  * time_ns() 已迁移至 gateway_utils.h (gateway_time_ns)
  * portable_sleep() 已迁移至 gateway_utils.h (gateway_sleep)
  */
 
-/* ========== Stdio网关内部结构 ========== */
-
 /**
  * @brief Stdio网关内部结构
  */
 typedef struct stdio_gateway {
-    void *handler_adapter;              /**< 公共回调适配器（动态分配） */
-    gateway_internal_handler_t handler; /**< 请求处理回调 */
-    void *handler_data;                 /**< 回调用户数据 */
+    void *handler_adapter;
+    gateway_internal_handler_t handler;
+    void *handler_data;
 
-    atomic_bool running; /**< 运行标志 */
+    atomic_bool running;
 
-    atomic_uint_fast64_t commands_total;  /**< 总命令数 */
-    atomic_uint_fast64_t commands_failed; /**< 失败命令数 */
-    atomic_uint_fast64_t bytes_received;  /**< 接收字节数 */
-    atomic_uint_fast64_t bytes_sent;      /**< 发送字节数 */
+    atomic_uint_fast64_t commands_total;
+    atomic_uint_fast64_t commands_failed;
+    atomic_uint_fast64_t bytes_received;
+    atomic_uint_fast64_t bytes_sent;
 
-    char *input_buffer;       /**< 输入缓冲区(动态分配) */
-    size_t input_buffer_size; /**< 输入缓冲区大小 */
-    size_t input_buffer_pos;  /**< 输入缓冲区位置 */
+    char *input_buffer;
+    size_t input_buffer_size;
+    size_t input_buffer_pos;
 } stdio_gateway_t;
-
-/* ========== 命令处理（使用统一RPC处理器） ========== */
 
 /**
  * @brief 显示帮助信息
@@ -83,18 +74,18 @@ typedef struct stdio_gateway {
 static char *show_help(void)
 {
     return AIRY_STRDUP("AgentRT Stdio Gateway - Available Commands:\n"
-                          "  help                     - Show this help\n"
-                          "  rpc <json-rpc>           - Execute JSON-RPC call\n"
-                          "  stats                    - Show gateway statistics\n"
-                          "  exit                     - Exit gateway\n"
-                          "\n"
-                          "JSON-RPC Methods:\n"
-                          "  airy_sys_task_submit    - Submit a task\n"
-                          "  airy_sys_task_query     - Query task status\n"
-                          "  airy_sys_memory_search  - Search memory\n"
-                          "  airy_sys_session_create - Create session\n"
-                          "  airy_sys_session_list   - List sessions\n"
-                          "  airy_sys_telemetry_metrics - Get metrics\n");
+                       "  help                     - Show this help\n"
+                       "  rpc <json-rpc>           - Execute JSON-RPC call\n"
+                       "  stats                    - Show gateway statistics\n"
+                       "  exit                     - Exit gateway\n"
+                       "\n"
+                       "JSON-RPC Methods:\n"
+                       "  airy_sys_task_submit    - Submit a task\n"
+                       "  airy_sys_task_query     - Query task status\n"
+                       "  airy_sys_memory_search  - Search memory\n"
+                       "  airy_sys_session_create - Create session\n"
+                       "  airy_sys_session_list   - List sessions\n"
+                       "  airy_sys_telemetry_metrics - Get metrics\n");
 }
 
 /**
@@ -109,33 +100,33 @@ static char *show_help(void)
  */
 static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
 {
-    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
-    CJSON_PARSE_GUARD(request, json_str, {
-        return jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
-    });
+
+    CJSON_PARSE_GUARD(request, json_str,
+                      { return jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL); });
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
-    rpc_result_t result = gateway_rpc_handle_request(
-        request, (int (*)(const char *, char **, void *))gateway->handler, gateway->handler_data);
+    rpc_result_t result =
+        gateway_rpc_handle_request(request,
+                                   (int (*)(const char *, char **, void *))gateway->handler,
+                                   gateway->handler_data);
 #pragma GCC diagnostic pop
 
     if (result.error_code != 0 || !result.response_json) {
-        char *error_resp =
-            result.response_json
-                ? result.response_json
-                : jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
+        char *error_resp = result.response_json ?
+                               result.response_json :
+                               jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
         if (result.response_json)
             result.response_json = NULL;
         gateway_rpc_free(&result);
-        /* request 由 CJSON_AUTO_FREE 自动释放 */
+
         return error_resp;
     }
 
     char *success_resp = result.response_json;
     result.response_json = NULL;
     gateway_rpc_free(&result);
-    /* request 由 CJSON_AUTO_FREE 自动释放 */
+
     return success_resp;
 }
 
@@ -194,8 +185,6 @@ static char *process_command(stdio_gateway_t *gateway, const char *input)
     return response;
 }
 
-/* ========== 网关操作表 ========== */
-
 static airy_err_t stdio_gateway_start(void *gateway_impl)
 {
     stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
@@ -236,7 +225,8 @@ static airy_err_t stdio_gateway_start(void *gateway_impl)
                 atomic_fetch_add(&gateway->bytes_received, input_len);
 
                 if (gateway->input_buffer_pos + input_len < gateway->input_buffer_size) {
-                    AIRY_MEMCPY(gateway->input_buffer + gateway->input_buffer_pos, buffer, input_len);
+                    AIRY_MEMCPY(gateway->input_buffer + gateway->input_buffer_pos, buffer,
+                                input_len);
                     gateway->input_buffer_pos += input_len;
 
                     char *newline = memchr(gateway->input_buffer, '\n', gateway->input_buffer_pos);
@@ -244,7 +234,8 @@ static airy_err_t stdio_gateway_start(void *gateway_impl)
                         *newline = '\0';
                         char *command_line = AIRY_STRDUP(gateway->input_buffer);
                         gateway->input_buffer_pos -= (newline + 1 - gateway->input_buffer);
-                        __builtin_memmove(gateway->input_buffer, newline + 1, gateway->input_buffer_pos);
+                        __builtin_memmove(gateway->input_buffer, newline + 1,
+                                          gateway->input_buffer_pos);
 
                         char *response = process_command(gateway, command_line);
                         AIRY_FREE(command_line);
@@ -344,8 +335,8 @@ static airy_err_t stdio_gateway_get_stats(void *gateway_impl, char **out_json)
 /**
  * @brief 设置请求处理回调
  */
-static airy_err_t
-stdio_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler, void *user_data)
+static airy_err_t stdio_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler,
+                                            void *user_data)
 {
     stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
     if (!gateway)
@@ -369,8 +360,6 @@ static const gateway_ops_t stdio_gateway_ops = {.start = stdio_gateway_start,
                                                 .get_stats = stdio_gateway_get_stats,
                                                 .is_running = stdio_gateway_is_running,
                                                 .set_handler = stdio_gateway_set_handler};
-
-/* ========== 公共接口 ========== */
 
 gateway_t *stdio_gateway_create(void)
 {
@@ -404,7 +393,7 @@ gateway_t *stdio_gateway_create(void)
 
     gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
-        /* P0: 先释放已分配的 input_buffer，避免泄漏 */
+
         AIRY_FREE(gateway->input_buffer);
         AIRY_FREE(gateway);
         return NULL;

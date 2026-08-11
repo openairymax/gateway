@@ -1,7 +1,7 @@
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file gateway_utils.h
  * @brief 网关模块公共工具函数
@@ -9,10 +9,9 @@
  * 提供各网关实现共用的辅助函数，
  * 避免代码重复和定义冲突。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef GATEWAY_UTILS_H
 #define GATEWAY_UTILS_H
 
@@ -52,8 +51,8 @@ static inline uint64_t gateway_time_ns(void)
     GetSystemTimeAsFileTime(&ft);
     uli.LowPart = ft.dwLowDateTime;
     uli.HighPart = ft.dwHighDateTime;
-    /* FILETIME 是从 1601-01-01 开始的 100ns 单位数 */
-    /* 转换为从 1970-01-01 开始的纳秒 */
+
+
     return (uli.QuadPart - 116444736000000000ULL) * 100;
 #else
     struct timespec ts;

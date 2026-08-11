@@ -1,14 +1,13 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file syscall_router.c
  * @brief 系统调用路由器实现
  *
  * 统一处理 JSON-RPC 请求到系统调用的路由。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
 // @owner: team-B
@@ -65,7 +64,7 @@ static char *route_task_methods(const char *method, cJSON *params, cJSON *reques
         char *out_result = NULL;
         uint32_t timeout_ms = timeout ? (uint32_t)timeout->valueint : 0;
         err = airy_sys_task_submit(input->valuestring, strlen(input->valuestring), timeout_ms,
-                                      &out_result);
+                                   &out_result);
 
         if (err == AIRY_SUCCESS && out_result) {
             result = cJSON_CreateObject();
@@ -120,7 +119,6 @@ static char *route_task_methods(const char *method, cJSON *params, cJSON *reques
         }
     }
 
-    /* 处理错误 */
     if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
@@ -151,7 +149,7 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
         char *out_record_id = NULL;
         const char *meta_str = metadata ? cJSON_PrintUnformatted(metadata) : NULL;
         err = airy_sys_memory_write(data->valuestring, strlen(data->valuestring), meta_str,
-                                       &out_record_id);
+                                    &out_record_id);
 
         if (meta_str)
             AIRY_FREE((void *)meta_str);
@@ -225,7 +223,6 @@ static char *route_memory_methods(const char *method, cJSON *params, cJSON *requ
         }
     }
 
-    /* 处理错误 */
     if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
@@ -302,7 +299,6 @@ static char *route_session_methods(const char *method, cJSON *params, cJSON *req
         }
     }
 
-    /* 处理错误 */
     if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
@@ -341,7 +337,6 @@ static char *route_telemetry_methods(const char *method, cJSON *params, cJSON *r
         }
     }
 
-    /* 处理错误 */
     if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
@@ -405,8 +400,8 @@ static char *route_agent_methods(const char *method, cJSON *params, cJSON *reque
         const char *input_str = input && cJSON_IsString(input) ? input->valuestring : "";
         char *out_output = NULL;
 
-        err = airy_sys_agent_invoke(agent_id->valuestring, input_str, strlen(input_str),
-                                       &out_output);
+        err =
+            airy_sys_agent_invoke(agent_id->valuestring, input_str, strlen(input_str), &out_output);
 
         if (err == AIRY_SUCCESS && out_output) {
             result = cJSON_CreateObject();
@@ -432,7 +427,6 @@ static char *route_agent_methods(const char *method, cJSON *params, cJSON *reque
         }
     }
 
-    /* 处理错误 */
     if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
         char err_msg[64];
@@ -443,8 +437,6 @@ static char *route_agent_methods(const char *method, cJSON *params, cJSON *reque
     return jsonrpc_create_success_response(request_id, result);
 }
 
-/* ========== 公共接口 ========== */
-
 /**
  * @brief 路由系统调用请求
  */
@@ -454,7 +446,6 @@ char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id
         return jsonrpc_create_error_response(request_id, -32600, "Invalid Request", NULL);
     }
 
-    /* 根据方法前缀分发到对应的处理函数 */
     if (strncmp(method, "airy_sys_task_", 18) == 0) {
         return route_task_methods(method, params, request_id);
     } else if (strncmp(method, "airy_sys_memory_", 20) == 0) {
@@ -467,16 +458,10 @@ char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id
         return route_agent_methods(method, params, request_id);
     }
 
-    /* 方法未找到 */
     return jsonrpc_create_error_response(request_id, -32601, "Method not found", NULL);
 }
 
-/* ==================== 运行时系统调用实现（生产级） ==================== */
-/* SEC-017合规：所有函数均为真实实现，无桩函数 */
-
 #include <time.h>
-
-
 
 #define MAX_TASKS_DEFAULT 256
 #define MAX_SESSIONS_DEFAULT 64
@@ -516,7 +501,7 @@ static int ht_init(hash_table_t *ht, size_t capacity)
     if (!ht->entries) {
         ht->capacity = 0;
         airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
-                              "ht_init: allocation failed");
+                         "ht_init: allocation failed");
         return AIRY_ERR_OUT_OF_MEMORY;
     }
     ht->capacity = capacity;
@@ -561,8 +546,7 @@ static bool ht_insert(hash_table_t *ht, const char *key, size_t index)
 static ssize_t ht_lookup(hash_table_t *ht, const char *key)
 {
     if (!ht->entries || ht->count == 0) {
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                              "ht_lookup: failed");
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "ht_lookup: failed");
         return AIRY_ERR_UNKNOWN;
     }
     unsigned long h = hash_fn(key) % ht->capacity;
@@ -570,9 +554,8 @@ static ssize_t ht_lookup(hash_table_t *ht, const char *key)
         size_t pos = (h + i) % ht->capacity;
         if (!ht->entries[pos].occupied) {
             if (ht->entries[pos].deleted)
-                continue; /* P0: tombstone — 跳过并继续探测，保证链不断裂 */
-            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                                  "hash_fn: failed");
+                continue;
+            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "hash_fn: failed");
             return AIRY_ERR_UNKNOWN;
         }
         if (strcmp(ht->entries[pos].key, key) == 0)
@@ -591,7 +574,7 @@ static void __attribute__((unused)) ht_remove(hash_table_t *ht, const char *key)
         size_t pos = (h + i) % ht->capacity;
         if (!ht->entries[pos].occupied) {
             if (ht->entries[pos].deleted)
-                continue; /* P0: tombstone — 跳过，继续探测 */
+                continue;
             return;
         }
         if (strcmp(ht->entries[pos].key, key) == 0) {
@@ -698,18 +681,17 @@ static void __attribute__((constructor)) runtime_init(void)
 
 static void __attribute__((destructor)) runtime_cleanup(void)
 {
-    /* 释放每个 task entry 的字符串字段 */
+
     for (size_t i = 0; i < g_runtime.task_count; i++) {
         AIRY_FREE(g_runtime.tasks[i].task_id);
         AIRY_FREE(g_runtime.tasks[i].input);
         AIRY_FREE(g_runtime.tasks[i].result);
     }
-    /* 释放每个 session entry 的字符串字段 */
+
     for (size_t i = 0; i < g_runtime.session_count; i++) {
         AIRY_FREE(g_runtime.sessions[i].session_id);
         AIRY_FREE(g_runtime.sessions[i].metadata);
     }
-    /* Phase 3：memory/agent 资源由 mem_d/agent_d 守护进程独立管理 */
 
     airy_mtx_destroy(&g_runtime.mutex);
     ht_destroy(&g_runtime.task_index);
@@ -730,9 +712,8 @@ static const char *generate_uuid(void)
     return uuid;
 }
 
-/* Task 管理 */
 airy_err_t airy_sys_task_submit(const char *input, size_t len, uint32_t timeout_ms,
-                                        char **out_result)
+                                char **out_result)
 {
     if (!input || !out_result)
         return AIRY_ERR_INVALID_PARAM;
@@ -753,7 +734,7 @@ airy_err_t airy_sys_task_submit(const char *input, size_t len, uint32_t timeout_
     task_entry_t *task = &g_runtime.tasks[g_runtime.task_count];
     task->task_id = AIRY_STRDUP(generate_uuid());
     if (!task->task_id) {
-        /* P0: STRDUP 失败时不得推进计数，避免空槽与 ht_insert(NULL key) */
+
         RUNTIME_UNLOCK();
         return AIRY_ERR_OUT_OF_MEMORY;
     }
@@ -847,14 +828,13 @@ airy_err_t airy_sys_task_cancel(const char *task_id)
  * 向 mem_d 发送 JSON-RPC 请求（mem.write/search/get/delete），解析响应后
  * 按原 C ABI 返回。daemon 不可达时返回 AIRY_ERR_FAIL，由调用方降级处理。 */
 airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metadata,
-                                         char **out_record_id)
+                                 char **out_record_id)
 {
     if (!data || !len || !out_record_id)
         return AIRY_ERR_INVALID_PARAM;
 
     *out_record_id = NULL;
 
-    /* 构造 params: {data: <string>, metadata?: <object>} */
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "data", (const char *)data);
     if (metadata && metadata[0] != '\0') {
@@ -871,13 +851,12 @@ airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metad
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "write", params_str,
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "write", params_str, &result_str,
+                             AIRY_DAEMON_RPC_TIMEOUT_MS);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
 
-    /* 解析 result: {record_id: <string>} */
     cJSON *result = cJSON_Parse(result_str);
     AIRY_FREE(result_str);
     if (!result) {
@@ -895,7 +874,7 @@ airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metad
 }
 
 airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***record_ids,
-                                          float **scores, size_t *count)
+                                  float **scores, size_t *count)
 {
     if (!record_ids || !scores || !count)
         return AIRY_ERR_INVALID_PARAM;
@@ -914,13 +893,12 @@ airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***rec
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "search", params_str,
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "search", params_str, &result_str,
+                             AIRY_DAEMON_RPC_TIMEOUT_MS);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
 
-    /* 解析 result: {results: [{record_id, score}], total: int} */
     cJSON *result = cJSON_Parse(result_str);
     AIRY_FREE(result_str);
     if (!result) {
@@ -980,8 +958,8 @@ airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *o
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "get", params_str,
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "get", params_str, &result_str,
+                             AIRY_DAEMON_RPC_TIMEOUT_MS);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -1026,14 +1004,13 @@ airy_err_t airy_sys_memory_delete(const char *record_id)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "delete", params_str,
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "delete", params_str, &result_str,
+                             AIRY_DAEMON_RPC_TIMEOUT_MS);
     AIRY_FREE(params_str);
     AIRY_FREE(result_str);
     return rc;
 }
 
-/* Session 管理 */
 airy_err_t airy_sys_session_create(const char *metadata, char **out_session_id)
 {
     if (!out_session_id)
@@ -1068,8 +1045,9 @@ airy_err_t airy_sys_session_get(const char *session_id, char **out_info)
         cJSON *info = cJSON_CreateObject();
         cJSON_AddStringToObject(info, "session_id", session_id);
         cJSON_AddStringToObject(info, "metadata",
-                                g_runtime.sessions[idx].metadata ? g_runtime.sessions[idx].metadata
-                                                                 : "");
+                                g_runtime.sessions[idx].metadata ?
+                                    g_runtime.sessions[idx].metadata :
+                                    "");
         cJSON_AddNumberToObject(info, "age_seconds",
                                 (double)(time(NULL) - g_runtime.sessions[idx].created_at));
         *out_info = cJSON_PrintUnformatted(info);
@@ -1093,7 +1071,7 @@ airy_err_t airy_sys_session_close(const char *session_id)
         AIRY_FREE(g_runtime.sessions[idx].session_id);
         AIRY_FREE(g_runtime.sessions[idx].metadata);
         __builtin_memmove(&g_runtime.sessions[idx], &g_runtime.sessions[idx + 1],
-                (g_runtime.session_count - idx - 1) * sizeof(session_entry_t));
+                          (g_runtime.session_count - idx - 1) * sizeof(session_entry_t));
         g_runtime.session_count--;
 
         /* P0: 数组左移后，原 idx 之后所有 session 的下标均已变化，而
@@ -1102,7 +1080,7 @@ airy_err_t airy_sys_session_close(const char *session_id)
         ht_destroy(&g_runtime.session_index);
         if (ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
             airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
-                                  "session_index rebuild failed");
+                             "session_index rebuild failed");
             RUNTIME_UNLOCK();
             return AIRY_ERR_OUT_OF_MEMORY;
         }
@@ -1197,7 +1175,7 @@ airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
     *out_agent_id = NULL;
 
     cJSON *params = cJSON_CreateObject();
-    /* spec 必须是 JSON 字符串；若调用者传入非法 JSON，作为字符串字段回退 */
+
     cJSON *spec_obj = cJSON_Parse(spec);
     if (spec_obj) {
         cJSON_AddItemToObject(params, "agent_spec", spec_obj);
@@ -1211,8 +1189,8 @@ airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "spawn", params_str,
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "spawn", params_str, &result_str,
+                             AIRY_DAEMON_RPC_TIMEOUT_MS);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -1247,15 +1225,15 @@ airy_err_t airy_sys_agent_terminate(const char *agent_id)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "terminate", params_str,
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "terminate", params_str, &result_str,
+                             AIRY_DAEMON_RPC_TIMEOUT_MS);
     AIRY_FREE(params_str);
     AIRY_FREE(result_str);
     return rc;
 }
 
 airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t len,
-                                         char **out_output)
+                                 char **out_output)
 {
     if (!agent_id || !input || !out_output)
         return AIRY_ERR_INVALID_PARAM;
@@ -1264,7 +1242,7 @@ airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t
 
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "agent_id", agent_id);
-    /* input 不一定 NUL 终止：构造 (len+1) 缓冲区并拷贝 */
+
     char *input_str = (char *)AIRY_MALLOC(len + 1);
     if (!input_str) {
         cJSON_Delete(params);
@@ -1281,8 +1259,8 @@ airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "invoke", params_str,
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "invoke", params_str, &result_str,
+                             AIRY_DAEMON_RPC_TIMEOUT_MS);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -1312,8 +1290,8 @@ airy_err_t airy_sys_agent_list(char ***agent_ids, size_t *count)
     *count = 0;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "list", "{}",
-                                &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    int rc =
+        daemon_rpc_call(AIRY_AGENT_D_SOCKET, "list", "{}", &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
     if (rc != AIRY_SUCCESS)
         return rc;
 

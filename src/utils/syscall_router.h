@@ -1,7 +1,7 @@
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file syscall_router.h
  * @brief 系统调用路由器接口
@@ -9,10 +9,9 @@
  * 统一处理 JSON-RPC 请求到系统调用的路由，
  * 被 HTTP/WebSocket/Stdio 网关共同使用。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef GATEWAY_SYSCALL_ROUTER_H
 #define GATEWAY_SYSCALL_ROUTER_H
 

@@ -1,12 +1,11 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file jsonrpc.c
  * @brief JSON-RPC 2.0 协议工具函数实现
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
 // @owner: team-B
@@ -21,7 +20,7 @@
 
 #ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
-/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+
 #include <cjson_helpers.h>
 #endif
 
@@ -260,8 +259,7 @@ int jsonrpc_validate_batch_request(const cJSON *batch_json, size_t *out_count)
     AIRY_CHECK(out_count != NULL, AIRY_ERR_NULL_POINTER, "out_count is NULL");
     *out_count = 0;
 
-    AIRY_CHECK(cJSON_IsArray(batch_json), AIRY_ERR_INVALID_PARAM,
-                  "batch_json is not an array");
+    AIRY_CHECK(cJSON_IsArray(batch_json), AIRY_ERR_INVALID_PARAM, "batch_json is not an array");
 
     size_t count = cJSON_GetArraySize(batch_json);
     AIRY_CHECK(count > 0, AIRY_ERR_INVALID_PARAM, "batch is empty");
@@ -309,11 +307,11 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
         if (!cJSON_IsObject(item)) {
             char *err_resp = jsonrpc_create_invalid_request_response();
             if (err_resp) {
-                /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+
                 do {
                     CJSON_PARSE_GUARD(parsed, err_resp, { break; });
                     cJSON_AddItemToArray(responses, parsed);
-                    parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                    parsed = NULL;
                 } while (0);
                 AIRY_FREE(err_resp);
             }
@@ -340,11 +338,11 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                 break;
             }
             if (err_resp) {
-                /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+
                 do {
                     CJSON_PARSE_GUARD(parsed, err_resp, { break; });
                     cJSON_AddItemToArray(responses, parsed);
-                    parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                    parsed = NULL;
                 } while (0);
                 AIRY_FREE(err_resp);
             }
@@ -353,12 +351,12 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
 
         char *resp_str = handler(item, user_data);
         if (resp_str) {
-            /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+
             int _resp_parsed_ok = 0;
             do {
                 CJSON_PARSE_GUARD(resp_parsed, resp_str, { break; });
                 cJSON_AddItemToArray(responses, resp_parsed);
-                resp_parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                resp_parsed = NULL;
                 _resp_parsed_ok = 1;
             } while (0);
             if (!_resp_parsed_ok) {
@@ -369,7 +367,7 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                     do {
                         CJSON_PARSE_GUARD(err_parsed, err_resp_str, { break; });
                         cJSON_AddItemToArray(responses, err_parsed);
-                        err_parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                        err_parsed = NULL;
                     } while (0);
                     AIRY_FREE(err_resp_str);
                 }
@@ -379,11 +377,11 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
             const cJSON *id = jsonrpc_get_id(item);
             char *err_resp = jsonrpc_create_internal_error_response(id, "Handler returned NULL");
             if (err_resp) {
-                /* P0.18.2: 模式 C — 所有权转移至 responses（AddItemToArray） */
+
                 do {
                     CJSON_PARSE_GUARD(parsed, err_resp, { break; });
                     cJSON_AddItemToArray(responses, parsed);
-                    parsed = NULL; /* 所有权转移到 responses，防止 CJSON_AUTO_FREE 重复释放 */
+                    parsed = NULL;
                 } while (0);
                 AIRY_FREE(err_resp);
             }
@@ -452,10 +450,10 @@ char *jsonrpc_create_notification_params(const char *method, const char *params_
         return NULL;
 
     if (params_json && strlen(params_json) > 0) {
-        /* P0.18.2: 模式 A 变体 — 解析成功后所有权转移给 jsonrpc_create_notification */
+
         CJSON_PARSE_GUARD(params, params_json, { return NULL; });
         char *result = jsonrpc_create_notification(method, params);
-        params = NULL; /* 所有权转移给 notification，防止 CJSON_AUTO_FREE 重复释放 */
+        params = NULL;
         return result;
     }
     return jsonrpc_create_notification(method, NULL);

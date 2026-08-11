@@ -1,15 +1,14 @@
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file http_gateway.h
  * @brief HTTP网关接口
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef AIRY_RT_GATEWAY_HTTP_H
 #define AIRY_RT_GATEWAY_HTTP_H
 
@@ -23,10 +22,10 @@ struct cJSON;
 typedef struct cJSON cJSON;
 #endif
 
-/* 跨平台原子操作支持 - 使用统一的 atomic_compat.h */
+
 #include "atomic_compat.h"
 
-/* 前向声明 */
+
 struct gateway_rate_limiter;
 typedef struct gateway_rate_limiter gateway_rate_limiter_t;
 struct gateway_protocol_handler_s;
@@ -46,58 +45,53 @@ struct MHD_Response;
  * 生产环境应配置白名单，开发环境可允许所有来源。
  */
 typedef struct {
-    bool allow_all_origins;       /**< 开发模式：允许所有来源（默认false） */
-    char **allowed_origins;       /**< 生产模式：允许的来源白名单 */
-    size_t allowed_origins_count; /**< 白名单数量 */
-    char *allowed_methods;        /**< 允许的HTTP方法（如"POST, GET, OPTIONS"） */
-    char *allowed_headers;        /**< 允许的请求头（如"Content-Type, Authorization"） */
-    int max_age;                  /**< 预检请求缓存时间（秒） */
+    bool allow_all_origins;
+    char **allowed_origins;
+    size_t allowed_origins_count;
+    char *allowed_methods;
+    char *allowed_headers;
+    int max_age;
 } cors_config_t;
 
 typedef struct http_request_context {
-    const char *method;      /**< HTTP方法 */
-    const char *url;         /**< 请求URL */
-    const char *upload_data; /**< 上传数据 */
-    size_t upload_data_size; /**< 上传数据大小 */
+    const char *method;
+    const char *url;
+    const char *upload_data;
+    size_t upload_data_size;
 
-    cJSON *json_request;    /**< JSON请求对象 */
-    uint64_t start_time_ns; /**< 请求开始时间 */
+    cJSON *json_request;
+    uint64_t start_time_ns;
 } http_request_context_t;
 
 typedef struct {
-    char *method;                       /**< HTTP方法（拥有所有权） */
-    char *path;                         /**< URL路径（拥有所有权） */
-    gateway_endpoint_handler_t handler; /**< 端点处理回调 */
-    void *user_data;                    /**< 回调用户数据 */
+    char *method;
+    char *path;
+    gateway_endpoint_handler_t handler;
+    void *user_data;
 } http_dynamic_endpoint_t;
 
 typedef struct http_gateway {
-    struct MHD_Daemon *daemon; /**< MHD守护进程 */
-    uint16_t port;             /**< 监听端口 */
-    char *host;                /**< 监听地址 */
+    struct MHD_Daemon *daemon;
+    uint16_t port;
+    char *host;
 
-    void *handler_adapter;              /**< 公共回调适配器（动态分配） */
-    gateway_internal_handler_t handler; /**< 内部请求处理回调 */
-    void *handler_data;                 /**< 回调用户数据 */
-
-    atomic_bool running; /**< 运行标志 */
-
-    atomic_uint_fast64_t requests_total;  /**< 总请求数 */
-    atomic_uint_fast64_t requests_failed; /**< 失败请求数 */
-    atomic_uint_fast64_t bytes_received;  /**< 接收字节数 */
-    atomic_uint_fast64_t bytes_sent;      /**< 发送字节数 */
-
-    size_t max_request_size;              /**< 最大请求大小 */
-    unsigned int connection_limit;        /**< 最大并发连接数(0=默认1000) */
-    unsigned int connection_timeout;      /**< 连接超时秒数(0=默认30) */
-    cors_config_t cors;                   /**< CORS配置 */
-    gateway_rate_limiter_t *rate_limiter; /**< 速率限制器 */
-
-    gateway_protocol_handler_t protocol_handler; /**< 多协议处理器 */
-
-    http_dynamic_endpoint_t *dynamic_endpoints; /**< 动态端点数组 */
-    size_t dynamic_endpoint_count;              /**< 动态端点数量 */
-    size_t dynamic_endpoint_capacity;           /**< 动态端点容量 */
+    void *handler_adapter;
+    gateway_internal_handler_t handler;
+    void *handler_data;
+    atomic_bool running;
+    atomic_uint_fast64_t requests_total;
+    atomic_uint_fast64_t requests_failed;
+    atomic_uint_fast64_t bytes_received;
+    atomic_uint_fast64_t bytes_sent;
+    size_t max_request_size;
+    unsigned int connection_limit;
+    unsigned int connection_timeout;
+    cors_config_t cors;
+    gateway_rate_limiter_t *rate_limiter;
+    gateway_protocol_handler_t protocol_handler;
+    http_dynamic_endpoint_t *dynamic_endpoints;
+    size_t dynamic_endpoint_count;
+    size_t dynamic_endpoint_capacity;
 } http_gateway_t;
 
 /**
@@ -133,8 +127,9 @@ struct MHD_Response *create_http_response(int status_code, const char *content, 
  * @param content_len 内容长度
  * @return MHD响应对象
  */
-struct MHD_Response *create_http_response_ex(http_gateway_t *gateway, struct MHD_Connection *connection,
-                                              int status_code, const char *content, size_t content_len);
+struct MHD_Response *create_http_response_ex(http_gateway_t *gateway,
+                                             struct MHD_Connection *connection, int status_code,
+                                             const char *content, size_t content_len);
 
 /**
  * @brief HTTP请求处理回调函数类型

@@ -1,7 +1,7 @@
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file jsonrpc.h
  * @brief JSON-RPC 2.0 协议工具函数
@@ -9,10 +9,9 @@
  * 提供标准的 JSON-RPC 2.0 请求验证和响应生成功能
  * 供 HTTP 网关和 WebSocket 网关共同使用
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef GATEWAY_JSONRPC_H
 #define GATEWAY_JSONRPC_H
 
@@ -20,22 +19,18 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* ==================== JSON-RPC 2.0 标准错误码 ==================== */
 
-#define JSONRPC_PARSE_ERROR (-32700)      /**< 解析错误 */
-#define JSONRPC_INVALID_REQUEST (-32600)  /**< 无效请求 */
-#define JSONRPC_METHOD_NOT_FOUND (-32601) /**< 方法未找到 */
-#define JSONRPC_INVALID_PARAMS (-32602)   /**< 无效参数 */
-#define JSONRPC_INTERNAL_ERROR (-32603)   /**< 内部错误 */
+#define JSONRPC_PARSE_ERROR (-32700)
+#define JSONRPC_INVALID_REQUEST (-32600)
+#define JSONRPC_METHOD_NOT_FOUND (-32601)
+#define JSONRPC_INVALID_PARAMS (-32602)
+#define JSONRPC_INTERNAL_ERROR (-32603)
 
-/* 自定义错误码范围：-32000 到 -32099 */
-#define JSONRPC_SERVER_ERROR_BASE (-32000)   /**< 服务器错误基址 */
-#define JSONRPC_RATE_LIMITED (-32001)        /**< 请求被限流 */
-#define JSONRPC_AUTH_FAILED (-32002)         /**< 认证失败 */
-#define JSONRPC_SESSION_EXPIRED (-32003)     /**< 会话过期 */
-#define JSONRPC_SERVICE_UNAVAILABLE (-32004) /**< 服务不可用 */
-
-/* ==================== 请求验证 ==================== */
+#define JSONRPC_SERVER_ERROR_BASE (-32000)
+#define JSONRPC_RATE_LIMITED (-32001)
+#define JSONRPC_AUTH_FAILED (-32002)
+#define JSONRPC_SESSION_EXPIRED (-32003)
+#define JSONRPC_SERVICE_UNAVAILABLE (-32004)
 
 /**
  * @brief 验证 JSON-RPC 2.0 请求格式
@@ -78,7 +73,6 @@ const cJSON *jsonrpc_get_params(const cJSON *json);
  */
 const cJSON *jsonrpc_get_id(const cJSON *json);
 
-/* ==================== 响应生成 ==================== */
 
 /**
  * @brief 创建 JSON-RPC 2.0 成功响应
@@ -109,7 +103,7 @@ char *jsonrpc_create_success_response(const cJSON *id, cJSON *result);
  *   "error": {
  *     "code": <code>,
  *     "message": "<message>",
- *     "data": <data>  // 可选
+ *     "data": <data>
  *   },
  *   "id": <id>
  * }
@@ -125,7 +119,6 @@ char *jsonrpc_create_success_response(const cJSON *id, cJSON *result);
  */
 char *jsonrpc_create_error_response(const cJSON *id, int code, const char *message, cJSON *data);
 
-/* ==================== 便捷响应函数 ==================== */
 
 /**
  * @brief 创建解析错误响应
@@ -162,7 +155,6 @@ char *jsonrpc_create_rate_limited_response(const cJSON *id);
  */
 char *jsonrpc_create_auth_failed_response(const cJSON *id);
 
-/* ==================== 错误消息获取 ==================== */
 
 /**
  * @brief 获取标准错误消息
@@ -173,7 +165,6 @@ char *jsonrpc_create_auth_failed_response(const cJSON *id);
 const char *jsonrpc_get_error_message(int code);
 
 /* ==================== Batch Requests (PROTO-004) ==================== */
-
 #define JSONRPC_MAX_BATCH_SIZE 64
 
 /**
@@ -208,7 +199,6 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                             void *user_data);
 
 /* ==================== Notifications (PROTO-004) ==================== */
-
 /**
  * @brief 创建通知（无id字段的特殊请求）
  *

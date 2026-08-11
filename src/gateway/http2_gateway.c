@@ -1,7 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file http2_gateway.c
  * @brief HTTP/2 网关实现 — 基于 nghttp2 的 HTTP/2 服务器
@@ -19,7 +19,6 @@
  *
  * IRON-2 铁律：禁止桩函数和简化功能，必须实现真正可用的 HTTP/2 服务器。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
 // @owner: team-B
@@ -43,10 +42,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 跨平台原子操作支持 */
 #include "atomic_compat.h"
 
-/* ========== 平台特定头文件 ========== */
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <errno.h>
@@ -65,18 +62,14 @@
 
 #ifdef AIRY_HAS_HTTP2
 
-/* ========== 常量定义 ========== */
-
-#define HTTP2_RECV_BUF_SIZE (64 * 1024)       /**< 接收缓冲区大小 */
-#define HTTP2_SEND_BUF_SIZE (64 * 1024)       /**< 发送缓冲区大小 */
-#define HTTP2_MAX_HEADER_SIZE (64 * 1024)     /**< 单个请求最大头大小 */
-#define HTTP2_DEFAULT_MAX_STREAMS 128         /**< 默认最大并发流 */
-#define HTTP2_DEFAULT_TIMEOUT_SEC 60          /**< 默认连接空闲超时 */
-#define HTTP2_POLL_TIMEOUT_MS 1000            /**< poll 超时（用于检查运行标志） */
-#define HTTP2_LISTEN_BACKLOG 128              /**< listen backlog */
-#define HTTP2_INITIAL_WINDOW_SIZE 65535       /**< 初始流窗口大小 */
-
-/* ========== 内部类型定义 ========== */
+#define HTTP2_RECV_BUF_SIZE (64 * 1024)
+#define HTTP2_SEND_BUF_SIZE (64 * 1024)
+#define HTTP2_MAX_HEADER_SIZE (64 * 1024)
+#define HTTP2_DEFAULT_MAX_STREAMS 128
+#define HTTP2_DEFAULT_TIMEOUT_SEC 60
+#define HTTP2_POLL_TIMEOUT_MS 1000
+#define HTTP2_LISTEN_BACKLOG 128 /**< listen backlog */
+#define HTTP2_INITIAL_WINDOW_SIZE 65535
 
 /**
  * @brief 内部处理器适配器
@@ -89,20 +82,15 @@ typedef struct {
     void *internal_data;
 } http2_handler_adapter_t;
 
-/* ========== 前向声明 ========== */
-
 static int http2_gateway_start_impl(void *impl);
 static void http2_gateway_stop_impl(void *impl);
 static void http2_gateway_destroy_impl(void *impl);
 static const char *http2_gateway_get_name_impl(void *impl);
 static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json);
 static bool http2_gateway_is_running_impl(void *impl);
-static airy_err_t http2_gateway_set_handler_impl(void *impl,
-                                                  gateway_internal_handler_t handler,
-                                                  void *user_data);
+static airy_err_t http2_gateway_set_handler_impl(void *impl, gateway_internal_handler_t handler,
+                                                 void *user_data);
 static void http2_free_response_headers(nghttp2_nv *nva, size_t count);
-
-/* ========== 流上下文管理 ========== */
 
 /**
  * @brief 创建 HTTP/2 流上下文
@@ -153,7 +141,6 @@ static int http2_stream_append_body(http2_stream_context_t *ctx, const uint8_t *
     if (len == 0)
         return 0;
 
-    /* 检查是否需要扩容 */
     if (ctx->request_body_len + len > ctx->request_body_cap) {
         size_t new_cap = ctx->request_body_cap == 0 ? 4096 : ctx->request_body_cap;
         while (new_cap < ctx->request_body_len + len) {
@@ -199,8 +186,6 @@ static int http2_stream_set_header_str(char **dst, const uint8_t *value, size_t 
     return 0;
 }
 
-/* ========== 内部处理器适配器 ========== */
-
 /**
  * @brief 适配器：将 gateway_internal_handler_t 转换为 protocol_handle_request 的回调签名
  */
@@ -226,20 +211,15 @@ static int http2_internal_handler_adapter(const char *request_json, char **respo
     return AIRY_ERR_NULL_POINTER;
 }
 
-/* ========== 响应生成与提交 ========== */
-
 /**
  * @brief 数据源读取回调 — 向 nghttp2 提供 HTTP/2 DATA 帧的响应体
  *
  * 从流上下文的 response_body 中读取数据，拷贝到 nghttp2 提供的 buf 中。
  * 当所有数据读取完毕时设置 NGHTTP2_DATA_FLAG_EOF。
  */
-static ssize_t http2_data_source_read_callback(nghttp2_session *session,
-                                               int32_t stream_id,
-                                               uint8_t *buf, size_t length,
-                                               uint32_t *data_flags,
-                                               nghttp2_data_source *source,
-                                               void *user_data)
+static ssize_t http2_data_source_read_callback(nghttp2_session *session, int32_t stream_id,
+                                               uint8_t *buf, size_t length, uint32_t *data_flags,
+                                               nghttp2_data_source *source, void *user_data)
 {
     (void)session;
     (void)stream_id;
@@ -280,22 +260,20 @@ static ssize_t http2_data_source_read_callback(nghttp2_session *session,
  * @param max_nva 数组最大容量
  * @return 实际填充的头数量
  */
-static size_t http2_build_response_headers(http2_stream_context_t *ctx,
-                                           http2_gateway_t *gw, nghttp2_nv *nva,
-                                           size_t max_nva)
+static size_t http2_build_response_headers(http2_stream_context_t *ctx, http2_gateway_t *gw,
+                                           nghttp2_nv *nva, size_t max_nva)
 {
     size_t count = 0;
     char status_str[8];
     http_gateway_t *base = &gw->base;
 
-    /* :status 伪头 */
     snprintf(status_str, sizeof(status_str), "%d", ctx->response_status);
     if (count < max_nva) {
         nva[count].name = (uint8_t *)":status";
         nva[count].namelen = 7;
         nva[count].value = (uint8_t *)AIRY_STRDUP(status_str);
         if (!nva[count].value) {
-            /* P0: OOM — 清理已分配项并返回错误，调用方不得提交 value=NULL 的 nv */
+
             http2_free_response_headers(nva, count);
             return (size_t)-1;
         }
@@ -332,7 +310,6 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         count++;
     }
 
-    /* 安全头 */
     if (count < max_nva) {
         nva[count].name = (uint8_t *)"x-content-type-options";
         nva[count].namelen = 22;
@@ -382,7 +359,6 @@ static size_t http2_build_response_headers(http2_stream_context_t *ctx,
         count++;
     }
 
-    /* CORS 头 */
     if (ctx->origin && base) {
         bool origin_allowed = false;
         if (base->cors.allow_all_origins) {
@@ -437,13 +413,11 @@ static int http2_submit_response_impl(nghttp2_session *session, http2_stream_con
         return NGHTTP2_ERR_INVALID_ARGUMENT;
     }
 
-    /* 如果没有响应体，生成空 JSON */
     if (!ctx->response_body) {
         ctx->response_body = AIRY_STRDUP("{}");
         ctx->response_body_len = 2;
     }
 
-    /* 构建响应头 */
     nghttp2_nv nva[16];
     size_t nvlen = http2_build_response_headers(ctx, gw, nva, 16);
     if (nvlen == (size_t)-1) {
@@ -456,7 +430,6 @@ static int http2_submit_response_impl(nghttp2_session *session, http2_stream_con
         return NGHTTP2_ERR_NOMEM;
     }
 
-    /* 设置 data provider */
     nghttp2_data_provider data_prd;
     data_prd.source.ptr = ctx;
     data_prd.read_callback = http2_data_source_read_callback;
@@ -475,8 +448,6 @@ static int http2_submit_response_impl(nghttp2_session *session, http2_stream_con
     return ret;
 }
 
-/* ========== 请求处理 ========== */
-
 /**
  * @brief 处理 JSON-RPC POST 请求
  *
@@ -487,22 +458,21 @@ static char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *c
 {
     http_gateway_t *base = &gw->base;
 
-    /* 优先使用多协议处理器处理原始请求体 */
     if (base->protocol_handler && ctx->request_body && ctx->request_body_len > 0) {
         http2_handler_adapter_t adapter = {.internal_handler = base->handler,
                                            .internal_data = base->handler_data};
 
-        rpc_result_t result = gateway_protocol_handle_request(
-            base->protocol_handler, (const char *)ctx->request_body, ctx->request_body_len,
-            AIRY_PROTOCOL_COUNT,
-            base->handler ? http2_internal_handler_adapter : NULL,
-            base->handler ? &adapter : NULL);
+        rpc_result_t result =
+            gateway_protocol_handle_request(base->protocol_handler, (const char *)ctx->request_body,
+                                            ctx->request_body_len, AIRY_PROTOCOL_COUNT,
+                                            base->handler ? http2_internal_handler_adapter : NULL,
+                                            base->handler ? &adapter : NULL);
 
         if (result.error_code != 0 || !result.response_json) {
             char *error_resp =
-                result.response_json ? result.response_json
-                                     : jsonrpc_create_error_response(NULL, -32603,
-                                                                     "Internal error", NULL);
+                result.response_json ?
+                    result.response_json :
+                    jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
             if (result.response_json)
                 result.response_json = NULL;
             gateway_rpc_free(&result);
@@ -515,7 +485,6 @@ static char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *c
         return success_resp;
     }
 
-    /* 回退：无协议处理器或无请求体 */
     return jsonrpc_create_error_response(NULL, -32600, "Invalid request", NULL);
 }
 
@@ -555,16 +524,15 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
 
     char *response_json = NULL;
 
-    LOG_INFO("processing request: stream_id=%d, method=%s, path=%s, body_len=%zu",
-             ctx->stream_id, ctx->method ? ctx->method : "(null)",
-             ctx->path ? ctx->path : "(null)", ctx->request_body_len);
+    LOG_INFO("processing request: stream_id=%d, method=%s, path=%s, body_len=%zu", ctx->stream_id,
+             ctx->method ? ctx->method : "(null)", ctx->path ? ctx->path : "(null)",
+             ctx->request_body_len);
 
-    /* 路由分发 */
     if (ctx->method && strcmp(ctx->method, "POST") == 0) {
         /* POST / → JSON-RPC */
         if (ctx->request_body_len > gw->base.max_request_size) {
-            LOG_WARN("request too large: %zu > %zu (stream_id=%d)",
-                     ctx->request_body_len, gw->base.max_request_size, ctx->stream_id);
+            LOG_WARN("request too large: %zu > %zu (stream_id=%d)", ctx->request_body_len,
+                     gw->base.max_request_size, ctx->stream_id);
             ctx->response_status = 413;
             response_json = jsonrpc_create_error_response(NULL, -413, "Request too large", NULL);
         } else {
@@ -572,8 +540,7 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
             if (!response_json) {
                 LOG_ERROR("jsonrpc handler returned NULL (stream_id=%d)", ctx->stream_id);
                 ctx->response_status = 500;
-                response_json = jsonrpc_create_error_response(NULL, -32603,
-                                                              "Internal error", NULL);
+                response_json = jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
             }
         }
     } else if (ctx->method && strcmp(ctx->method, "GET") == 0) {
@@ -581,8 +548,8 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
             LOG_DEBUG("health check request (stream_id=%d)", ctx->stream_id);
             response_json = http2_handle_health();
         } else {
-            LOG_WARN("GET path not found: %s (stream_id=%d)",
-                     ctx->path ? ctx->path : "(null)", ctx->stream_id);
+            LOG_WARN("GET path not found: %s (stream_id=%d)", ctx->path ? ctx->path : "(null)",
+                     ctx->stream_id);
             ctx->response_status = 404;
             response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
         }
@@ -590,13 +557,12 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
         LOG_DEBUG("OPTIONS preflight request (stream_id=%d)", ctx->stream_id);
         response_json = http2_handle_preflight();
     } else {
-        LOG_WARN("unsupported method: %s (stream_id=%d)",
-                 ctx->method ? ctx->method : "(null)", ctx->stream_id);
+        LOG_WARN("unsupported method: %s (stream_id=%d)", ctx->method ? ctx->method : "(null)",
+                 ctx->stream_id);
         ctx->response_status = 404;
         response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
     }
 
-    /* 设置响应体 */
     if (response_json) {
         ctx->response_body = response_json;
         ctx->response_body_len = strlen(response_json);
@@ -607,18 +573,14 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
 
     ctx->response_sent = 0;
 
-    /* 更新统计 */
     atomic_fetch_add(&gw->base.requests_total, 1);
     atomic_fetch_add(&gw->base.bytes_received, ctx->request_body_len);
     atomic_fetch_add(&gw->base.bytes_sent, ctx->response_body_len);
 
-    /* 提交响应 */
     int submit_ret = http2_submit_response_impl(session, ctx, gw);
-    LOG_INFO("response submitted: stream_id=%d, status=%d, resp_len=%zu, ret=%d",
-             ctx->stream_id, ctx->response_status, ctx->response_body_len, submit_ret);
+    LOG_INFO("response submitted: stream_id=%d, status=%d, resp_len=%zu, ret=%d", ctx->stream_id,
+             ctx->response_status, ctx->response_body_len, submit_ret);
 }
-
-/* ========== nghttp2 回调实现 ========== */
 
 /**
  * @brief on_begin_headers 回调 — 分配流上下文
@@ -626,8 +588,7 @@ static void http2_process_request(nghttp2_session *session, int32_t stream_id, v
 static int http2_on_begin_headers(nghttp2_session *session, const nghttp2_frame *frame,
                                   void *user_data)
 {
-    if (frame->hd.type != NGHTTP2_HEADERS ||
-        frame->headers.cat != NGHTTP2_HCAT_REQUEST) {
+    if (frame->hd.type != NGHTTP2_HEADERS || frame->headers.cat != NGHTTP2_HCAT_REQUEST) {
         return 0;
     }
 
@@ -656,8 +617,7 @@ static int http2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
     (void)flags;
     (void)user_data;
 
-    if (frame->hd.type != NGHTTP2_HEADERS ||
-        frame->headers.cat != NGHTTP2_HCAT_REQUEST) {
+    if (frame->hd.type != NGHTTP2_HEADERS || frame->headers.cat != NGHTTP2_HCAT_REQUEST) {
         return 0;
     }
 
@@ -667,7 +627,6 @@ static int http2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
     if (!ctx)
         return 0;
 
-    /* 处理伪头 */
     if (namelen > 0 && name[0] == ':') {
         if (namelen == 7 && memcmp(name, ":method", 7) == 0) {
             return http2_stream_set_header_str(&ctx->method, value, valuelen);
@@ -678,7 +637,6 @@ static int http2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
         return 0;
     }
 
-    /* 处理常规头 */
     if (namelen == 12 && strncasecmp((const char *)name, "content-type", 12) == 0) {
         return http2_stream_set_header_str(&ctx->content_type, value, valuelen);
     }
@@ -692,9 +650,8 @@ static int http2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
 /**
  * @brief on_data_chunk_recv 回调 — 接收 DATA 帧数据块
  */
-static int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags,
-                                    int32_t stream_id, const uint8_t *data, size_t len,
-                                    void *user_data)
+static int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t stream_id,
+                                    const uint8_t *data, size_t len, void *user_data)
 {
     (void)flags;
 
@@ -711,8 +668,7 @@ static int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags,
         LOG_WARN("request body exceeds limit: %zu + %zu > %zu (stream_id=%d)",
                  ctx->request_body_len, len, gw->base.max_request_size, stream_id);
         ctx->response_status = 413;
-        nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, stream_id,
-                                  NGHTTP2_CANCEL);
+        nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, stream_id, NGHTTP2_CANCEL);
         return 0;
     }
 
@@ -742,7 +698,6 @@ static int http2_on_frame_recv(nghttp2_session *session, const nghttp2_frame *fr
         return 0;
     }
 
-    /* END_STREAM 收到，请求完整，处理请求 */
     http2_process_request(session, frame->hd.stream_id, user_data);
     return 0;
 }
@@ -750,8 +705,8 @@ static int http2_on_frame_recv(nghttp2_session *session, const nghttp2_frame *fr
 /**
  * @brief on_stream_close 回调 — 流关闭，清理资源
  */
-static int http2_on_stream_close(nghttp2_session *session, int32_t stream_id,
-                                 uint32_t error_code, void *user_data)
+static int http2_on_stream_close(nghttp2_session *session, int32_t stream_id, uint32_t error_code,
+                                 void *user_data)
 {
     (void)user_data;
 
@@ -759,8 +714,8 @@ static int http2_on_stream_close(nghttp2_session *session, int32_t stream_id,
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
     if (ctx) {
         if (error_code != NGHTTP2_NO_ERROR) {
-            LOG_WARN("stream closed with error: stream_id=%d, error_code=%u (%s)",
-                     stream_id, error_code, nghttp2_http2_strerror(error_code));
+            LOG_WARN("stream closed with error: stream_id=%d, error_code=%u (%s)", stream_id,
+                     error_code, nghttp2_http2_strerror(error_code));
         } else {
             LOG_DEBUG("stream closed normally: stream_id=%d", stream_id);
         }
@@ -770,8 +725,6 @@ static int http2_on_stream_close(nghttp2_session *session, int32_t stream_id,
 
     return 0;
 }
-
-/* ========== 会话管理 ========== */
 
 /**
  * @brief 创建 nghttp2 回调表
@@ -787,8 +740,7 @@ static int http2_create_callbacks(nghttp2_session_callbacks **callbacks)
 
     nghttp2_session_callbacks_set_on_begin_headers_callback(*callbacks, http2_on_begin_headers);
     nghttp2_session_callbacks_set_on_header_callback(*callbacks, http2_on_header);
-    nghttp2_session_callbacks_set_on_data_chunk_recv_callback(*callbacks,
-                                                              http2_on_data_chunk_recv);
+    nghttp2_session_callbacks_set_on_data_chunk_recv_callback(*callbacks, http2_on_data_chunk_recv);
     nghttp2_session_callbacks_set_on_frame_recv_callback(*callbacks, http2_on_frame_recv);
     nghttp2_session_callbacks_set_on_stream_close_callback(*callbacks, http2_on_stream_close);
 
@@ -813,14 +765,12 @@ static http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd
     sess->last_activity_ns = sess->connect_time_ns;
     sess->closing = false;
 
-    /* 创建 nghttp2 回调表 */
     nghttp2_session_callbacks *callbacks = NULL;
     if (http2_create_callbacks(&callbacks) != 0) {
         AIRY_FREE(sess);
         return NULL;
     }
 
-    /* 创建服务端会话 */
     int ret = nghttp2_session_server_new(&sess->session, callbacks, gw);
     nghttp2_session_callbacks_del(callbacks);
 
@@ -831,7 +781,6 @@ static http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd
         return NULL;
     }
 
-    /* 提交初始 SETTINGS 帧 */
     nghttp2_settings_entry settings_entries[3];
     size_t num_entries = 0;
 
@@ -847,8 +796,7 @@ static http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd
     settings_entries[num_entries].value = HTTP2_MAX_HEADER_SIZE;
     num_entries++;
 
-    ret = nghttp2_submit_settings(sess->session, NGHTTP2_FLAG_NONE, settings_entries,
-                                  num_entries);
+    ret = nghttp2_submit_settings(sess->session, NGHTTP2_FLAG_NONE, settings_entries, num_entries);
     if (ret != 0) {
         LOG_ERROR("nghttp2_submit_settings failed: %s (fd=%d)", nghttp2_strerror(ret), fd);
         nghttp2_session_del(sess->session);
@@ -856,8 +804,8 @@ static http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd
         return NULL;
     }
 
-    LOG_INFO("HTTP/2 session created: fd=%d, max_streams=%u, window=%d",
-             fd, gw->max_concurrent_streams, HTTP2_INITIAL_WINDOW_SIZE);
+    LOG_INFO("HTTP/2 session created: fd=%d, max_streams=%u, window=%d", fd,
+             gw->max_concurrent_streams, HTTP2_INITIAL_WINDOW_SIZE);
     return sess;
 }
 
@@ -881,7 +829,6 @@ static void http2_session_destroy(http2_gateway_session_t *sess)
         sess->fd = -1;
     }
 
-    /* P0 修复: 释放部分写入缓冲区 */
     if (sess->pending_send_buf) {
         AIRY_FREE(sess->pending_send_buf);
         sess->pending_send_buf = NULL;
@@ -891,8 +838,6 @@ static void http2_session_destroy(http2_gateway_session_t *sess)
 
     AIRY_FREE(sess);
 }
-
-/* ========== 会话 I/O ========== */
 
 /**
  * @brief 从 socket 读取数据并送入 nghttp2 处理
@@ -912,7 +857,7 @@ static int http2_session_recv_data(http2_gateway_session_t *sess)
     }
 
     if (nread == 0) {
-        /* 对端关闭连接 */
+
         LOG_INFO("peer closed connection: fd=%d", sess->fd);
         return 1;
     }
@@ -921,7 +866,6 @@ static int http2_session_recv_data(http2_gateway_session_t *sess)
     atomic_fetch_add(&sess->gateway->base.bytes_received, (uint64_t)nread);
     LOG_DEBUG("recv %zd bytes on fd=%d", nread, sess->fd);
 
-    /* 送入 nghttp2 处理 */
     ssize_t processed = nghttp2_session_mem_recv(sess->session, buf, (size_t)nread);
     if (processed < 0) {
         LOG_ERROR("nghttp2_session_mem_recv failed: %s (fd=%d, processed=%zd/%zd)",
@@ -929,10 +873,9 @@ static int http2_session_recv_data(http2_gateway_session_t *sess)
         return -1;
     }
 
-    /* nghttp2 可能未消费全部数据（如连接前言中多余字节），记录但不视为错误 */
     if ((size_t)processed < (size_t)nread) {
-        LOG_DEBUG("nghttp2 partial recv: processed=%zd/%zd bytes (fd=%d)",
-                  processed, nread, sess->fd);
+        LOG_DEBUG("nghttp2 partial recv: processed=%zd/%zd bytes (fd=%d)", processed, nread,
+                  sess->fd);
     }
 
     return 0;
@@ -952,11 +895,11 @@ static int http2_session_recv_data(http2_gateway_session_t *sess)
  */
 static int http2_session_send_data(http2_gateway_session_t *sess)
 {
-    /* Step 1: 先 flush pending buffer 中的残留数据 */
+
     if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
         size_t remaining = sess->pending_send_len - sess->pending_send_offset;
-        ssize_t written = write(sess->fd, sess->pending_send_buf + sess->pending_send_offset,
-                                remaining);
+        ssize_t written =
+            write(sess->fd, sess->pending_send_buf + sess->pending_send_offset, remaining);
 
         if (written < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
@@ -973,18 +916,16 @@ static int http2_session_send_data(http2_gateway_session_t *sess)
         LOG_DEBUG("pending flush: wrote %zd/%zu bytes (fd=%d)", written, remaining, sess->fd);
 
         if (sess->pending_send_offset < sess->pending_send_len) {
-            /* Socket buffer 仍满，等下次 POLLOUT */
+
             return 0;
         }
 
-        /* Pending buffer 全部发送完毕，释放 */
         AIRY_FREE(sess->pending_send_buf);
         sess->pending_send_buf = NULL;
         sess->pending_send_len = 0;
         sess->pending_send_offset = 0;
     }
 
-    /* Step 2: 从 nghttp2 获取新数据并发送 */
     const uint8_t *data_ptr = NULL;
     ssize_t send_len = nghttp2_session_mem_send(sess->session, &data_ptr);
 
@@ -992,18 +933,17 @@ static int http2_session_send_data(http2_gateway_session_t *sess)
         size_t total = (size_t)send_len;
         size_t offset = 0;
 
-        /* 尝试写入全部数据 */
         while (offset < total) {
             ssize_t written = write(sess->fd, data_ptr + offset, total - offset);
 
             if (written < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                    /* Socket buffer 满，将剩余数据缓存到 pending_send_buf */
+
                     size_t remaining = total - offset;
                     sess->pending_send_buf = AIRY_MALLOC(remaining);
                     if (!sess->pending_send_buf) {
-                        LOG_ERROR("pending buffer alloc failed: fd=%d, size=%zu",
-                                  sess->fd, remaining);
+                        LOG_ERROR("pending buffer alloc failed: fd=%d, size=%zu", sess->fd,
+                                  remaining);
                         return -1;
                     }
                     memcpy(sess->pending_send_buf, data_ptr + offset, remaining);
@@ -1024,20 +964,17 @@ static int http2_session_send_data(http2_gateway_session_t *sess)
         atomic_fetch_add(&sess->gateway->base.bytes_sent, (uint64_t)total);
         LOG_DEBUG("send %zu bytes on fd=%d", total, sess->fd);
 
-        /* 当前 chunk 全部发送完毕，获取下一块 */
         send_len = nghttp2_session_mem_send(sess->session, &data_ptr);
     }
 
     if (send_len < 0) {
-        LOG_ERROR("nghttp2_session_mem_send failed: %s (fd=%d)",
-                  nghttp2_strerror((int)send_len), sess->fd);
+        LOG_ERROR("nghttp2_session_mem_send failed: %s (fd=%d)", nghttp2_strerror((int)send_len),
+                  sess->fd);
         return -1;
     }
 
     return 0;
 }
-
-/* ========== 会话数组管理 ========== */
 
 /**
  * @brief 添加会话到网关的会话数组
@@ -1071,15 +1008,12 @@ static void http2_gateway_remove_session(http2_gateway_t *gw, size_t index)
 
     http2_session_destroy(gw->sessions[index]);
 
-    /* 将最后一个元素移到被删除的位置 */
     gw->session_count--;
     if (index < gw->session_count) {
         gw->sessions[index] = gw->sessions[gw->session_count];
     }
     gw->sessions[gw->session_count] = NULL;
 }
-
-/* ========== 事件循环 ========== */
 
 /**
  * @brief 接受新连接
@@ -1097,32 +1031,27 @@ static void http2_event_loop_accept(http2_gateway_t *gw)
         return;
     }
 
-    /* 连接数限制 */
     if (gw->session_count >= gw->max_concurrent_streams) {
-        LOG_WARN("connection limit reached (%zu/%u), rejecting new connection",
-                 gw->session_count, gw->max_concurrent_streams);
+        LOG_WARN("connection limit reached (%zu/%u), rejecting new connection", gw->session_count,
+                 gw->max_concurrent_streams);
         close(fd);
         return;
     }
 
-    /* 设置非阻塞 */
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags >= 0) {
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     }
 
-    /* 设置 TCP_NODELAY */
     int nodelay = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
-    /* 创建会话 */
     http2_gateway_session_t *sess = http2_session_create(gw, fd);
     if (!sess) {
         close(fd);
         return;
     }
 
-    /* 立即发送 SETTINGS 帧 */
     if (http2_session_send_data(sess) != 0) {
         http2_session_destroy(sess);
         return;
@@ -1135,8 +1064,8 @@ static void http2_event_loop_accept(http2_gateway_t *gw)
 
     char ip_buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &addr.sin_addr, ip_buf, sizeof(ip_buf));
-    LOG_INFO("connection accepted: %s:%d → fd=%d (sessions=%zu/%u)",
-             ip_buf, ntohs(addr.sin_port), fd, gw->session_count, gw->max_concurrent_streams);
+    LOG_INFO("connection accepted: %s:%d → fd=%d (sessions=%zu/%u)", ip_buf, ntohs(addr.sin_port),
+             fd, gw->session_count, gw->max_concurrent_streams);
 }
 
 /**
@@ -1147,23 +1076,19 @@ static void http2_event_loop_cleanup(http2_gateway_t *gw)
     uint64_t now = gateway_time_ns();
     uint64_t timeout_ns = (uint64_t)gw->connection_timeout * 1000000000ULL;
 
-    for (size_t i = 0; i < gw->session_count; ) {
+    for (size_t i = 0; i < gw->session_count;) {
         http2_gateway_session_t *sess = gw->sessions[i];
 
-        /* 检查会话是否应该关闭 */
         bool should_close = sess->closing;
 
-        /* 检查超时 */
         if (!should_close && timeout_ns > 0) {
             if ((now - sess->last_activity_ns) > timeout_ns) {
-                LOG_INFO("session timeout: fd=%d, idle=%llums",
-                         sess->fd,
+                LOG_INFO("session timeout: fd=%d, idle=%llums", sess->fd,
                          (unsigned long long)((now - sess->last_activity_ns) / 1000000ULL));
                 should_close = true;
             }
         }
 
-        /* 检查 nghttp2 是否还想读/写 */
         if (!should_close) {
             if (!nghttp2_session_want_read(sess->session) &&
                 !nghttp2_session_want_write(sess->session)) {
@@ -1173,12 +1098,12 @@ static void http2_event_loop_cleanup(http2_gateway_t *gw)
         }
 
         if (should_close) {
-            /* 检查是否有未发送完毕的 pending buffer */
+
             if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
                 LOG_WARN("closing session with %zu bytes unsent: fd=%d",
                          sess->pending_send_len - sess->pending_send_offset, sess->fd);
             }
-            /* 发送 GOAWAY 帧 */
+
             if (sess->session) {
                 nghttp2_submit_goaway(sess->session, NGHTTP2_FLAG_NONE,
                                       nghttp2_session_get_last_proc_stream_id(sess->session),
@@ -1202,23 +1127,21 @@ static void *http2_event_loop(void *arg)
     LOG_INFO("HTTP/2 event loop started (port=%u)", gw->base.port);
 
     while (atomic_load(&gw->running)) {
-        /* 构建 pollfd 数组：listen_fd + 所有会话 fd */
+
         size_t max_fds = gw->session_count + 1;
         struct pollfd *fds = AIRY_CALLOC(max_fds, sizeof(struct pollfd));
         if (!fds) {
-            /* 内存不足，等待后重试 */
+
             gateway_sleep(1);
             continue;
         }
 
         nfds_t nfds = 0;
 
-        /* 监听 socket */
         fds[nfds].fd = gw->listen_fd;
         fds[nfds].events = POLLIN;
         nfds++;
 
-        /* 会话 socket */
         for (size_t i = 0; i < gw->session_count; i++) {
             http2_gateway_session_t *sess = gw->sessions[i];
             short events = 0;
@@ -1230,12 +1153,10 @@ static void *http2_event_loop(void *arg)
                 events |= POLLOUT;
             }
 
-            /* P0 修复: 如果有 pending_send_buf 未发送完毕，必须监听 POLLOUT */
             if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
                 events |= POLLOUT;
             }
 
-            /* 如果既不想读也不想写，但会话还活着，仍然监听读（用于检测对端关闭） */
             if (events == 0) {
                 events = POLLIN;
             }
@@ -1256,7 +1177,6 @@ static void *http2_event_loop(void *arg)
             break;
         }
 
-        /* 处理新连接 */
         if (fds[0].revents & POLLIN) {
             http2_event_loop_accept(gw);
         }
@@ -1266,17 +1186,14 @@ static void *http2_event_loop(void *arg)
             break;
         }
 
-        /* 处理会话 I/O */
-        for (size_t i = 0; i < gw->session_count && i + 1 < nfds; ) {
+        for (size_t i = 0; i < gw->session_count && i + 1 < nfds;) {
             http2_gateway_session_t *sess = gw->sessions[i];
             short revents = fds[i + 1].revents;
 
             if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                /* 连接错误或挂起，关闭会话 */
-                LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)",
-                         sess->fd, revents,
-                         (revents & POLLERR) ? "ERR " : "",
-                         (revents & POLLHUP) ? "HUP " : "",
+
+                LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)", sess->fd, revents,
+                         (revents & POLLERR) ? "ERR " : "", (revents & POLLHUP) ? "HUP " : "",
                          (revents & POLLNVAL) ? "NVAL" : "");
                 http2_gateway_remove_session(gw, i);
                 continue;
@@ -1289,7 +1206,7 @@ static void *http2_event_loop(void *arg)
                 if (recv_ret < 0) {
                     session_ok = false;
                 } else if (recv_ret == 1) {
-                    /* 对端关闭 */
+
                     session_ok = false;
                 }
             }
@@ -1300,7 +1217,6 @@ static void *http2_event_loop(void *arg)
                 }
             }
 
-            /* mem_recv 后可能有待发送数据（如响应），尝试发送 */
             if (session_ok && (revents & POLLIN)) {
                 if (http2_session_send_data(sess) != 0) {
                     session_ok = false;
@@ -1316,11 +1232,9 @@ static void *http2_event_loop(void *arg)
 
         AIRY_FREE(fds);
 
-        /* 清理超时和已完成的会话 */
         http2_event_loop_cleanup(gw);
     }
 
-    /* 清理所有剩余会话 */
     while (gw->session_count > 0) {
         http2_gateway_remove_session(gw, 0);
     }
@@ -1328,8 +1242,6 @@ static void *http2_event_loop(void *arg)
     LOG_INFO("HTTP/2 event loop stopped");
     return NULL;
 }
-
-/* ========== 网关操作表实现 ========== */
 
 /**
  * @brief 设置 socket 为非阻塞模式
@@ -1360,46 +1272,41 @@ static airy_err_t http2_gateway_start_impl(void *impl)
         return AIRY_EBUSY;
     }
 
-    /* 创建监听 socket */
     gw->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (gw->listen_fd < 0) {
-        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__,
-                         "socket creation failed: %s", strerror(errno));
+        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__, "socket creation failed: %s",
+                         strerror(errno));
         return AIRY_EBUSY;
     }
 
     http2_set_reuseaddr(gw->listen_fd);
 
-    /* 绑定 */
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(gw->base.port);
 
     if (inet_pton(AF_INET, gw->base.host, &addr.sin_addr) != 1) {
-        /* 如果 host 不是有效 IP，绑定所有接口 */
+
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
     }
 
     if (bind(gw->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__,
-                         "bind failed on %s:%u: %s", gw->base.host, gw->base.port,
+        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__, "bind failed on %s:%u: %s",
+                         gw->base.host, gw->base.port, strerror(errno));
+        close(gw->listen_fd);
+        gw->listen_fd = -1;
+        return AIRY_EBUSY;
+    }
+
+    if (listen(gw->listen_fd, HTTP2_LISTEN_BACKLOG) < 0) {
+        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__, "listen failed: %s",
                          strerror(errno));
         close(gw->listen_fd);
         gw->listen_fd = -1;
         return AIRY_EBUSY;
     }
 
-    /* 监听 */
-    if (listen(gw->listen_fd, HTTP2_LISTEN_BACKLOG) < 0) {
-        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__,
-                         "listen failed: %s", strerror(errno));
-        close(gw->listen_fd);
-        gw->listen_fd = -1;
-        return AIRY_EBUSY;
-    }
-
-    /* 设置非阻塞 */
     if (http2_set_nonblocking(gw->listen_fd) < 0) {
         airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__,
                          "failed to set non-blocking on listen socket");
@@ -1410,7 +1317,6 @@ static airy_err_t http2_gateway_start_impl(void *impl)
 
     atomic_store(&gw->running, true);
 
-    /* 启动事件循环线程 */
     pthread_t *thread = AIRY_MALLOC(sizeof(pthread_t));
     if (!thread) {
         airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
@@ -1423,8 +1329,8 @@ static airy_err_t http2_gateway_start_impl(void *impl)
 
     int ret = pthread_create(thread, NULL, http2_event_loop, gw);
     if (ret != 0) {
-        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__,
-                         "pthread_create failed: %s", strerror(ret));
+        airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__, "pthread_create failed: %s",
+                         strerror(ret));
         AIRY_FREE(thread);
         atomic_store(&gw->running, false);
         close(gw->listen_fd);
@@ -1434,8 +1340,8 @@ static airy_err_t http2_gateway_start_impl(void *impl)
 
     gw->event_thread = thread;
 
-    LOG_INFO("HTTP/2 gateway started on %s:%u (max_streams=%u)",
-             gw->base.host, gw->base.port, gw->max_concurrent_streams);
+    LOG_INFO("HTTP/2 gateway started on %s:%u (max_streams=%u)", gw->base.host, gw->base.port,
+             gw->max_concurrent_streams);
 
     return AIRY_SUCCESS;
 }
@@ -1450,13 +1356,11 @@ static void http2_gateway_stop_impl(void *impl)
 
     atomic_store(&gw->running, false);
 
-    /* 关闭监听 socket 以唤醒 poll() */
     if (gw->listen_fd >= 0) {
         close(gw->listen_fd);
         gw->listen_fd = -1;
     }
 
-    /* 等待事件循环线程退出 */
     if (gw->event_thread) {
         pthread_t *thread = (pthread_t *)gw->event_thread;
         pthread_join(*thread, NULL);
@@ -1475,7 +1379,6 @@ static void http2_gateway_destroy_impl(void *impl)
 
     http2_gateway_stop_impl(gw);
 
-    /* 清理会话数组 */
     if (gw->sessions) {
         for (size_t i = 0; i < gw->session_count; i++) {
             http2_session_destroy(gw->sessions[i]);
@@ -1486,7 +1389,6 @@ static void http2_gateway_destroy_impl(void *impl)
     gw->session_count = 0;
     gw->session_capacity = 0;
 
-    /* 清理 base 资源（复用 HTTP/1.1 的清理逻辑） */
     http_gateway_t *base = &gw->base;
 
     if (base->handler_adapter) {
@@ -1500,7 +1402,6 @@ static void http2_gateway_destroy_impl(void *impl)
         AIRY_FREE(base->host);
     }
 
-    /* 清理 CORS 配置 */
     if (base->cors.allowed_methods) {
         AIRY_FREE(base->cors.allowed_methods);
     }
@@ -1514,18 +1415,15 @@ static void http2_gateway_destroy_impl(void *impl)
         AIRY_FREE(base->cors.allowed_origins);
     }
 
-    /* 清理速率限制器 */
     if (base->rate_limiter) {
         gateway_rate_limiter_destroy(base->rate_limiter);
     }
 
-    /* 清理协议处理器 */
     if (base->protocol_handler) {
         gateway_protocol_handler_destroy(base->protocol_handler);
         base->protocol_handler = NULL;
     }
 
-    /* 清理动态端点 */
     if (base->dynamic_endpoints) {
         for (size_t i = 0; i < base->dynamic_endpoint_count; i++) {
             AIRY_FREE(base->dynamic_endpoints[i].method);
@@ -1557,17 +1455,13 @@ static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json)
     if (!stats)
         return AIRY_ENOMEM;
 
-    cJSON_AddNumberToObject(stats, "requests_total",
-                            (double)atomic_load(&gw->base.requests_total));
+    cJSON_AddNumberToObject(stats, "requests_total", (double)atomic_load(&gw->base.requests_total));
     cJSON_AddNumberToObject(stats, "requests_failed",
                             (double)atomic_load(&gw->base.requests_failed));
-    cJSON_AddNumberToObject(stats, "bytes_received",
-                            (double)atomic_load(&gw->base.bytes_received));
-    cJSON_AddNumberToObject(stats, "bytes_sent",
-                            (double)atomic_load(&gw->base.bytes_sent));
+    cJSON_AddNumberToObject(stats, "bytes_received", (double)atomic_load(&gw->base.bytes_received));
+    cJSON_AddNumberToObject(stats, "bytes_sent", (double)atomic_load(&gw->base.bytes_sent));
     cJSON_AddNumberToObject(stats, "active_sessions", (double)gw->session_count);
-    cJSON_AddNumberToObject(stats, "max_concurrent_streams",
-                            (double)gw->max_concurrent_streams);
+    cJSON_AddNumberToObject(stats, "max_concurrent_streams", (double)gw->max_concurrent_streams);
     cJSON_AddStringToObject(stats, "protocol", "h2");
 
     char *json_str = cJSON_PrintUnformatted(stats);
@@ -1584,8 +1478,7 @@ static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json)
              (unsigned long long)atomic_load(&gw->base.requests_total),
              (unsigned long long)atomic_load(&gw->base.requests_failed),
              (unsigned long long)atomic_load(&gw->base.bytes_received),
-             (unsigned long long)atomic_load(&gw->base.bytes_sent),
-             gw->session_count);
+             (unsigned long long)atomic_load(&gw->base.bytes_sent), gw->session_count);
     *out_json = AIRY_STRDUP(buf);
 #endif
 
@@ -1600,15 +1493,13 @@ static bool http2_gateway_is_running_impl(void *impl)
     return atomic_load(&gw->running);
 }
 
-static airy_err_t http2_gateway_set_handler_impl(void *impl,
-                                                  gateway_internal_handler_t handler,
-                                                  void *user_data)
+static airy_err_t http2_gateway_set_handler_impl(void *impl, gateway_internal_handler_t handler,
+                                                 void *user_data)
 {
     http2_gateway_t *gw = (http2_gateway_t *)impl;
     if (!gw)
         return AIRY_EINVAL;
 
-    /* 清理旧适配器 */
     if (gw->base.handler_adapter) {
         AIRY_FREE(gw->base.handler_adapter);
         gw->base.handler_adapter = NULL;
@@ -1632,8 +1523,6 @@ static const gateway_ops_t http2_gateway_ops = {
     .is_running = http2_gateway_is_running_impl,
     .set_handler = http2_gateway_set_handler_impl,
 };
-
-/* ========== 公共接口 ========== */
 
 /**
  * @brief 初始化 CORS 配置（从环境变量读取）
@@ -1663,8 +1552,7 @@ static void http2_init_cors_config(http_gateway_t *base)
             }
 
             if (count <= SIZE_MAX / sizeof(char *)) {
-                base->cors.allowed_origins =
-                    (char **)airy_malloc_array(count, sizeof(char *));
+                base->cors.allowed_origins = (char **)airy_malloc_array(count, sizeof(char *));
                 if (base->cors.allowed_origins) {
                     char *saveptr = NULL;
                     char *token = strtok_r(origins_copy, ",", &saveptr);
@@ -1692,7 +1580,6 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
         return NULL;
     }
 
-    /* 初始化 base (http_gateway_t) 字段 */
     http_gateway_t *base = &gw->base;
     base->daemon = NULL;
     base->port = port;
@@ -1712,7 +1599,6 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
     atomic_init(&base->bytes_received, 0);
     atomic_init(&base->bytes_sent, 0);
 
-    /* 最大请求体大小（默认 1MB） */
     base->max_request_size = 1 * 1024 * 1024;
     const char *env_max_size = getenv("GATEWAY_MAX_REQUEST_SIZE");
     if (env_max_size) {
@@ -1722,10 +1608,8 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
         }
     }
 
-    /* CORS 配置 */
     http2_init_cors_config(base);
 
-    /* 速率限制器（默认禁用） */
     base->rate_limiter = NULL;
     const char *rate_limit_enabled = getenv("GATEWAY_RATE_LIMIT_ENABLED");
     if (rate_limit_enabled && strcmp(rate_limit_enabled, "true") == 0) {
@@ -1741,15 +1625,12 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
         base->rate_limiter = gateway_rate_limiter_create(&rl_config);
     }
 
-    /* 多协议处理器 */
     base->protocol_handler = gateway_protocol_handler_create(NULL);
 
-    /* 动态端点初始化 */
     base->dynamic_endpoints = NULL;
     base->dynamic_endpoint_count = 0;
     base->dynamic_endpoint_capacity = 0;
 
-    /* 初始化 HTTP/2 特定字段 */
     gw->listen_fd = -1;
     gw->sessions = NULL;
     gw->session_count = 0;
@@ -1758,7 +1639,6 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
     gw->max_concurrent_streams = HTTP2_DEFAULT_MAX_STREAMS;
     gw->connection_timeout = HTTP2_DEFAULT_TIMEOUT_SEC;
 
-    /* 从环境变量读取配置 */
     const char *env_streams = getenv("GATEWAY_HTTP2_MAX_STREAMS");
     if (env_streams) {
         unsigned long v = strtoul(env_streams, NULL, 10);
@@ -1777,7 +1657,6 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
 
     atomic_init(&gw->running, false);
 
-    /* 创建 gateway_t 包装 */
     gateway_t *gateway = AIRY_MALLOC(sizeof(gateway_t));
     if (!gateway) {
         if (base->host)
@@ -1826,9 +1705,6 @@ int http2_gateway_stop(http2_gateway_t *gw)
 }
 
 #endif /* AIRY_HAS_HTTP2 */
-
-/* ========== 无 nghttp2 时的桩实现 ========== */
-
 #ifndef AIRY_HAS_HTTP2
 
 gateway_t *http2_gateway_create(const char *host __attribute__((unused)),

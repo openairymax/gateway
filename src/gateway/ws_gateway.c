@@ -1,7 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file ws_gateway.c
  * @brief WebSocket网关实现 - libwebsockets集成
@@ -14,7 +14,6 @@
  *   S-2 层次分解：每层职责单一，易于测试和维护
  *   E-8 可测试性：路由处理函数独立可测试
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
 // @owner: team-B
@@ -28,7 +27,7 @@
 #ifdef GATEWAY_HAS_WS
 
 #include <cjson/cJSON.h>
-/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+
 #include <cjson_helpers.h>
 #include <libwebsockets.h>
 #include <stdio.h>
@@ -36,10 +35,8 @@
 #include <string.h>
 #include <time.h>
 
-/* 跨平台原子操作支持 - 使用统一的 atomic_compat.h */
 #include "atomic_compat.h"
 
-/* 平台特定头文件 */
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -55,12 +52,8 @@
 #include <pthread.h>
 #endif
 
-/* ========== 前向声明 ========== */
-
 struct ws_gateway;
 typedef struct ws_gateway ws_gateway_t;
-
-/* ========== WebSocket协议定义 ========== */
 
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in,
                        size_t len);
@@ -76,73 +69,67 @@ static const struct lws_protocols ws_protocols[] = {{
                                                     },
                                                     {NULL, NULL, 0, 0, 0, NULL, 0}};
 
-/* ========== WebSocket网关内部结构 ========== */
-
 /**
  * @brief WebSocket连接上下文
  */
 typedef struct ws_connection_context {
-    struct lws *wsi;           /**< WebSocket实例 */
-    char *session_id;          /**< 会话ID */
-    char *remote_addr;         /**< 远程地址 */
-    uint64_t connect_time_ns;  /**< 连接时间 */
-    uint64_t last_activity_ns; /**< 最后活动时间 */
+    struct lws *wsi;
+    char *session_id;
+    char *remote_addr;
+    uint64_t connect_time_ns;
+    uint64_t last_activity_ns;
 
-    size_t messages_sent;     /**< 发送消息数 */
-    size_t messages_received; /**< 接收消息数 */
-    size_t bytes_sent;        /**< 发送字节数 */
-    size_t bytes_received;    /**< 接收字节数 */
+    size_t messages_sent;
+    size_t messages_received;
+    size_t bytes_sent;
+    size_t bytes_received;
 } ws_connection_context_t;
 
 /**
  * @brief WebSocket网关内部结构
  */
 struct ws_gateway {
-    struct lws_context *context; /**< LWS上下文 */
-    uint16_t port;               /**< 监听端口 */
-    char *host;                  /**< 监听地址 */
+    struct lws_context *context;
+    uint16_t port;
+    char *host;
 
-    void *handler_adapter;              /**< 公共回调适配器（动态分配） */
-    gateway_internal_handler_t handler; /**< 内部请求处理回调 */
-    void *handler_data;                 /**< 回调用户数据 */
+    void *handler_adapter;
+    gateway_internal_handler_t handler;
+    void *handler_data;
 
-    atomic_bool running; /**< 运行标志 */
+    atomic_bool running;
 
-    atomic_uint_fast64_t connections_total;  /**< 总连接数 */
-    atomic_uint_fast64_t connections_active; /**< 活跃连接数 */
-    atomic_uint_fast64_t messages_total;     /**< 总消息数 */
-    atomic_uint_fast64_t bytes_sent;         /**< 发送字节数 */
-    atomic_uint_fast64_t bytes_received;     /**< 接收字节数 */
+    atomic_uint_fast64_t connections_total;
+    atomic_uint_fast64_t connections_active;
+    atomic_uint_fast64_t messages_total;
+    atomic_uint_fast64_t bytes_sent;
+    atomic_uint_fast64_t bytes_received;
 
-    size_t max_request_size; /**< 最大请求大小 */
-    void *event_thread;      /**< libwebsockets 事件循环线程句柄（pthread_t*，POSIX） */
+    size_t max_request_size;
+    void *event_thread;
 };
-
-/* ========== 消息协议定义 ========== */
 
 /**
  * @brief WebSocket消息类型
  */
 typedef enum {
-    WS_MSG_TYPE_PING = 1,     /**< Ping消息 */
-    WS_MSG_TYPE_PONG,         /**< Pong消息 */
-    WS_MSG_TYPE_RPC_REQUEST,  /**< RPC请求 */
-    WS_MSG_TYPE_RPC_RESPONSE, /**< RPC响应 */
-    WS_MSG_TYPE_NOTIFICATION, /**< 通知消息 */
-    WS_MSG_TYPE_ERROR         /**< 错误消息 */
+    WS_MSG_TYPE_PING = 1,
+    WS_MSG_TYPE_PONG,
+    WS_MSG_TYPE_RPC_REQUEST,
+    WS_MSG_TYPE_RPC_RESPONSE,
+    WS_MSG_TYPE_NOTIFICATION,
+    WS_MSG_TYPE_ERROR
 } ws_message_type_t;
 
 /**
  * @brief WebSocket消息结构
  */
 typedef struct ws_message {
-    ws_message_type_t type; /**< 消息类型 */
-    char *session_id;       /**< 会话ID */
-    cJSON *payload;         /**< 消息载荷 */
-    uint64_t timestamp_ns;  /**< 时间戳 */
+    ws_message_type_t type;
+    char *session_id;
+    cJSON *payload;
+    uint64_t timestamp_ns;
 } ws_message_t;
-
-/* ========== 辅助函数 ========== */
 
 /**
  * @brief 创建WebSocket消息
@@ -242,7 +229,7 @@ static int ws_send_message(struct lws *wsi, ws_message_t *msg)
 {
     if (!wsi || !msg) {
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                              "ws_send_message: IO error");
+                         "ws_send_message: IO error");
         return AIRY_ERR_UNKNOWN;
     }
 
@@ -259,14 +246,12 @@ static int ws_send_message(struct lws *wsi, ws_message_t *msg)
     return result;
 }
 
-/* ========== RPC处理（使用统一处理器） ========== */
-
 static int ws_rpc_handler_adapter(const char *request_json, char **response_json, void *ctx)
 {
     ws_gateway_t *gw = (ws_gateway_t *)ctx;
     if (!gw || !gw->handler) {
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                              "ws_rpc_handler_adapter: failed");
+                         "ws_rpc_handler_adapter: failed");
         return AIRY_ERR_UNKNOWN;
     }
     char *result = gw->handler((void *)request_json, gw->handler_data);
@@ -297,10 +282,9 @@ static char *handle_rpc_request(ws_gateway_t *gateway, cJSON *request)
     rpc_result_t result = gateway_rpc_handle_request(request, ws_rpc_handler_adapter, gateway);
 
     if (result.error_code != 0 || !result.response_json) {
-        char *error_resp =
-            result.response_json
-                ? result.response_json
-                : jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
+        char *error_resp = result.response_json ?
+                               result.response_json :
+                               jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
         if (result.response_json)
             result.response_json = NULL;
         gateway_rpc_free(&result);
@@ -312,8 +296,6 @@ static char *handle_rpc_request(ws_gateway_t *gateway, cJSON *request)
     gateway_rpc_free(&result);
     return success_resp;
 }
-
-/* ========== 路由处理函数（降低圈复杂度） ========== */
 
 /**
  * @brief 处理连接建立
@@ -328,7 +310,7 @@ static int handle_ws_established(ws_gateway_t *gateway, ws_connection_context_t 
     ws_connection_context_t *context = AIRY_CALLOC(1, sizeof(ws_connection_context_t));
     if (!context) {
         airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
-                              "handle_ws_established: allocation failed");
+                         "handle_ws_established: allocation failed");
         return AIRY_ERR_OUT_OF_MEMORY;
     }
 
@@ -375,21 +357,19 @@ static int handle_ws_rpc_request(ws_gateway_t *gateway, ws_connection_context_t 
     char *response = handle_rpc_request(gateway, rpc_request);
     if (!response) {
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                              "handle_ws_rpc_request: IO error");
+                         "handle_ws_rpc_request: IO error");
         return AIRY_ERR_UNKNOWN;
     }
 
-    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
     CJSON_PARSE_GUARD(response_json, response, {
         AIRY_FREE(response);
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                              "cJSON_Parse: parse error");
+                         "cJSON_Parse: parse error");
         return AIRY_ERR_UNKNOWN;
     });
 
     ws_message_t *response_msg =
         ws_message_create(WS_MSG_TYPE_RPC_RESPONSE, context->session_id, response_json);
-    /* response_json 由 CJSON_AUTO_FREE 自动释放 */
 
     if (response_msg) {
         ws_send_message(wsi, response_msg);
@@ -415,7 +395,7 @@ static int handle_ws_unknown_message(struct lws *wsi, const char *unknown_type)
     char *error_json = jsonrpc_create_error_response(NULL, -32600, err_buf, NULL);
     if (!error_json) {
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                              "jsonrpc_create_error_response returned NULL");
+                         "jsonrpc_create_error_response returned NULL");
         return AIRY_ERR_UNKNOWN;
     }
 
@@ -459,8 +439,6 @@ static int handle_ws_closed(ws_gateway_t *gateway, ws_connection_context_t **con
     return 0;
 }
 
-/* ========== WebSocket回调函数（重构后版本） ========== */
-
 /**
  * @brief WebSocket回调函数
  *
@@ -493,7 +471,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
     case LWS_CALLBACK_RECEIVE:
         if (!context) {
             airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                                  "handle_ws_established: failed");
+                             "handle_ws_established: failed");
             return AIRY_ERR_UNKNOWN;
         }
 
@@ -510,23 +488,21 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                 AIRY_FREE(error_json);
             }
             airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                                  "ws_send_message: IO error");
+                             "ws_send_message: IO error");
             return AIRY_ERR_UNKNOWN;
         }
 
-        /* 更新统计信息 */
         context->last_activity_ns = gateway_time_ns();
         context->messages_received++;
         context->bytes_received += len;
         atomic_fetch_add(&gateway->messages_total, 1);
         atomic_fetch_add(&gateway->bytes_received, len);
 
-        /* 解析JSON消息 */
         /* P0: lws 的 in 缓冲区不保证 '\0' 结尾，cJSON_Parse 按 NUL 扫描会越界读；
          * 改用 cJSON_ParseWithLength 按 len 解析（CJSON_AUTO_FREE 保留自动释放） */
         CJSON_AUTO_FREE cJSON *json = cJSON_ParseWithLength((const char *)in, len);
         if (!json) {
-            /* 解析失败，发送错误响应 */
+
             char *error_json = jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
             if (error_json) {
                 ws_message_t *error_msg =
@@ -540,14 +516,12 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             return 0;
         }
 
-        /* 提取消息类型 */
         cJSON *type = cJSON_GetObjectItem(json, "type");
         if (!type || !cJSON_IsString(type)) {
-            /* json 由 CJSON_AUTO_FREE 自动释放 */
+
             return handle_ws_unknown_message(wsi, "missing type field");
         }
 
-        /* 根据消息类型路由处理 */
         const char *type_str = type->valuestring;
         int result = 0;
 
@@ -562,7 +536,6 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             result = handle_ws_unknown_message(wsi, type_str);
         }
 
-        /* json 由 CJSON_AUTO_FREE 自动释放 */
         return result;
 
     case LWS_CALLBACK_CLOSED:
@@ -576,8 +549,6 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
     return 0;
 }
-
-/* ========== 网关操作表 ========== */
 
 #ifndef _WIN32
 /**
@@ -616,7 +587,7 @@ static airy_err_t ws_gateway_start(void *gateway_impl)
     atomic_store(&gateway->running, true);
 
 #ifndef _WIN32
-    /* 启动事件循环线程驱动 lws_service */
+
     pthread_t *thread = (pthread_t *)AIRY_MALLOC(sizeof(pthread_t));
     if (!thread) {
         atomic_store(&gateway->running, false);
@@ -633,7 +604,7 @@ static airy_err_t ws_gateway_start(void *gateway_impl)
     }
     gateway->event_thread = thread;
 #else
-    /* Windows：事件循环由外部 lws_service 驱动 */
+
     gateway->event_thread = NULL;
 #endif
 
@@ -729,8 +700,8 @@ static airy_err_t ws_gateway_get_stats(void *gateway_impl, char **out_json)
     return AIRY_SUCCESS;
 }
 
-static airy_err_t ws_gateway_set_handler(void *gateway_impl,
-                                              gateway_internal_handler_t handler, void *user_data)
+static airy_err_t ws_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler,
+                                         void *user_data)
 {
     ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
     if (!gateway)
@@ -754,8 +725,6 @@ static const gateway_ops_t ws_gateway_ops = {.start = ws_gateway_start,
                                              .get_stats = ws_gateway_get_stats,
                                              .is_running = ws_gateway_is_running,
                                              .set_handler = ws_gateway_set_handler};
-
-/* ========== 公共接口 ========== */
 
 /**
  * @brief 创建WebSocket网关实例
@@ -797,7 +766,6 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
     atomic_init(&gateway->bytes_received, 0);
 
     gateway->max_request_size = 10 * 1024 * 1024; /* 10MB */
-
     gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
         AIRY_FREE(gateway->host);
@@ -815,7 +783,6 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
 }
 
 #endif /* GATEWAY_HAS_WS */
-
 #ifndef GATEWAY_HAS_WS
 
 gateway_t *ws_gateway_create(const char *host __attribute__((unused)),

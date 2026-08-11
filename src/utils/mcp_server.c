@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 // @owner: team-B
 #include "mcp_server.h"
 
@@ -284,9 +285,9 @@ static int handle_tools_call(mcp_server_t server, const cJSON *params, cJSON **r
         return MCP_ERROR_INVALID_PARAMS;
     }
 
-    const char *tool_name = cJSON_GetObjectItem(params, "name")
-                                ? cJSON_GetObjectItem(params, "name")->valuestring
-                                : NULL;
+    const char *tool_name = cJSON_GetObjectItem(params, "name") ?
+                                cJSON_GetObjectItem(params, "name")->valuestring :
+                                NULL;
     cJSON *arguments = cJSON_GetObjectItem(params, "arguments");
     int owns_arguments = 0;
     if (!arguments) {
@@ -433,9 +434,9 @@ static int handle_prompts_get(mcp_server_t server, const cJSON *params, cJSON **
         return MCP_ERROR_INVALID_PARAMS;
     }
 
-    const char *prompt_name = cJSON_GetObjectItem(params, "name")
-                                  ? cJSON_GetObjectItem(params, "name")->valuestring
-                                  : NULL;
+    const char *prompt_name = cJSON_GetObjectItem(params, "name") ?
+                                  cJSON_GetObjectItem(params, "name")->valuestring :
+                                  NULL;
     cJSON *arguments = cJSON_GetObjectItem(params, "arguments");
     int owns_arguments = 0;
     if (!arguments) {

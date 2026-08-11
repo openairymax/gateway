@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /**
  * @file gateway_benchmark.c
  * @brief Gateway Performance Benchmark Tool v1.0
@@ -31,7 +32,6 @@
  *   PERF-002: 吞吐量 >1000 req/s
  *   PERF-003: 并发连接 >500 无错误
  *
- * @copyright (c) 2026 SPHARX / TeamC Integration Group
  */
 
 // @owner: team-B
@@ -57,8 +57,6 @@
  * RAII 守卫，均由 platform.h 提供（通过 airy_memory.h → error.h → types.h → platform.h
  * 间接包含）。RAII 守卫已从 sync_compat.h 迁移到 platform.h。 */
 
-/* ========== 常量定义 ========== */
-
 #define BENCHMARK_VERSION "0.1.1"
 #define MAX_CONCURRENT 500
 #define MAX_URL_LENGTH 2048
@@ -67,13 +65,9 @@
 #define WARMUP_COUNT 100
 #define SAMPLING_INTERVAL_US 100000
 
-/* ========== 性能基准阈值 (PERF-001~003) ========== */
-
 #define TARGET_P99_MS 100.0
 #define TARGET_THROUGHPUT_RPS 1000.0
 #define MAX_CONCURRENT_CONNECTIONS 500
-
-/* ========== 数据结构 ========== */
 
 typedef struct {
     double latency_us;
@@ -134,12 +128,8 @@ typedef struct {
     double duration_sec;
 } benchmark_stats_t;
 
-/* ========== 全局状态 ========== */
-
 static benchmark_config_t g_config;
 static volatile sig_atomic_t g_interrupted = 0;
-
-/* ========== 工具函数 ========== */
 
 static uint64_t get_timestamp_ns(void)
 {
@@ -159,7 +149,8 @@ static int compare_double(const void *a, const void *b)
     double da = *(const double *)a;
     double db = *(const double *)b;
     if (da < db) {
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "compare_double: error AIRY_ERR_UNKNOWN");
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
+                         "compare_double: error AIRY_ERR_UNKNOWN");
         return AIRY_ERR_UNKNOWN;
     }
     if (da > db)
@@ -191,8 +182,6 @@ static void result_set_add(result_set_t *set, const request_result_t *result)
         set->results[set->count++] = *result;
     }
 }
-
-/* ========== 统计计算 ========== */
 
 static void compute_statistics(const result_set_t *set, benchmark_stats_t *stats)
 {
@@ -263,8 +252,6 @@ static void compute_statistics(const result_set_t *set, benchmark_stats_t *stats
 
 #ifdef USE_CURL
 
-/* ========== libcurl 回调 ========== */
-
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp)
 {
     size_t realsize = size * nmemb;
@@ -272,8 +259,6 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
     *total_size += realsize;
     return realsize;
 }
-
-/* ========== 工作线程 ========== */
 
 static void *worker_thread(void *arg)
 {
@@ -344,9 +329,9 @@ static void *worker_thread(void *arg)
         if (g_config.verbose && thread_id == 0 && g_config.completed_requests % 100 == 0) {
             printf("\r  Progress: %d/%d requests (%.1f%%)", g_config.completed_requests,
                    g_config.total_requests > 0 ? g_config.total_requests : 999999,
-                   g_config.total_requests > 0
-                       ? (double)g_config.completed_requests / g_config.total_requests * 100.0
-                       : 0.0);
+                   g_config.total_requests > 0 ?
+                       (double)g_config.completed_requests / g_config.total_requests * 100.0 :
+                       0.0);
             fflush(stdout);
         }
     }
@@ -356,9 +341,6 @@ static void *worker_thread(void *arg)
 }
 
 #endif /* USE_CURL */
-
-/* ========== 报告生成 ========== */
-
 static void print_report(const benchmark_stats_t *warmup_stats,
                          const benchmark_stats_t *bench_stats)
 {
@@ -498,9 +480,9 @@ static void write_json_report(const benchmark_stats_t *warmup_stats,
     fprintf(f, "      \"perf_002_throughput_pass\": %s,\n",
             bench_stats->throughput_rps >= TARGET_THROUGHPUT_RPS ? "true" : "false");
     fprintf(f, "      \"perf_003_concurrency_pass\": %s\n",
-            g_config.concurrent <= MAX_CONCURRENT_CONNECTIONS && bench_stats->error_rate_pct < 1.0
-                ? "true"
-                : "false");
+            g_config.concurrent <= MAX_CONCURRENT_CONNECTIONS && bench_stats->error_rate_pct < 1.0 ?
+                "true" :
+                "false");
     fprintf(f, "    }\n");
     fprintf(f, "  }\n");
     fprintf(f, "}\n");
@@ -509,8 +491,6 @@ static void write_json_report(const benchmark_stats_t *warmup_stats,
     printf("\nReport saved to: %s\n", filename);
 }
 
-/* ========== 信号处理 ========== */
-
 static void signal_handler(int signum)
 {
     (void)signum;
@@ -518,8 +498,6 @@ static void signal_handler(int signum)
     g_config.running = 0;
     printf("\n\nInterrupted! Finalizing...\n");
 }
-
-/* ========== 参数解析 ========== */
 
 static void print_usage(const char *prog)
 {
@@ -547,12 +525,18 @@ static int parse_args(int argc, char *argv[])
 {
     memset(&g_config, 0, sizeof(g_config));
 
-    strncpy((g_config.url),(DEFAULT_URL),(MAX_URL_LENGTH)-1); (g_config.url)[(MAX_URL_LENGTH)-1] = '\0';;
+    strncpy((g_config.url), (DEFAULT_URL), (MAX_URL_LENGTH)-1);
+    (g_config.url)[(MAX_URL_LENGTH)-1] = '\0';
+    ;
     g_config.concurrent = 10;
     g_config.total_requests = 1000;
     g_config.duration_sec = 30;
-    strncpy((g_config.method),("GET"),(sizeof(g_config.method))-1); (g_config.method)[(sizeof(g_config.method))-1] = '\0';;
-    strncpy((g_config.output_file),("benchmark_report.json"),(sizeof(g_config.output_file))-1); (g_config.output_file)[(sizeof(g_config.output_file))-1] = '\0';;
+    strncpy((g_config.method), ("GET"), (sizeof(g_config.method)) - 1);
+    (g_config.method)[(sizeof(g_config.method)) - 1] = '\0';
+    ;
+    strncpy((g_config.output_file), ("benchmark_report.json"), (sizeof(g_config.output_file)) - 1);
+    (g_config.output_file)[(sizeof(g_config.output_file)) - 1] = '\0';
+    ;
     g_config.warmup_count = WARMUP_COUNT;
     g_config.verbose = 0;
     g_config.running = 1;
@@ -562,7 +546,9 @@ static int parse_args(int argc, char *argv[])
             print_usage(argv[0]);
             return 0;
         } else if (strcmp(argv[i], "--url") == 0 && i + 1 < argc) {
-            strncpy((g_config.url),(argv[++i]),(MAX_URL_LENGTH)-1); (g_config.url)[(MAX_URL_LENGTH)-1] = '\0';;
+            strncpy((g_config.url), (argv[++i]), (MAX_URL_LENGTH)-1);
+            (g_config.url)[(MAX_URL_LENGTH)-1] = '\0';
+            ;
         } else if (strcmp(argv[i], "--concurrent") == 0 && i + 1 < argc) {
             g_config.concurrent = atoi(argv[++i]);
             if (g_config.concurrent < 1)
@@ -574,7 +560,9 @@ static int parse_args(int argc, char *argv[])
         } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
             g_config.duration_sec = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--method") == 0 && i + 1 < argc) {
-            strncpy((g_config.method),(argv[++i]),(sizeof(g_config.method))-1); (g_config.method)[(sizeof(g_config.method))-1] = '\0';;
+            strncpy((g_config.method), (argv[++i]), (sizeof(g_config.method)) - 1);
+            (g_config.method)[(sizeof(g_config.method)) - 1] = '\0';
+            ;
         } else if (strcmp(argv[i], "--payload") == 0 && i + 1 < argc) {
             FILE *pf = fopen(argv[++i], "rb");
             if (pf) {
@@ -605,8 +593,6 @@ static int parse_args(int argc, char *argv[])
     }
     return 1;
 }
-
-/* ========== 主函数 ========== */
 
 int main(int argc, char *argv[])
 {

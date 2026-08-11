@@ -1,7 +1,7 @@
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file gateway_rate_limiter.h
  * @brief Gateway 内置速率限制器
@@ -9,10 +9,9 @@
  * 提供基于令牌桶算法的速率限制功能，防止 DoS 攻击和资源滥用。
  * 支持按客户端 IP 或 API Key 进行限制。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef AIRY_RT_GATEWAY_RATE_LIMITER_H
 #define AIRY_RT_GATEWAY_RATE_LIMITER_H
 
@@ -27,12 +26,12 @@ extern "C" {
  * @brief 速率限制器配置
  */
 typedef struct {
-    bool enabled;                  /**< 是否启用速率限制 */
-    uint32_t requests_per_second;  /**< 每秒请求数限制 */
-    uint32_t requests_per_minute;  /**< 每分钟请求数限制 */
-    uint32_t requests_per_hour;    /**< 每小时请求数限制 */
-    uint32_t burst_size;           /**< 突发容量（令牌桶大小） */
-    uint32_t cleanup_interval_sec; /**< 清理过期客户端的间隔（秒） */
+    bool enabled;
+    uint32_t requests_per_second;
+    uint32_t requests_per_minute;
+    uint32_t requests_per_hour;
+    uint32_t burst_size;
+    uint32_t cleanup_interval_sec;
 } gateway_rate_limit_config_t;
 
 /**
