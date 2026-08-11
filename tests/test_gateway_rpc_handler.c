@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /**
  * @file test_gateway_rpc_handler.c
  * @brief 统一RPC处理模块单元测试
@@ -14,7 +15,6 @@
  *   E-8 可测试性：覆盖率目标≥95%
  *   K-2 接口契约化：验证所有接口契约
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
 // @owner: team-B
@@ -28,10 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
-#include <cjson_helpers.h>
 
-/* ========== 测试辅助宏 ========== */
+#include <cjson_helpers.h>
 
 static int g_tests_run = 0;
 static int g_tests_passed = 0;
@@ -68,8 +66,6 @@ static int g_tests_passed = 0;
 #define ASSERT_NEQ(a, b) ASSERT_TRUE((a) != (b))
 #define ASSERT_STR_EQ(a, b) ASSERT_TRUE(strcmp((a), (b)) == 0)
 
-/* ========== 辅助函数 ========== */
-
 /**
  * @brief 创建标准JSON-RPC请求
  */
@@ -105,8 +101,6 @@ static cJSON *create_request_with_params(const char *method, cJSON *params, int 
     return request;
 }
 
-/* ========== 测试用例组1: 请求验证 ========== */
-
 /**
  * @brief 测试有效请求处理
  */
@@ -119,18 +113,18 @@ static void test_handle_valid_request(void)
 
     rpc_result_t result = gateway_rpc_handle_request(request, NULL, NULL);
 
-    /* 应该返回成功结果 */
     ASSERT_NOT_NULL(result.response_json);
     ASSERT_EQ(result.error_code, 0);
 
-    /* 验证响应是有效的JSON */
-    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
+    CJSON_PARSE_GUARD(resp, result.response_json, {
+        TEST_FAIL("parse response failed");
+        return;
+    });
 
     cJSON *jsonrpc = cJSON_GetObjectItem(resp, "jsonrpc");
     ASSERT_NOT_NULL(jsonrpc);
     ASSERT_STR_EQ(jsonrpc->valuestring, "2.0");
 
-    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
     cJSON_Delete(request);
 
@@ -173,8 +167,10 @@ static void test_handle_null_request(void)
     ASSERT_NOT_NULL(result.response_json);
     ASSERT_NEQ(result.error_code, 0);
 
-    /* 验证错误响应格式 */
-    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
+    CJSON_PARSE_GUARD(resp, result.response_json, {
+        TEST_FAIL("parse response failed");
+        return;
+    });
 
     cJSON *error = cJSON_GetObjectItem(resp, "error");
     ASSERT_NOT_NULL(error);
@@ -183,7 +179,6 @@ static void test_handle_null_request(void)
     ASSERT_NOT_NULL(code);
     ASSERT_EQ(code->valueint, -32600);
 
-    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
 
     TEST_PASS();
@@ -196,9 +191,8 @@ static void test_handle_invalid_format(void)
 {
     TEST_BEGIN("handle_invalid_format");
 
-    /* 缺少必需字段 */
     cJSON *bad_request = cJSON_CreateObject();
-    cJSON_AddStringToObject(bad_request, "method", "test"); /* 缺少jsonrpc和id */
+    cJSON_AddStringToObject(bad_request, "method", "test");
 
     rpc_result_t result = gateway_rpc_handle_request(bad_request, NULL, NULL);
 
@@ -219,7 +213,7 @@ static void test_handle_wrong_version(void)
     TEST_BEGIN("handle_wrong_version");
 
     cJSON *request = cJSON_CreateObject();
-    cJSON_AddStringToObject(request, "jsonrpc", "1.0"); /* 错误版本 */
+    cJSON_AddStringToObject(request, "jsonrpc", "1.0");
     cJSON_AddStringToObject(request, "method", "test");
     cJSON_AddNumberToObject(request, "id", 1);
 
@@ -234,8 +228,6 @@ static void test_handle_wrong_version(void)
     TEST_PASS();
 }
 
-/* ========== 测试用例组2: 自定义Handler ========== */
-
 /**
  * @brief 自定义Handler回调函数示例
  */
@@ -246,7 +238,6 @@ static int mock_handler(const char *request_str, char **response_str, void *user
     if (!request_str || !response_str)
         return AIRY_ERR_NULL_POINTER;
 
-    /* 简单的echo handler */
     CJSON_PARSE_GUARD(request, request_str, { return AIRY_ERR_PARSE_ERROR; });
 
     cJSON *response = cJSON_CreateObject();
@@ -256,7 +247,6 @@ static int mock_handler(const char *request_str, char **response_str, void *user
 
     *response_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
-    /* request 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
 
     return 0;
 }
@@ -276,14 +266,15 @@ static void test_custom_handler_invocation(void)
     ASSERT_NOT_NULL(result.response_json);
     ASSERT_EQ(result.error_code, 0);
 
-    /* 验证handler被调用并返回了正确响应 */
-    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
+    CJSON_PARSE_GUARD(resp, result.response_json, {
+        TEST_FAIL("parse response failed");
+        return;
+    });
 
     cJSON *result_field = cJSON_GetObjectItem(resp, "result");
     ASSERT_NOT_NULL(result_field);
     ASSERT_STR_EQ(result_field->valuestring, "mock_handler_success");
 
-    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
     cJSON_Delete(request);
 
@@ -298,7 +289,7 @@ static int error_handler_func(const char *req, char **resp, void *data)
     (void)req;
     (void)resp;
     (void)data;
-    return AIRY_ERR_UNKNOWN; /* 返回错误 */
+    return AIRY_ERR_UNKNOWN;
 }
 
 /**
@@ -322,8 +313,6 @@ static void test_custom_handler_error(void)
     TEST_PASS();
 }
 
-/* ========== 测试用例组3: 错误处理 ========== */
-
 /**
  * @brief 测试创建错误结果
  */
@@ -336,8 +325,10 @@ static void test_create_error_result(void)
     ASSERT_NOT_NULL(result.response_json);
     ASSERT_EQ(result.error_code, -32601);
 
-    /* 验证错误响应格式 */
-    CJSON_PARSE_GUARD(resp, result.response_json, { TEST_FAIL("parse response failed"); return; });
+    CJSON_PARSE_GUARD(resp, result.response_json, {
+        TEST_FAIL("parse response failed");
+        return;
+    });
 
     cJSON *error = cJSON_GetObjectItem(resp, "error");
     ASSERT_NOT_NULL(error);
@@ -350,7 +341,6 @@ static void test_create_error_result(void)
     ASSERT_NOT_NULL(message);
     ASSERT_STR_EQ(message->valuestring, "Method not found");
 
-    /* resp 由 CJSON_AUTO_FREE 自动释放，无需手动 cJSON_Delete */
     gateway_rpc_free(&result);
 
     TEST_PASS();
@@ -373,8 +363,6 @@ static void test_create_error_null_message(void)
     TEST_PASS();
 }
 
-/* ========== 测试用例组4: 内存管理 ========== */
-
 /**
  * @brief 测试资源释放安全性
  */
@@ -382,14 +370,12 @@ static void test_resource_cleanup_safety(void)
 {
     TEST_BEGIN("resource_cleanup_safety");
 
-    /* 测试释放NULL结果 */
     rpc_result_t null_result = {NULL, 0, NULL};
-    gateway_rpc_free(&null_result); /* 不应崩溃 */
+    gateway_rpc_free(&null_result);
 
-    /* 测试重复释放 */
     rpc_result_t result = gateway_rpc_create_error(-32000, "test");
     gateway_rpc_free(&result);
-    gateway_rpc_free(&result); /* 重复释放不应崩溃 */
+    gateway_rpc_free(&result);
 
     TEST_PASS();
 }
@@ -420,8 +406,6 @@ static void test_memory_stability_under_load(void)
     TEST_PASS();
 }
 
-/* ========== 测试用例组5: 边界条件 ========== */
-
 /**
  * @brief 测试空方法名
  */
@@ -431,12 +415,11 @@ static void test_empty_method_name(void)
 
     cJSON *request = cJSON_CreateObject();
     cJSON_AddStringToObject(request, "jsonrpc", "2.0");
-    cJSON_AddStringToObject(request, "method", ""); /* 空方法名 */
+    cJSON_AddStringToObject(request, "method", "");
     cJSON_AddNumberToObject(request, "id", 100);
 
     rpc_result_t result = gateway_rpc_handle_request(request, NULL, NULL);
 
-    /* 空字符串是有效的，应该能路由到未知方法 */
     ASSERT_NOT_NULL(result.response_json);
 
     gateway_rpc_free(&result);
@@ -478,10 +461,8 @@ static void test_special_characters_in_method(void)
 {
     TEST_BEGIN("special_characters_in_method");
 
-    const char *special_methods[] = {"agentrt.sys.task.submit",      /* 点号 */
-                                     "agentrt/sys/task/submit",      /* 斜杠 */
-                                     "agentrt::sys::task::submit",   /* 双冒号 */
-                                     "airy_sys_task_submit_中文", /* 中文 */
+    const char *special_methods[] = {"agentrt.sys.task.submit", "agentrt/sys/task/submit",
+                                     "agentrt::sys::task::submit", "airy_sys_task_submit_中文",
                                      NULL};
 
     for (int i = 0; special_methods[i] != NULL; i++) {
@@ -499,8 +480,6 @@ static void test_special_characters_in_method(void)
     TEST_PASS();
 }
 
-/* ========== 主函数 ========== */
-
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -511,7 +490,6 @@ int main(int argc, char **argv)
     printf("  (Testing unified RPC processing module)\n");
     printf("======================================================\n\n");
 
-    /* 组1: 请求验证测试 */
     printf("[Request Validation Tests]\n");
     test_handle_valid_request();
     test_handle_request_with_params();
@@ -520,32 +498,27 @@ int main(int argc, char **argv)
     test_handle_wrong_version();
     printf("\n");
 
-    /* 组2: 自定义Handler测试 */
     printf("[Custom Handler Tests]\n");
     test_custom_handler_invocation();
     test_custom_handler_error();
     printf("\n");
 
-    /* 组3: 错误处理测试 */
     printf("[Error Handling Tests]\n");
     test_create_error_result();
     test_create_error_null_message();
     printf("\n");
 
-    /* 组4: 内存管理测试 */
     printf("[Memory Management Tests]\n");
     test_resource_cleanup_safety();
     test_memory_stability_under_load();
     printf("\n");
 
-    /* 组5: 边界条件测试 */
     printf("[Boundary Condition Tests]\n");
     test_empty_method_name();
     test_very_long_method_name();
     test_special_characters_in_method();
     printf("\n");
 
-    /* 输出结果 */
     printf("======================================================\n");
     printf("  Results: %d/%d passed\n", g_tests_passed, g_tests_run);
     printf("======================================================\n\n");

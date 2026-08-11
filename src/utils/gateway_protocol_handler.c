@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 // @owner: team-B
 /**
  * @file gateway_protocol_handler.c
@@ -19,7 +20,7 @@
 #include "syscall_router.h"
 
 #include <cjson/cJSON.h>
-/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+
 #include <cjson_helpers.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -28,14 +29,12 @@
 #include <time.h>
 
 // ============================================================================
-// 内部数据结构
 // ============================================================================
 
 struct gateway_protocol_handler_s {
     gateway_protocol_config_t config;
     void *router;
 
-    // 统计信息
     uint64_t total_requests;
     uint64_t jsonrpc_requests;
     uint64_t mcp_requests;
@@ -48,24 +47,24 @@ struct gateway_protocol_handler_s {
 };
 
 // ============================================================================
-// 协议检测特征常量
 // ============================================================================
 
 static const char *JSONRPC_SIGNATURES[]
     __attribute__((unused)) = {"\"jsonrpc\"", "\"method\"", "\"params\"", "\"id\"", NULL};
 
-static const char *MCP_SIGNATURES[] __attribute__((unused)) = {
-    "\"jsonrpc\": \"2.0\"", "\"method\"", "\"params\"", "\"MCP\"", "\"mcp\"", NULL};
+static const char *MCP_SIGNATURES[] __attribute__((
+    unused)) = {"\"jsonrpc\": \"2.0\"", "\"method\"", "\"params\"", "\"MCP\"", "\"mcp\"", NULL};
 
-static const char *OPENAI_SIGNATURES[] __attribute__((unused)) = {
-    "\"model\"", "\"messages\"", "\"prompt\"", "\"/v1/chat/completions\"", "\"/v1/completions\"",
-    NULL};
+static const char *OPENAI_SIGNATURES[]
+    __attribute__((unused)) = {"\"model\"",           "\"messages\"",
+                               "\"prompt\"",          "\"/v1/chat/completions\"",
+                               "\"/v1/completions\"", NULL};
 
-static const char *A2A_SIGNATURES[] __attribute__((unused)) = {
-    "\"agent_id\"", "\"task_id\"", "\"message\"", "\"a2a\"", "\"agent-to-agent\"", NULL};
+static const char *A2A_SIGNATURES[]
+    __attribute__((unused)) = {"\"agent_id\"", "\"task_id\"",        "\"message\"",
+                               "\"a2a\"",      "\"agent-to-agent\"", NULL};
 
 // ============================================================================
-// 静态辅助函数
 // ============================================================================
 
 static int __attribute__((unused)) string_contains_any(const char *str, const char **patterns)
@@ -109,8 +108,7 @@ static int is_valid_json(const char *data, size_t len)
     return 1;
 }
 
-static airy_protocol_type_t detect_protocol_internal(const char *request_data,
-                                                        size_t request_size)
+static airy_protocol_type_t detect_protocol_internal(const char *request_data, size_t request_size)
 {
 
     if (!request_data || request_size == 0) {
@@ -221,13 +219,11 @@ static cJSON *extract_openai_to_jsonrpc(const char *request_data, size_t request
 
     cJSON *temperature = cJSON_GetObjectItem(root, "temperature");
     if (temperature)
-        cJSON_AddItemToObject(params, "temperature",
-                              CJSON_DEEP_COPY(temperature));
+        cJSON_AddItemToObject(params, "temperature", CJSON_DEEP_COPY(temperature));
 
     cJSON *max_tokens = cJSON_GetObjectItem(root, "max_tokens");
     if (max_tokens)
-        cJSON_AddItemToObject(params, "max_tokens",
-                              CJSON_DEEP_COPY(max_tokens));
+        cJSON_AddItemToObject(params, "max_tokens", CJSON_DEEP_COPY(max_tokens));
 
     cJSON_Delete(root);
     return params;
@@ -240,9 +236,9 @@ static cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_si
     if (!root)
         return NULL;
 
-    const char *method = cJSON_GetObjectItem(root, "method")
-                             ? cJSON_GetObjectItem(root, "method")->valuestring
-                             : NULL;
+    const char *method = cJSON_GetObjectItem(root, "method") ?
+                             cJSON_GetObjectItem(root, "method")->valuestring :
+                             NULL;
 
     if (out_method) {
         char mcp_method[256];
@@ -277,18 +273,18 @@ static cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_si
         return NULL;
 
     if (out_method) {
-        const char *action = cJSON_GetObjectItem(root, "action")
-                                 ? cJSON_GetObjectItem(root, "action")->valuestring
-                                 : "send";
+        const char *action = cJSON_GetObjectItem(root, "action") ?
+                                 cJSON_GetObjectItem(root, "action")->valuestring :
+                                 "send";
         char a2a_method[256];
         snprintf(a2a_method, sizeof(a2a_method), "a2a.%s", action);
         *out_method = AIRY_STRDUP(a2a_method);
     }
 
     if (out_id) {
-        const char *task_id = cJSON_GetObjectItem(root, "task_id")
-                                  ? cJSON_GetObjectItem(root, "task_id")->valuestring
-                                  : NULL;
+        const char *task_id = cJSON_GetObjectItem(root, "task_id") ?
+                                  cJSON_GetObjectItem(root, "task_id")->valuestring :
+                                  NULL;
         *out_id = AIRY_STRDUP(task_id ? task_id : "null");
     }
 
@@ -296,8 +292,7 @@ static cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_si
 
     cJSON *agent_id = cJSON_GetObjectItem(root, "agent_id");
     if (agent_id)
-        cJSON_AddItemToObject(params, "target_agent",
-                              CJSON_DEEP_COPY(agent_id));
+        cJSON_AddItemToObject(params, "target_agent", CJSON_DEEP_COPY(agent_id));
 
     cJSON *message = cJSON_GetObjectItem(root, "message");
     if (message)
@@ -308,7 +303,6 @@ static cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_si
 }
 
 // ============================================================================
-// 公共API实现
 // ============================================================================
 
 gateway_protocol_handler_t gateway_protocol_handler_create(const gateway_protocol_config_t *config)
@@ -470,11 +464,11 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     }
 
     if (!converted_params) {
-        /* JSON-RPC 2.0 允许无 params 的方法调用（如 ping），用空对象兜底 */
+
         converted_params = cJSON_CreateObject();
         if (!converted_params) {
-            rpc_result_t result = create_error_result(
-                -32700, "Protocol conversion failed", id_str ? id_str : "null");
+            rpc_result_t result =
+                create_error_result(-32700, "Protocol conversion failed", id_str ? id_str : "null");
             AIRY_FREE(method);
             AIRY_FREE(id_str);
             handler->conversion_errors++;
@@ -510,7 +504,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     } else {
         response_str =
             AIRY_STRDUP("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"accepted\",\"message\":"
-                           "\"Request queued for processing\"},\"id\":null}");
+                        "\"Request queued for processing\"},\"id\":null}");
     }
 
     AIRY_FREE(method);
@@ -520,9 +514,10 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     if (custom_result != 0 || !response_str) {
         AIRY_FREE(response_str);
         handler->conversion_errors++;
-        return create_error_result(
-            -32607, custom_result != 0 ? "Custom handler failed" : "No response from handler",
-            "null");
+        return create_error_result(-32607,
+                                   custom_result != 0 ? "Custom handler failed" :
+                                                        "No response from handler",
+                                   "null");
     }
 
     rpc_result_t final_result;
@@ -531,7 +526,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     final_result.response_json = response_str;
 
     if (detected_type != AIRY_PROTOCOL_JSON_RPC) {
-        /* P0.18.2: 模式 C — 用 do { ... } while (0) + break 配合 CJSON_PARSE_GUARD */
+
         do {
             CJSON_PARSE_GUARD(jsonrpc_resp, response_str, { break; });
             cJSON *result_data = cJSON_GetObjectItem(jsonrpc_resp, "result");
@@ -541,15 +536,13 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                     cJSON *openai_resp = cJSON_CreateObject();
                     cJSON *choices = cJSON_CreateArray();
                     cJSON *choice = cJSON_CreateObject();
-                    cJSON_AddItemToObject(choice, "message",
-                                          CJSON_DEEP_COPY(result_data));
+                    cJSON_AddItemToObject(choice, "message", CJSON_DEEP_COPY(result_data));
                     cJSON_AddItemToArray(choices, choice);
                     cJSON_AddItemToObject(openai_resp, "choices", choices);
 
                     cJSON *model_used = cJSON_GetObjectItem(result_data, "model");
                     if (model_used) {
-                        cJSON_AddItemToObject(openai_resp, "model",
-                                              CJSON_DEEP_COPY(model_used));
+                        cJSON_AddItemToObject(openai_resp, "model", CJSON_DEEP_COPY(model_used));
                     } else {
                         cJSON_AddStringToObject(openai_resp, "model", "default");
                     }
@@ -564,8 +557,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
 
                 case AIRY_PROTOCOL_MCP: {
                     cJSON *mcp_resp = cJSON_CreateObject();
-                    cJSON_AddItemToObject(mcp_resp, "content",
-                                          CJSON_DEEP_COPY(result_data));
+                    cJSON_AddItemToObject(mcp_resp, "content", CJSON_DEEP_COPY(result_data));
                     cJSON_AddBoolToObject(mcp_resp, "isError", 0);
 
                     char *new_response = cJSON_PrintUnformatted(mcp_resp);
@@ -576,8 +568,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
 
                 case AIRY_PROTOCOL_A2A: {
                     cJSON *a2a_resp = cJSON_CreateObject();
-                    cJSON_AddItemToObject(a2a_resp, "response",
-                                          CJSON_DEEP_COPY(result_data));
+                    cJSON_AddItemToObject(a2a_resp, "response", CJSON_DEEP_COPY(result_data));
                     cJSON_AddStringToObject(a2a_resp, "status", "success");
 
                     char *new_response = cJSON_PrintUnformatted(a2a_resp);
@@ -590,7 +581,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                     break;
                 }
             }
-            /* jsonrpc_resp 由 CJSON_AUTO_FREE 自动释放 */
+
         } while (0);
     }
 
@@ -653,10 +644,9 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
 
     gateway_protocol_handler_get_default_config(config);
 
-    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
     CJSON_PARSE_GUARD(root, json_config, {
         airy_err_push_ex(AIRY_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
-                              "gateway_protocol_handler: invalid parameter");
+                         "gateway_protocol_handler: invalid parameter");
         return AIRY_ERR_INVALID_PARAM;
     });
 
@@ -686,7 +676,6 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
     if (cJSON_IsBool(item))
         config->enable_protocol_detection = cJSON_IsTrue(item);
 
-    /* root 由 CJSON_AUTO_FREE 自动释放 */
     return 0;
 }
 
@@ -697,8 +686,7 @@ airy_protocol_type_t gateway_protocol_detect(const char *request_data, size_t re
 
 int gateway_protocol_is_jsonrpc(const char *request_data, size_t request_size)
 {
-    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_JSON_RPC ? 1
-                                                                                             : 0;
+    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_JSON_RPC ? 1 : 0;
 }
 
 int gateway_protocol_is_mcp(const char *request_data, size_t request_size)
@@ -746,7 +734,7 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
         return *jsonrpc_out ? 0 : -2;
     default:
         airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
-                              "gateway_protocol_handler: null pointer");
+                         "gateway_protocol_handler: null pointer");
         return AIRY_ERR_NULL_POINTER;
     }
 
@@ -754,7 +742,7 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
         AIRY_FREE(method);
         AIRY_FREE(id_str);
         airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
-                              "gateway_protocol_handler: out of memory");
+                         "gateway_protocol_handler: out of memory");
         return AIRY_ERR_OUT_OF_MEMORY;
     }
 
@@ -791,18 +779,17 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
     AIRY_CHECK(jsonrpc_response != NULL, AIRY_ERR_NULL_POINTER, "jsonrpc_response is NULL");
     AIRY_CHECK(target_response != NULL, AIRY_ERR_NULL_POINTER, "target_response is NULL");
 
-    /* P0.18.2: 模式 A — CJSON_PARSE_GUARD 自动释放 + NULL 检查 */
     CJSON_PARSE_GUARD(jsonrpc, jsonrpc_response, {
         airy_err_push_ex(AIRY_ERR_INVALID_PARAM, __FILE__, __LINE__, __func__,
-                              "gateway_protocol_handler: invalid parameter");
+                         "gateway_protocol_handler: invalid parameter");
         return AIRY_ERR_INVALID_PARAM;
     });
 
     cJSON *result = cJSON_GetObjectItem(jsonrpc, "result");
     if (!result) {
-        /* jsonrpc 由 CJSON_AUTO_FREE 自动释放 */
+
         airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
-                              "gateway_protocol_handler: null pointer");
+                         "gateway_protocol_handler: null pointer");
         return AIRY_ERR_NULL_POINTER;
     }
 
@@ -811,14 +798,14 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         cJSON *openai = cJSON_CreateObject();
         cJSON *choices = cJSON_CreateArray();
         cJSON *choice = cJSON_CreateObject();
-        /* P0.18.2: CJSON_DEEP_COPY 替代 PrintUnformatted+Parse+FREE 三步曲 */
+
         cJSON_AddItemToObject(choice, "message", CJSON_DEEP_COPY(result));
         cJSON_AddItemToArray(choices, choice);
         cJSON_AddItemToObject(openai, "choices", choices);
 
         cJSON *model = cJSON_GetObjectItem(result, "model");
         if (model) {
-            /* P0.18.2: CJSON_DEEP_COPY 替代 PrintUnformatted+Parse+FREE 三步曲 */
+
             cJSON_AddItemToObject(openai, "model", CJSON_DEEP_COPY(model));
         } else {
             cJSON_AddStringToObject(openai, "model", "default");
@@ -831,7 +818,7 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
 
     case AIRY_PROTOCOL_MCP: {
         cJSON *mcp = cJSON_CreateObject();
-        /* P0.18.2: CJSON_DEEP_COPY 替代 PrintUnformatted+Parse+FREE 三步曲 */
+
         cJSON_AddItemToObject(mcp, "content", CJSON_DEEP_COPY(result));
         cJSON_AddBoolToObject(mcp, "isError", 0);
 
@@ -853,7 +840,6 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         break;
     }
 
-    /* jsonrpc 由 CJSON_AUTO_FREE 自动释放 */
     return *target_response ? 0 : -4;
 }
 
@@ -879,8 +865,9 @@ rpc_result_t gateway_protocol_handle_jsonrpc(const cJSON *request,
         return create_error_result(-32608, "Failed to create handler", "null");
     }
 
-    rpc_result_t result = gateway_protocol_handle_request(
-        h, request_str, strlen(request_str), AIRY_PROTOCOL_JSON_RPC, handler, handler_data);
+    rpc_result_t result =
+        gateway_protocol_handle_request(h, request_str, strlen(request_str), AIRY_PROTOCOL_JSON_RPC,
+                                        handler, handler_data);
 
     AIRY_FREE(request_str);
     gateway_protocol_handler_destroy(h);

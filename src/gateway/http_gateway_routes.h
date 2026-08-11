@@ -1,5 +1,6 @@
-// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
-// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /**
  * @file http_gateway_routes.h
  * @brief HTTP 网关路由表声明
@@ -11,10 +12,9 @@
  *   E-8 可测试性：每个路由处理函数可独立测试
  *   K-1 内核极简：路由函数只做分发，不含业务逻辑
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef HTTP_GATEWAY_ROUTES_H
 #define HTTP_GATEWAY_ROUTES_H
 
@@ -27,14 +27,13 @@ struct cJSON;
 typedef struct cJSON cJSON;
 #endif
 
-/* 跨平台原子操作支持 - 使用统一的 atomic_compat.h */
+
 #include "atomic_compat.h"
 #include "http_gateway.h"
 #include "jsonrpc.h"
 #include "syscall_router.h"
 #include "syscalls.h"
 
-/* ========== 路由处理函数声明 ========== */
 
 /**
  * @brief 处理 JSON-RPC POST 请求
@@ -88,21 +87,19 @@ int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *con
 int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connection,
                        http_request_context_t *context, size_t data_size);
 
-/* ========== 路由条目类型 ========== */
 
 /**
  * @brief HTTP 路由条目
  */
 typedef struct {
-    const char *method; /**< HTTP 方法 */
-    const char *path;   /**< URL 路径 */
+    const char *method;
+    const char *path;
     int (*handler)(http_gateway_t *, struct MHD_Connection *, http_request_context_t *);
 } http_route_t;
 
 typedef int (*http_route_handler_t)(http_gateway_t *, struct MHD_Connection *,
                                     http_request_context_t *);
 
-/* ========== 主入口函数声明 ========== */
 
 /**
  * @brief HTTP 请求处理主函数

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 // @owner: team-B
 #define GATEWAY_API_IMPLEMENTATION
 #include "error.h"
@@ -76,8 +77,8 @@ int gateway_start(gateway_t *gw)
 int gateway_stop(gateway_t *gw)
 {
     AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
-    LOG_INFO("gateway_stop: stopping gateway (type=%d, uptime=%gs)",
-                  gw->type, difftime(time(NULL), g_gateway_stats.start_time));
+    LOG_INFO("gateway_stop: stopping gateway (type=%d, uptime=%gs)", gw->type,
+             difftime(time(NULL), g_gateway_stats.start_time));
     if (gw->ops && gw->ops->stop) {
         gw->ops->stop(gw->impl);
     }

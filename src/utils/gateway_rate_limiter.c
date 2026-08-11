@@ -1,21 +1,18 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file gateway_rate_limiter.c
  * @brief Gateway 内置速率限制器实现
  *
  * 实现基于令牌桶算法的速率限制功能。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-/* 跨平台原子操作支持 - 使用统一的 atomic_compat.h */
 // @owner: team-B
 #include "atomic_compat.h"
 
-/* Windows 特定头文件和定义 */
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -32,47 +29,40 @@
 #include <string.h>
 #include <time.h>
 
-/* ========== 客户端状态结构 ========== */
-
 /**
  * @brief 单个客户端的速率限制状态
  */
 typedef struct client_state {
-    char *client_key;              /**< 客户端标识 */
-    uint64_t tokens;               /**< 当前令牌数 */
-    uint64_t last_update_ns;       /**< 上次更新时间 */
-    uint32_t request_count_minute; /**< 分钟计数器 */
-    uint32_t request_count_hour;   /**< 小时计数器 */
-    uint64_t minute_start_ns;      /**< 分钟窗口起始时间 */
-    uint64_t hour_start_ns;        /**< 小时窗口起始时间 */
-    time_t last_access_time;       /**< 最后访问时间（用于清理） */
-    struct client_state *next;     /**< 哈希表链表指针 */
+    char *client_key;
+    uint64_t tokens;
+    uint64_t last_update_ns;
+    uint32_t request_count_minute;
+    uint32_t request_count_hour;
+    uint64_t minute_start_ns;
+    uint64_t hour_start_ns;
+    time_t last_access_time;
+    struct client_state *next;
 } client_state_t;
 
-/* ========== 速率限制器结构 ========== */
-
 struct gateway_rate_limiter {
-    gateway_rate_limit_config_t config; /**< 配置 */
+    gateway_rate_limit_config_t config;
 
-    client_state_t **clients_table; /**< 客户端哈希表 */
-    size_t table_size;              /**< 哈希表大小 */
+    client_state_t **clients_table;
+    size_t table_size;
 
-    atomic_uint_fast64_t total_allowed;  /**< 总允许请求数 */
-    atomic_uint_fast64_t total_rejected; /**< 总拒绝请求数 */
-    atomic_uint_fast32_t active_clients; /**< 活跃客户端数 */
+    atomic_uint_fast64_t total_allowed;
+    atomic_uint_fast64_t total_rejected;
+    atomic_uint_fast32_t active_clients;
 
-    atomic_bool running;      /**< 运行标志 */
-    time_t last_cleanup_time; /**< 上次清理时间 */
+    atomic_bool running;
+    time_t last_cleanup_time;
 
-    /* 哈希表互斥锁 - 保护 clients_table 结构修改 */
 #ifdef _WIN32
     airy_mtx_t table_lock;
 #else
     airy_mtx_t table_lock;
 #endif
 };
-
-/* ========== 哈希函数 ========== */
 
 /**
  * @brief 简单的字符串哈希函数（djb2算法）
@@ -88,8 +78,6 @@ static uint32_t hash_string(const char *str, size_t table_size)
 
     return hash % table_size;
 }
-
-/* ========== 客户端状态管理 ========== */
 
 /**
  * @brief 创建客户端状态
@@ -143,7 +131,6 @@ static client_state_t *get_or_create_client_locked(gateway_rate_limiter_t *limit
 {
     uint32_t hash = hash_string(client_key, limiter->table_size);
 
-    /* 查找现有客户端 */
     client_state_t *current = limiter->clients_table[hash];
     while (current) {
         if (strcmp(current->client_key, client_key) == 0) {
@@ -153,12 +140,10 @@ static client_state_t *get_or_create_client_locked(gateway_rate_limiter_t *limit
         current = current->next;
     }
 
-    /* 创建新客户端 */
     client_state_t *new_client = client_state_create(client_key, now_ns);
     if (!new_client)
         return NULL;
 
-    /* 插入到哈希表 */
     new_client->next = limiter->clients_table[hash];
     limiter->clients_table[hash] = new_client;
 
@@ -166,8 +151,6 @@ static client_state_t *get_or_create_client_locked(gateway_rate_limiter_t *limit
 
     return new_client;
 }
-
-/* ========== 令牌桶算法 ========== */
 
 /**
  * @brief 更新令牌数
@@ -180,10 +163,8 @@ static void update_tokens(client_state_t *client, const gateway_rate_limit_confi
 
     uint64_t elapsed_ns = now_ns - client->last_update_ns;
 
-    /* 计算新增令牌数（每秒补充 config->requests_per_second 个令牌） */
     uint64_t new_tokens = (elapsed_ns * config->requests_per_second) / 1000000000ULL;
 
-    /* 更新令牌数，不超过突发容量 */
     client->tokens += new_tokens;
     if (client->tokens > config->burst_size) {
         client->tokens = config->burst_size;
@@ -198,33 +179,30 @@ static void update_tokens(client_state_t *client, const gateway_rate_limit_confi
 static bool check_time_windows(client_state_t *client, const gateway_rate_limit_config_t *config,
                                uint64_t now_ns)
 {
-    /* 检查分钟窗口 */
+
     uint64_t minute_elapsed = now_ns - client->minute_start_ns;
-    if (minute_elapsed >= 60000000000ULL) { /* 60秒 */
+    if (minute_elapsed >= 60000000000ULL) {
         client->request_count_minute = 0;
         client->minute_start_ns = now_ns;
     }
 
     if (config->requests_per_minute > 0 &&
         client->request_count_minute >= config->requests_per_minute) {
-        return false; /* 超过分钟限制 */
+        return false;
     }
 
-    /* 检查小时窗口 */
     uint64_t hour_elapsed = now_ns - client->hour_start_ns;
-    if (hour_elapsed >= 3600000000000ULL) { /* 3600秒 */
+    if (hour_elapsed >= 3600000000000ULL) {
         client->request_count_hour = 0;
         client->hour_start_ns = now_ns;
     }
 
     if (config->requests_per_hour > 0 && client->request_count_hour >= config->requests_per_hour) {
-        return false; /* 超过小时限制 */
+        return false;
     }
 
     return true;
 }
-
-/* ========== 清理过期客户端 ========== */
 
 /**
  * @brief 清理长时间未活跃的客户端
@@ -232,7 +210,7 @@ static bool check_time_windows(client_state_t *client, const gateway_rate_limit_
 static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
 {
     time_t now = time(NULL);
-    time_t expire_threshold = now - 3600; /* 1小时未活跃 */
+    time_t expire_threshold = now - 3600;
 
 #ifdef _WIN32
     airy_mtx_lock(&limiter->table_lock);
@@ -263,8 +241,6 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
     airy_mtx_unlock(&limiter->table_lock);
 #endif
 }
-
-/* ========== 辅助函数：速率限制检查 ========== */
 
 /**
  * @brief 前置条件检查
@@ -305,10 +281,9 @@ static inline void consume_token(client_state_t *client)
 static bool check_rate_limit(client_state_t *client, gateway_rate_limiter_t *limiter,
                              const gateway_rate_limit_config_t *config, uint64_t now_ns)
 {
-    /* 更新令牌 */
+
     update_tokens(client, config, now_ns);
 
-    /* 检查时间窗口 */
     if (!check_time_windows(client, config, now_ns)) {
         if (limiter) {
             atomic_fetch_add(&limiter->total_rejected, 1);
@@ -316,7 +291,6 @@ static bool check_rate_limit(client_state_t *client, gateway_rate_limiter_t *lim
         return false;
     }
 
-    /* 检查令牌桶 */
     if (client->tokens > 0) {
         consume_token(client);
         if (limiter) {
@@ -325,26 +299,23 @@ static bool check_rate_limit(client_state_t *client, gateway_rate_limiter_t *lim
         return true;
     }
 
-    /* 令牌不足，拒绝 */
     if (limiter) {
         atomic_fetch_add(&limiter->total_rejected, 1);
     }
     return false;
 }
 
-/* ========== 公共接口实现 ========== */
-
 void gateway_rate_limiter_get_default_config(gateway_rate_limit_config_t *config)
 {
     if (!config)
         return;
 
-    config->enabled = false; /* 默认禁用 */
+    config->enabled = false;
     config->requests_per_second = 100;
     config->requests_per_minute = 6000;
     config->requests_per_hour = 360000;
-    config->burst_size = 150;           /* 允许一定的突发流量 */
-    config->cleanup_interval_sec = 300; /* 5 分钟清理一次 */
+    config->burst_size = 150;
+    config->cleanup_interval_sec = 300;
 }
 
 gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_config_t *config)
@@ -353,14 +324,12 @@ gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_con
     if (!limiter)
         return NULL;
 
-    /* 复制配置 */
     if (config) {
         limiter->config = *config;
     } else {
         gateway_rate_limiter_get_default_config(&limiter->config);
     }
 
-    /* 创建哈希表（大小为质数，减少冲突） */
     const char *env_ts = getenv("AIRY_RATE_LIMIT_TABLE_SIZE");
     if (env_ts) {
         unsigned long v = strtoul(env_ts, NULL, 10);
@@ -379,7 +348,6 @@ gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_con
     atomic_init(&limiter->active_clients, 0);
     atomic_init(&limiter->running, true);
 
-    /* 初始化哈希表互斥锁 */
 #ifdef _WIN32
     airy_mtx_init(&limiter->table_lock);
 #else
@@ -398,14 +366,12 @@ void gateway_rate_limiter_destroy(gateway_rate_limiter_t *limiter)
 
     atomic_store(&limiter->running, false);
 
-    /* 锁定哈希表进行完整清理 */
 #ifdef _WIN32
     airy_mtx_lock(&limiter->table_lock);
 #else
     airy_mtx_lock(&limiter->table_lock);
 #endif
 
-    /* 清理所有客户端状态 */
     if (limiter->clients_table) {
         for (size_t i = 0; i < limiter->table_size; i++) {
             client_state_t *current = limiter->clients_table[i];
@@ -431,16 +397,14 @@ void gateway_rate_limiter_destroy(gateway_rate_limiter_t *limiter)
 
 bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *client_key)
 {
-    /* 步骤 1: 前置条件检查 */
+
     if (!is_rate_limiter_valid(limiter, client_key)) {
         return true;
     }
 
-    /* 步骤 2: 获取当前时间（缓存避免重复调用） */
     uint64_t now_ns = gateway_time_ns();
     time_t now = time(NULL);
 
-    /* 步骤 3: 可能执行清理（使用已缓存的 now） */
     maybe_cleanup_clients(limiter, now);
 
     /* 步骤 4-5: P0 — client 的获取与状态读写必须与 cleanup_expired_clients

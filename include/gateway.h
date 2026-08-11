@@ -1,7 +1,7 @@
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file gateway.h
  * @brief AgentRT 网关统一公共接口
@@ -19,10 +19,9 @@
  *   K-2 接口契约化：所有 API 带完整 Doxygen 契约
  *   S-2 层次分解：严格分层，不跳层访问
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef AIRY_RT_GATEWAY_H
 #define AIRY_RT_GATEWAY_H
 
@@ -36,7 +35,6 @@
 extern "C" {
 #endif
 
-/* ========== 错误码 ========== */
 
 /**
  * @brief 网关专用错误码（扩展 AgentRT 标准错误码）
@@ -45,27 +43,21 @@ extern "C" {
  *       gateway_error_t 用于网关特有的错误场景。
  */
 typedef enum {
-    GATEWAY_SUCCESS = 0,        /**< 成功 */
-    GATEWAY_ERROR_INVALID = -1, /**< 无效参数 */
-    GATEWAY_ERROR_MEMORY = -2,  /**< 内存不足 */
-    GATEWAY_ERROR_IO = -3,      /**< I/O 错误 */
-    GATEWAY_ERROR_TIMEOUT = -4, /**< 超时 */
-    GATEWAY_ERROR_CLOSED = -5,  /**< 连接已关闭 */
-    GATEWAY_ERROR_PROTOCOL = -6 /**< 协议错误 */
+    GATEWAY_SUCCESS = 0,
+    GATEWAY_ERROR_INVALID = -1,
+    GATEWAY_ERROR_MEMORY = -2,
+    GATEWAY_ERROR_IO = -3,
+    GATEWAY_ERROR_TIMEOUT = -4,
+    GATEWAY_ERROR_CLOSED = -5,
+    GATEWAY_ERROR_PROTOCOL = -6
 } gateway_error_t;
 
-/* ========== 网关类型 ========== */
 
 /**
  * @brief 网关类型枚举
  */
-typedef enum {
-    GATEWAY_TYPE_HTTP = 0, /**< HTTP 网关 (libmicrohttpd) */
-    GATEWAY_TYPE_WS,       /**< WebSocket 网关 (libwebsockets) */
-    GATEWAY_TYPE_STDIO     /**< Stdio 网关 (标准输入输出) */
-} gateway_type_t;
+typedef enum { GATEWAY_TYPE_HTTP = 0, GATEWAY_TYPE_WS, GATEWAY_TYPE_STDIO } gateway_type_t;
 
-/* ========== 网关句柄 ========== */
 
 /**
  * @brief 网关不透明句柄
@@ -74,7 +66,6 @@ typedef enum {
  */
 typedef struct gateway gateway_t;
 
-/* ========== 回调类型 ========== */
 
 /**
  * @brief 请求处理回调函数类型
@@ -96,7 +87,6 @@ typedef struct gateway gateway_t;
 typedef int (*gateway_request_handler_t)(const char *request_json, char **response_json,
                                          void *user_data);
 
-/* ========== 通用接口 - 生命周期 ========== */
 
 /**
  * @brief 创建 HTTP 网关实例
@@ -155,7 +145,6 @@ gateway_t *gateway_stdio_create(void);
  */
 void gateway_destroy(gateway_t *gw);
 
-/* ========== 通用接口 - 控制操作 ========== */
 
 /**
  * @brief 启动网关
@@ -209,17 +198,16 @@ int gateway_stop(gateway_t *gw);
  */
 int gateway_set_handler(gateway_t *gw, gateway_request_handler_t handler, void *user_data);
 
-/* ========== 端点注册类型 ========== */
 
 /**
  * @brief 端点请求结构（动态注册端点使用）
  */
 typedef struct gateway_endpoint_request {
-    const char *method; /**< HTTP 方法 */
-    const char *path;   /**< URL 路径 */
-    const char *body;   /**< 请求体（可为 NULL） */
-    size_t body_len;    /**< 请求体长度 */
-    void *user_data;    /**< 注册时传入的用户数据 */
+    const char *method;
+    const char *path;
+    const char *body;
+    size_t body_len;
+    void *user_data;
 } gateway_endpoint_request_t;
 
 /**
@@ -229,10 +217,10 @@ typedef struct gateway_endpoint_request {
  * content_type 指向静态字符串字面量，桥接层不释放。
  */
 typedef struct gateway_endpoint_response {
-    int status_code;          /**< HTTP 状态码 */
-    const char *content_type; /**< Content-Type（静态字符串） */
-    char *body;               /**< 响应体（handler 分配，桥接层释放） */
-    size_t body_len;          /**< 响应体长度 */
+    int status_code;
+    const char *content_type;
+    char *body;
+    size_t body_len;
 } gateway_endpoint_response_t;
 
 /**
@@ -247,7 +235,6 @@ typedef struct gateway_endpoint_response {
 typedef int (*gateway_endpoint_handler_t)(const gateway_endpoint_request_t *req,
                                           gateway_endpoint_response_t *resp);
 
-/* ========== 通用接口 - 查询操作 ========== */
 
 /**
  * @brief 获取网关类型

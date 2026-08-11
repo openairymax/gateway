@@ -1,7 +1,7 @@
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file gateway_rpc_handler.h
  * @brief 统一的RPC请求处理模块
@@ -14,15 +14,14 @@
  *   K-2 接口契约化：所有函数有完整Doxygen注释
  *   E-8 可测试性：独立可单元测试
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
-// @owner: team-B
+/* @owner: team-B */
 #ifndef GATEWAY_RPC_HANDLER_H
 #define GATEWAY_RPC_HANDLER_H
 
 #include <cjson/cJSON.h>
-/* P0.18.2: 引入 cjson_helpers.h 提供 CJSON_PARSE_GUARD/CJSON_AUTO_FREE 宏 */
+
 #include <cjson_helpers.h>
 #include <stddef.h>
 
@@ -30,9 +29,9 @@
  * @brief RPC处理结果结构
  */
 typedef struct {
-    char *response_json;       /**< JSON-RPC响应字符串 */
-    int error_code;            /**< 错误码 (0=成功) */
-    const char *error_message; /**< 错误消息 */
+    char *response_json;
+    int error_code;
+    const char *error_message;
 } rpc_result_t;
 
 /**
@@ -59,12 +58,12 @@ typedef struct {
  * rpc_result_t result = gateway_rpc_handle_request(request, my_handler, my_data);
  *
  * if (result.error_code != 0) {
- *     // 错误处理
+ *
  * }
  *
  * printf("Response: %s\n", result.response_json);
  * rpc_result_free(&result);
- * // request 由 CJSON_AUTO_FREE 自动释放
+ *
  * @endcode
  */
 rpc_result_t gateway_rpc_handle_request(const cJSON *request,

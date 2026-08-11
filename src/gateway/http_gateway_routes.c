@@ -1,7 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
 /*
- * Copyright (C) 2026 SPHARX. All Rights Reserved.
- * SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
- * SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
  *
  * @file http_gateway_routes.c
  * @brief HTTP 网关路由处理函数实现
@@ -9,7 +9,6 @@
  * 将 handle_http_request 的复杂逻辑拆分为独立的路由处理函数，
  * 降低圈复杂度，提高可维护性。
  *
- * @copyright (c) 2026 SPHARX. All Rights Reserved.
  */
 
 // @owner: team-B
@@ -22,7 +21,7 @@
 #include "jsonrpc.h"
 #include "logging.h"
 #include "airy_memory.h"
-#include "platform.h" /* airy_runtime_dir()：SSE 端点解析 llm_d socket 路径 */
+#include "platform.h"
 #include "syscall_router.h"
 #include "syscalls.h"
 
@@ -51,21 +50,17 @@ static int parse_headers(void *cls __attribute__((unused)),
 #include <errno.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-#include <sys/time.h> /* SO_RCVTIMEO 用 struct timeval */
-#include <sys/un.h>   /* SSE 端点连接 llm_d Unix socket */
-#include <unistd.h>   /* close() */
+#include <sys/time.h>
+#include <sys/un.h>
+#include <unistd.h> /* close() */
 #endif
 
-/* 跨平台原子操作支持 - 使用统一的 atomic_compat.h */
 #include "atomic_compat.h"
-
-/* ========== 路由处理函数实现 ========== */
 
 /**
  * @brief 处理 JSON-RPC POST 请求 (CC=3)
  */
-int handle_post_jsonrpc(http_gateway_t *gateway,
-                        struct MHD_Connection *connection,
+int handle_post_jsonrpc(http_gateway_t *gateway, struct MHD_Connection *connection,
                         http_request_context_t *context)
 {
 
@@ -73,12 +68,14 @@ int handle_post_jsonrpc(http_gateway_t *gateway,
     if (!json_response) {
         const char *err_msg = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":"
                               "\"Internal error\"},\"id\":null}";
-        struct MHD_Response *response = create_http_response_ex(gateway, connection, 500, err_msg, strlen(err_msg));
+        struct MHD_Response *response =
+            create_http_response_ex(gateway, connection, 500, err_msg, strlen(err_msg));
         int ret = MHD_queue_response(connection, 500, response);
         MHD_destroy_response(response);
         return ret;
     }
-    struct MHD_Response *response = create_http_response_ex(gateway, connection, 200, json_response, strlen(json_response));
+    struct MHD_Response *response =
+        create_http_response_ex(gateway, connection, 200, json_response, strlen(json_response));
 
     uint64_t response_time_ns = gateway_time_ns() - context->start_time_ns;
     LOG_DEBUG("请求处理耗时: %lu ns", response_time_ns);
@@ -96,8 +93,7 @@ int handle_post_jsonrpc(http_gateway_t *gateway,
 /**
  * @brief 处理 OPTIONS 请求（CORS 预检）(CC=2)
  */
-int handle_options_preflight(http_gateway_t *gateway,
-                             struct MHD_Connection *connection,
+int handle_options_preflight(http_gateway_t *gateway, struct MHD_Connection *connection,
                              http_request_context_t *context __attribute__((unused)))
 {
 
@@ -182,7 +178,8 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
 {
 
     const char *health_json = "{\"status\":\"healthy\",\"service\":\"gateway\"}";
-    struct MHD_Response *response = create_http_response_ex(gateway, connection, 200, health_json, strlen(health_json));
+    struct MHD_Response *response =
+        create_http_response_ex(gateway, connection, 200, health_json, strlen(health_json));
 
     atomic_fetch_add(&gateway->requests_total, 1);
 
@@ -202,7 +199,8 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
     if (!gateway_verify_api_key(connection, gateway)) {
         const char *err_json =
             "{\"error\":{\"code\":-32001,\"message\":\"Unauthorized: API key required\"}}";
-        struct MHD_Response *response = create_http_response_ex(gateway, connection, 401, err_json, strlen(err_json));
+        struct MHD_Response *response =
+            create_http_response_ex(gateway, connection, 401, err_json, strlen(err_json));
         int ret = MHD_queue_response(connection, 401, response);
         MHD_destroy_response(response);
         atomic_fetch_add(&gateway->requests_failed, 1);
@@ -216,7 +214,8 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
         metrics_json = AIRY_STRDUP("{\"error\":\"failed to get metrics\"}");
     }
 
-    struct MHD_Response *response = create_http_response_ex(gateway, connection, 200, metrics_json, strlen(metrics_json));
+    struct MHD_Response *response =
+        create_http_response_ex(gateway, connection, 200, metrics_json, strlen(metrics_json));
     AIRY_FREE(metrics_json);
 
     atomic_fetch_add(&gateway->requests_total, 1);
@@ -230,8 +229,8 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
 /**
  * @brief 处理 404 Not Found (CC=2)
  */
-int handle_not_found(http_gateway_t *gateway,
-                     struct MHD_Connection *connection, http_request_context_t *context)
+int handle_not_found(http_gateway_t *gateway, struct MHD_Connection *connection,
+                     http_request_context_t *context)
 {
 
     char *error_response = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
@@ -290,8 +289,6 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
     return ret;
 }
 
-/* ========== SSE 流式聊天端点（POST /api/v1/chat/stream） ========== */
-
 /**
  * @brief SSE 流式聊天端点常量
  *
@@ -301,10 +298,10 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
  * 设计决定：仅 LLM 直连流式，无工具循环/无 think_d（Claude Code 风格对话流式）。
  */
 #define GW_SSE_CHAT_PATH "/api/v1/chat/stream"
-#define GW_SSE_DEFAULT_MODEL "deepseek-v4-flash" /* 与 llm_d model.yaml global.default_model 对齐 */
-#define GW_SSE_RECV_TIMEOUT_S 30                /* llm_d 增量块 recv 超时 */
-#define GW_SSE_BLOCK_SIZE 1024                  /* MHD content_reader 单轮输出上限 */
-#define GW_SSE_DONE_EVENT "data: [DONE]\n\n"    /* 流结束事件（14 字节） */
+#define GW_SSE_DEFAULT_MODEL "deepseek-v4-flash"
+#define GW_SSE_RECV_TIMEOUT_S 30
+#define GW_SSE_BLOCK_SIZE 1024
+#define GW_SSE_DONE_EVENT "data: [DONE]\n\n"
 
 /**
  * @brief SSE 流式响应回调上下文
@@ -313,8 +310,8 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
  * 由 MHD 的 free_cb（gw_sse_content_free）统一释放（关闭 fd + AIRY_FREE）。
  */
 typedef struct {
-    int fd;   /**< llm_d Unix socket fd（-1 表示无效） */
-    int done; /**< 已输出终止事件（[DONE]），下次回调返回 MHD_CONTENT_READER_END_OF_STREAM */
+    int fd;
+    int done;
 } gw_sse_ctx_t;
 
 /**
@@ -346,8 +343,8 @@ static int gw_sse_send_json_error(http_gateway_t *gateway, struct MHD_Connection
                                   int status, const char *message)
 {
     char err[256];
-    int n = snprintf(err, sizeof(err), "{\"error\":{\"code\":%d,\"message\":\"%s\"}}",
-                     status, message ? message : "error");
+    int n = snprintf(err, sizeof(err), "{\"error\":{\"code\":%d,\"message\":\"%s\"}}", status,
+                     message ? message : "error");
     if (n < 0 || n >= (int)sizeof(err)) {
         AIRY_STRNCPY_TERM(err, "{\"error\":{\"code\":500,\"message\":\"error\"}}", sizeof(err));
     }
@@ -385,7 +382,6 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
     if (max < sizeof(GW_SSE_DONE_EVENT))
         return MHD_CONTENT_READER_END_OF_STREAM;
 
-    /* 预留 SSE 包装开销（6+2），最大可 recv 的净荷 */
     size_t want = max - 8;
     ssize_t n;
     do {
@@ -397,7 +393,7 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
         buf[6 + n + 1] = '\n';
         return (ssize_t)(6 + n + 2);
     }
-    /* EOF（llm_d 关闭连接）或超时/错误：输出终止事件并结束 */
+
     sctx->done = 1;
     AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
     return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
@@ -442,7 +438,6 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
                                       "Request body required (model+messages or prompt)");
     }
 
-    /* 请求体拷贝为 NUL 结尾（MHD upload_data 不保证以 '\0' 结尾） */
     char *body_copy = (char *)AIRY_MALLOC(body_len + 1);
     if (!body_copy) {
         return gw_sse_send_json_error(gateway, connection, 500, "Out of memory");
@@ -456,7 +451,6 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
         return gw_sse_send_json_error(gateway, connection, 400, "Invalid JSON body");
     }
 
-    /* 解析 model / messages / prompt（JSON-RPC agent.run 格式参数在 params 内） */
     const char *model = GW_SSE_DEFAULT_MODEL;
     const cJSON *messages = NULL;
     const cJSON *prompt = NULL;
@@ -472,7 +466,6 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     if (cJSON_IsString(pp) && pp->valuestring && pp->valuestring[0])
         prompt = pp;
 
-    /* 构造 complete_stream 请求参数：model + messages（缺省用 prompt 构造 user 消息） */
     cJSON *llm_params = cJSON_CreateObject();
     if (!llm_params) {
         cJSON_Delete(root);
@@ -506,12 +499,10 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     } else {
         cJSON_Delete(llm_params);
         cJSON_Delete(root);
-        return gw_sse_send_json_error(gateway, connection, 400,
-                                      "messages or prompt required");
+        return gw_sse_send_json_error(gateway, connection, 400, "messages or prompt required");
     }
     cJSON_Delete(root);
 
-    /* 构造完整 JSON-RPC complete_stream 请求 */
     cJSON *req = cJSON_CreateObject();
     if (!req) {
         cJSON_Delete(llm_params);
@@ -520,14 +511,13 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     cJSON_AddStringToObject(req, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(req, "id", 1);
     cJSON_AddStringToObject(req, "method", "complete_stream");
-    cJSON_AddItemToObject(req, "params", llm_params); /* 所有权转移给 req */
+    cJSON_AddItemToObject(req, "params", llm_params);
     char *req_str = cJSON_PrintUnformatted(req);
     cJSON_Delete(req);
     if (!req_str) {
         return gw_sse_send_json_error(gateway, connection, 500, "Out of memory");
     }
 
-    /* 连接 llm_d（POSIX Unix socket） */
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         AIRY_FREE(req_str);
@@ -546,11 +536,9 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
         return gw_sse_send_json_error(gateway, connection, 502, "LLM service unreachable");
     }
 
-    /* 接收超时：LLM 首个增量块可能需数秒思考时间 */
     struct timeval tv = {GW_SSE_RECV_TIMEOUT_S, 0};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    /* 发送完整 JSON-RPC complete_stream 请求 */
     size_t len = strlen(req_str);
     size_t sent = 0;
     while (sent < len) {
@@ -565,7 +553,6 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     }
     AIRY_FREE(req_str);
 
-    /* 创建流式响应（size=MHD_SIZE_UNKNOWN → chunked 编码；content_reader 逐块转发） */
     gw_sse_ctx_t *sctx = (gw_sse_ctx_t *)AIRY_CALLOC(1, sizeof(gw_sse_ctx_t));
     if (!sctx) {
         close(fd);
@@ -574,13 +561,13 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     sctx->fd = fd;
     sctx->done = 0;
 
-    struct MHD_Response *response = MHD_create_response_from_callback(
-        MHD_SIZE_UNKNOWN, GW_SSE_BLOCK_SIZE, gw_sse_content_reader, sctx, gw_sse_content_free);
+    struct MHD_Response *response =
+        MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, GW_SSE_BLOCK_SIZE,
+                                          gw_sse_content_reader, sctx, gw_sse_content_free);
     if (!response) {
         close(fd);
         AIRY_FREE(sctx);
-        return gw_sse_send_json_error(gateway, connection, 500,
-                                      "Failed to create stream response");
+        return gw_sse_send_json_error(gateway, connection, 500, "Failed to create stream response");
     }
     MHD_add_response_header(response, "Content-Type", "text/event-stream");
     MHD_add_response_header(response, "Cache-Control", "no-cache");
@@ -596,11 +583,10 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     (void)gateway;
     (void)connection;
     (void)context;
-    return gw_sse_send_json_error(gateway, connection, 501, "SSE streaming unsupported on this platform");
+    return gw_sse_send_json_error(gateway, connection, 501,
+                                  "SSE streaming unsupported on this platform");
 #endif
 }
-
-/* ========== 路由表定义（唯一实现） ========== */
 
 /**
  * @brief HTTP 路由表（按优先级排序）
@@ -610,14 +596,12 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
  * 2. 再匹配路径（支持通配符 "*"）
  * 3. 未匹配则走默认路由 (handle_not_found)
  */
-static const http_route_t http_routes[] = {
-    {"POST", "/", handle_post_jsonrpc},
-    {"POST", "/api/v1/chat/stream", handle_chat_stream_sse},
-    {"OPTIONS", "*", handle_options_preflight},
-    {"GET", "/health", handle_health_check},
-    {"GET", "/metrics", handle_metrics_export},
-    {NULL, NULL, handle_not_found} /* 默认路由（必须最后） */
-};
+static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc},
+                                           {"POST", "/api/v1/chat/stream", handle_chat_stream_sse},
+                                           {"OPTIONS", "*", handle_options_preflight},
+                                           {"GET", "/health", handle_health_check},
+                                           {"GET", "/metrics", handle_metrics_export},
+                                           {NULL, NULL, handle_not_found}};
 
 /**
  * @brief 查找匹配的路由处理函数 (CC=2)
@@ -675,8 +659,10 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
                                       .body_len = context->upload_data_size,
                                       .user_data = matched->user_data};
 
-    gateway_endpoint_response_t resp = {
-        .status_code = 500, .content_type = "application/json", .body = NULL, .body_len = 0};
+    gateway_endpoint_response_t resp = {.status_code = 500,
+                                        .content_type = "application/json",
+                                        .body = NULL,
+                                        .body_len = 0};
 
     int handler_ret = matched->handler(&req, &resp);
 
@@ -714,8 +700,6 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
     return ret;
 }
 
-/* ========== 重构后的主请求处理函数 (CC=8) ========== */
-
 /**
  * @brief HTTP 请求处理主函数
  *
@@ -732,7 +716,6 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
     http_gateway_t *gateway = (http_gateway_t *)cls;
     http_request_context_t *context = (http_request_context_t *)*con_cls;
 
-    /* 速率限制检查（在早期阶段进行） */
     if (gateway->rate_limiter) {
         const char *client_ip =
             MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Forwarded-For");
@@ -762,11 +745,12 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         }
 
         if (!gateway_rate_limiter_allow(gateway->rate_limiter, client_ip)) {
-            /* 返回 429 Too Many Requests */
+
             const char *error_response =
                 "{\"error\":{\"code\":-32004,\"message\":\"Rate limit exceeded\"}}";
-            struct MHD_Response *response = MHD_create_response_from_buffer(
-                strlen(error_response), (void *)error_response, MHD_RESPMEM_PERSISTENT);
+            struct MHD_Response *response =
+                MHD_create_response_from_buffer(strlen(error_response), (void *)error_response,
+                                                MHD_RESPMEM_PERSISTENT);
             MHD_add_response_header(response, "Content-Type", "application/json");
             MHD_add_response_header(response, "Server", "AgentRT-gateway/1.0");
             gateway_apply_security_headers(response);
@@ -777,7 +761,6 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         }
     }
 
-    /* 阶段 1: 初始化请求上下文 */
     if (!context) {
         context = AIRY_CALLOC(1, sizeof(http_request_context_t));
         if (!context) {
@@ -788,8 +771,9 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
             AIRY_FREE(context);
             const char *error_response =
                 "{\"error\":{\"code\":-32002,\"message\":\"Invalid URL path\"}}";
-            struct MHD_Response *response = MHD_create_response_from_buffer(
-                strlen(error_response), (void *)error_response, MHD_RESPMEM_PERSISTENT);
+            struct MHD_Response *response =
+                MHD_create_response_from_buffer(strlen(error_response), (void *)error_response,
+                                                MHD_RESPMEM_PERSISTENT);
             MHD_add_response_header(response, "Content-Type", "application/json");
             gateway_apply_security_headers(response);
             gateway_apply_cors_headers(gateway, connection, response);
@@ -809,7 +793,6 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         return MHD_YES;
     }
 
-    /* 阶段 2: 处理 POST 数据 */
     if (strcmp(method, "POST") == 0 && upload_data && *upload_data_size > 0) {
         if (*upload_data_size > gateway->max_request_size) {
             return handle_request_too_large(gateway, connection, context, *upload_data_size);
@@ -834,13 +817,11 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         return handle_post_jsonrpc(gateway, connection, context);
     }
 
-    /* 阶段 4: 路由到其他处理函数（动态端点优先） */
     int dynamic_ret = handle_dynamic_endpoint_route(gateway, connection, context, method, url);
     if (dynamic_ret != MHD_NO) {
         return dynamic_ret;
     }
 
-    /* 阶段 5: 静态路由表 */
     int (*route_handler)(http_gateway_t *, struct MHD_Connection *, http_request_context_t *) =
         find_http_route(method, url);
 
@@ -848,6 +829,5 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         return route_handler(gateway, connection, context);
     }
 
-    /* 阶段 6: 404 Not Found */
     return handle_not_found(gateway, connection, context);
 }

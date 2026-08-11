@@ -1,8 +1,9 @@
-// @owner: team-B
+/* SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
+
+/* @owner: team-B */
 #include <stdbool.h>
 #include <stdint.h>
-// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
-// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 /**
  * @file gateway_protocol_handler.h
  * @brief 多协议网关请求处理器
@@ -30,20 +31,19 @@
 extern "C" {
 #endif
 
-// ============================================================================
-// 类型定义
-// ============================================================================
+/* ============================================================================ */
 
+/* ============================================================================ */
 /**
  * @brief 协议处理器配置
  */
 typedef struct {
-    bool enable_mcp_protocol;       /**< 启用MCP协议支持 */
-    bool enable_a2a_protocol;       /**< 启用A2A协议支持 */
-    bool enable_openai_protocol;    /**< 启用OpenAI API协议支持 */
-    const char *default_protocol;   /**< 默认协议（当检测失败时使用） */
-    uint32_t max_request_size;      /**< 最大请求大小（字节） */
-    bool enable_protocol_detection; /**< 启用自动协议检测 */
+    bool enable_mcp_protocol;
+    bool enable_a2a_protocol;
+    bool enable_openai_protocol;
+    const char *default_protocol;
+    uint32_t max_request_size;
+    bool enable_protocol_detection;
 } gateway_protocol_config_t;
 
 /**
@@ -51,10 +51,9 @@ typedef struct {
  */
 typedef struct gateway_protocol_handler_s *gateway_protocol_handler_t;
 
-// ============================================================================
-// 核心API
-// ============================================================================
+/* ============================================================================ */
 
+/* ============================================================================ */
 /**
  * @brief 创建协议处理器实例
  * @param config 处理器配置（可为NULL，使用默认配置）
@@ -110,10 +109,9 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
  */
 int gateway_protocol_handler_get_stats(gateway_protocol_handler_t handler, char **stats_json);
 
-// ============================================================================
-// 协议检测函数
-// ============================================================================
+/* ============================================================================ */
 
+/* ============================================================================ */
 /**
  * @brief 检测请求数据的协议类型
  * @param request_data 请求数据
@@ -154,10 +152,9 @@ int gateway_protocol_is_a2a(const char *request_data, size_t request_size);
  */
 int gateway_protocol_is_openai(const char *request_data, size_t request_size);
 
-// ============================================================================
-// 协议转换函数
-// ============================================================================
+/* ============================================================================ */
 
+/* ============================================================================ */
 /**
  * @brief 将任意协议请求转换为JSON-RPC
  * @param handler 协议处理器句柄
@@ -184,10 +181,9 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
                                           airy_protocol_type_t target_protocol,
                                           char **target_response);
 
-// ============================================================================
-// 向后兼容接口
-// ============================================================================
+/* ============================================================================ */
 
+/* ============================================================================ */
 /**
  * @brief 向后兼容接口：处理JSON-RPC请求（与gateway_rpc_handle_request相同）
  * @param request JSON-RPC请求对象
@@ -205,4 +201,4 @@ rpc_result_t gateway_protocol_handle_jsonrpc(const cJSON *request,
 }
 #endif
 
-#endif  // GATEWAY_PROTOCOL_HANDLER_H
+#endif /* GATEWAY_PROTOCOL_HANDLER_H */
