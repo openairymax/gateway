@@ -4,15 +4,13 @@
 /* @owner: team-B */
 /**
  * @file gateway_protocol_bridge.h
- * @brief Gateway ↔ Protocols Module Bridge Interface
+ * @brief Bridge between the gateway and the protocols module.
  *
- * 网关与协议系统之间的桥接层，将 protocols 模块的统一协议能力
- * 集成到 gateway_d 的 HTTP/WS/Stdio 三种传输模式中。
+ * Integrates the unified protocol capabilities of the protocols module into
+ * the HTTP/WS/Stdio transports of gateway_d.
  *
- * 架构:
- *   Gateway HTTP/WS/Stdio → bridge → protocol_router → transformer → handler
- *
- * @since 0.1.0
+ * Architecture:
+ *   Gateway HTTP/WS/Stdio -> bridge -> protocol_router -> transformer -> handler
  */
 
 #ifndef AIRY_RT_GATEWAY_PROTOCOL_BRIDGE_H

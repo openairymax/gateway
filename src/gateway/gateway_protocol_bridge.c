@@ -149,9 +149,9 @@ int gw_protocol_bridge_detect_protocol(gw_protocol_bridge_handle_t bridge, const
 
     AIRY_MEMSET(out_result, 0, sizeof(*out_result));
 
-    /* P0: data 是网络接收缓冲区，不保证 '\0' 结尾，strstr/strncmp 按 NUL
-     * 扫描会越界读。若 size 范围内无 NUL，先拷贝到临时缓冲并补 '\0'，
-     * 后续扫描统一使用 NUL 结尾的 scan 副本。 */
+    /* P0: data is a network receive buffer, not guaranteed '\0'-terminated; NUL scans
+      * by strstr/strncmp overrun. If no NUL within size, copy to a temp buffer and append '\0',
+      * then scan the NUL-terminated copy. */
     const char *scan = data;
     char *copy_buf = NULL;
     if (size > 0 && !memchr(data, '\0', size)) {

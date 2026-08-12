@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_stream.c
- * @brief HTTP/2 网关流处理域（流上下文生命周期、请求体缓冲、header 复制与内部处理器适配）
+ * @brief HTTP/2 gateway stream domain (stream context lifecycle, body buffering, header copy, handler adaption).
  */
 
 // @owner: team-B
@@ -14,7 +14,7 @@
 #ifdef AIRY_HAS_HTTP2
 
 /**
- * @brief 创建 HTTP/2 流上下文
+  * @brief Create an HTTP/2 stream context
  */
 http2_stream_context_t *http2_stream_create(int32_t stream_id)
 {
@@ -31,7 +31,7 @@ http2_stream_context_t *http2_stream_create(int32_t stream_id)
 }
 
 /**
- * @brief 销毁 HTTP/2 流上下文
+  * @brief Destroy an HTTP/2 stream context
  */
 void http2_stream_destroy(http2_stream_context_t *ctx)
 {
@@ -51,8 +51,8 @@ void http2_stream_destroy(http2_stream_context_t *ctx)
 }
 
 /**
- * @brief 追加数据到请求体缓冲区
- * @return 0 成功，负数错误码
+ * @brief Append data to the request body buffer
+ * @return 0 on success, negative error code on failure
  */
 int http2_stream_append_body(http2_stream_context_t *ctx, const uint8_t *data, size_t len)
 {
@@ -88,7 +88,7 @@ int http2_stream_append_body(http2_stream_context_t *ctx, const uint8_t *data, s
 }
 
 /**
- * @brief 安全复制 header 值字符串
+ * @brief Safely copy a header value string
  */
 int http2_stream_set_header_str(char **dst, const uint8_t *value, size_t vlen)
 {
@@ -108,7 +108,7 @@ int http2_stream_set_header_str(char **dst, const uint8_t *value, size_t vlen)
 }
 
 /**
- * @brief 适配器：将 gateway_internal_handler_t 转换为 protocol_handle_request 的回调签名
+  * @brief Adapter: converts gateway_internal_handler_t to the protocol_handle_request callback signature
  */
 int http2_internal_handler_adapter(const char *request_json, char **response_json,
                                    void *user_data)

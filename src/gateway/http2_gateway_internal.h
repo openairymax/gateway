@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_internal.h
- * @brief HTTP/2 网关各拆分文件共享的宏与跨文件函数声明
+ * @brief Macros and cross-file declarations shared by the HTTP/2 gateway split files.
  */
 
 #ifndef AIRY_RT_GATEWAY_HTTP2_INTERNAL_H
@@ -58,17 +58,17 @@
 #define HTTP2_INITIAL_WINDOW_SIZE 65535
 
 /**
- * @brief 内部处理器适配器
+  * @brief Internal handler adapter.
  *
- * 将 gateway_internal_handler_t（内部签名）适配为
- * gateway_protocol_handle_request 所需的 custom_handler 签名。
+ * Adapts gateway_internal_handler_t (internal signature) to the custom_handler
+ * signature required by gateway_protocol_handle_request.
  */
 typedef struct {
     gateway_internal_handler_t internal_handler;
     void *internal_data;
 } http2_handler_adapter_t;
 
-/* 跨文件共享的辅助函数（原 static，已转为外部链接） */
+/* Helpers shared across files (was static; now external linkage) **/
 http2_stream_context_t *http2_stream_create(int32_t stream_id);
 void http2_stream_destroy(http2_stream_context_t *ctx);
 int http2_stream_append_body(http2_stream_context_t *ctx, const uint8_t *data, size_t len);

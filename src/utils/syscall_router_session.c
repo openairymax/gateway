@@ -3,7 +3,7 @@
 
 /**
  * @file syscall_router_session.c
- * @brief 系统调用路由器会话域（airy_sys_session_* 实现与路由分发）
+ * @brief Syscall router session domain (airy_sys_session_* implementation and routing).
  */
 
 // @owner: team-B
@@ -11,7 +11,7 @@
 #include "syscall_router_internal.h"
 
 /**
- * @brief 路由会话管理相关系统调用
+  * @brief Route session-management syscalls
  */
 char *route_session_methods(const char *method, cJSON *params, cJSON *request_id)
 {
@@ -149,9 +149,9 @@ airy_err_t airy_sys_session_close(const char *session_id)
                           (g_runtime.session_count - idx - 1) * sizeof(session_entry_t));
         g_runtime.session_count--;
 
-        /* P0: 数组左移后，原 idx 之后所有 session 的下标均已变化，而
-         * session_index 哈希表仍保存旧下标，会导致后续 session_get/close
-         * 命中错误的会话（越界/UAF）。删除后重建整个 session_index。 */
+        /* P0: after the left-shift, indices after idx change for all sessions, but
+          * session_index still holds the old indices, so later session_get/close
+          * would hit the wrong session (OOB/UAF). Rebuild session_index after deletion. */
         ht_destroy(&g_runtime.session_index);
         if (ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
             airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,

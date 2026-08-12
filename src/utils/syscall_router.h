@@ -2,13 +2,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file syscall_router.h
- * @brief 系统调用路由器接口
+ * @brief Syscall router interface.
  *
- * 统一处理 JSON-RPC 请求到系统调用的路由，
- * 被 HTTP/WebSocket/Stdio 网关共同使用。
- *
+ * Routes JSON-RPC requests to syscalls uniformly; shared by the
+ * HTTP/WebSocket/Stdio gateways.
  */
 
 /* @owner: team-B */
@@ -24,14 +22,14 @@ extern "C" {
 #endif
 
 /**
- * @brief 路由系统调用请求
+  * @brief Route a system call request
  *
- * 将 JSON-RPC 方法名和参数路由到对应的系统调用函数。
+  * Routes a JSON-RPC method name and params to the corresponding syscall function.
  *
- * @param[in] method 方法名（如 "airy_sys_task_submit"）
- * @param[in] params 参数对象
- * @param[in] request_id 请求 ID（可为 NULL）
- * @return JSON 响应字符串，需调用者 free()
+  * @param[in] method Method name (e.g. "airy_sys_task_submit")
+  * @param[in] params Parameter object
+  * @param[in] request_id Request ID (may be NULL)
+  * @return JSON response string; caller must free()
  */
 char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id);
 

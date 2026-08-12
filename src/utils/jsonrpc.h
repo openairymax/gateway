@@ -2,13 +2,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file jsonrpc.h
- * @brief JSON-RPC 2.0 协议工具函数
+ * @brief JSON-RPC 2.0 protocol utility functions.
  *
- * 提供标准的 JSON-RPC 2.0 请求验证和响应生成功能
- * 供 HTTP 网关和 WebSocket 网关共同使用
- *
+ * Provides standard JSON-RPC 2.0 request validation and response generation,
+ * shared by the HTTP and WebSocket gateways.
  */
 
 /* @owner: team-B */
@@ -33,71 +31,71 @@
 #define JSONRPC_SERVICE_UNAVAILABLE (-32004)
 
 /**
- * @brief 验证 JSON-RPC 2.0 请求格式
+  * @brief Validate a JSON-RPC 2.0 request format
  *
- * 检查请求是否包含必需字段（jsonrpc, method, id），
- * 并验证字段类型和值是否符合规范。
+  * Checks that required fields (jsonrpc, method, id) are present
+  * and validates their types and values against the spec.
  *
- * @param[in] json JSON 请求对象
- * @return 0 有效
- * @return -1 无效（缺少必需字段）
- * @return -2 无效（字段类型错误）
- * @return -3 无效（jsonrpc 版本不是 "2.0"）
+  * @param[in] json JSON request object
+  * @return 0 valid
+  * @return -1 invalid (missing required fields)
+  * @return -2 invalid (wrong field types)
+  * @return -3 invalid (jsonrpc version is not "2.0")
  */
 int gw_jsonrpc_validate_request(const cJSON *json);
 
 /**
- * @brief 从 JSON-RPC 请求中提取方法名
+  * @brief Extract the method name from a JSON-RPC request
  *
- * @param[in] json JSON 请求对象
- * @return 方法名字符串指针（不转让所有权）
- * @return NULL 如果请求无效或方法字段不存在
+  * @param[in] json JSON request object
+  * @return Method name string pointer (no ownership transfer)
+  * @return NULL if the request is invalid or has no method field
  */
 const char *jsonrpc_get_method(const cJSON *json);
 
 /**
- * @brief 从 JSON-RPC 请求中提取参数
+  * @brief Extract parameters from a JSON-RPC request
  *
- * @param[in] json JSON 请求对象
- * @return 参数对象指针（不转让所有权）
- * @return NULL 如果没有参数
+  * @param[in] json JSON request object
+  * @return Parameter object pointer (no ownership transfer)
+  * @return NULL if no parameters
  */
 const cJSON *jsonrpc_get_params(const cJSON *json);
 
 /**
- * @brief 从 JSON-RPC 请求中提取 ID
+  * @brief Extract the ID from a JSON-RPC request
  *
- * @param[in] json JSON 请求对象
- * @return ID 对象指针（不转让所有权）
- * @return NULL 如果 ID 字段不存在
+  * @param[in] json JSON request object
+  * @return ID object pointer (no ownership transfer)
+  * @return NULL if no ID field
  */
 const cJSON *jsonrpc_get_id(const cJSON *json);
 
 
 /**
- * @brief 创建 JSON-RPC 2.0 成功响应
+  * @brief Create a JSON-RPC 2.0 success response
  *
- * 响应格式：
+  * Response format:
  * {
  *   "jsonrpc": "2.0",
  *   "result": <result>,
  *   "id": <id>
  * }
  *
- * @param[in] id 请求 ID（可为 NULL）
- * @param[in] result 结果对象（可为 NULL，函数会创建 null）
- * @return JSON 字符串，需调用者 free()
- * @return NULL 内存分配失败
+  * @param[in] id Request ID (may be NULL)
+  * @param[in] result Result object (may be NULL; null is created)
+  * @return JSON string; caller must free()
+  * @return NULL on allocation failure
  *
- * @note result 对象的所有权会转移给响应
- * @note 如果 result 为 NULL，响应中会包含 null
+  * @note Ownership of the result object transfers to the response
+  * @note A NULL result yields a null in the response
  */
 char *jsonrpc_create_success_response(const cJSON *id, cJSON *result);
 
 /**
- * @brief 创建 JSON-RPC 2.0 错误响应
+  * @brief Create a JSON-RPC 2.0 error response
  *
- * 响应格式：
+  * Response format:
  * {
  *   "jsonrpc": "2.0",
  *   "error": {
@@ -108,59 +106,59 @@ char *jsonrpc_create_success_response(const cJSON *id, cJSON *result);
  *   "id": <id>
  * }
  *
- * @param[in] id 请求 ID（可为 NULL）
- * @param[in] code 错误码
- * @param[in] message 错误消息（可为 NULL，使用默认消息）
- * @param[in] data 错误数据（可为 NULL）
- * @return JSON 字符串，需调用者 free()
- * @return NULL 内存分配失败
+  * @param[in] id Request ID (may be NULL)
+  * @param[in] code Error code
+  * @param[in] message Error message (may be NULL; default used)
+  * @param[in] data Error data (may be NULL)
+  * @return JSON string; caller must free()
+  * @return NULL on allocation failure
  *
- * @note data 对象的所有权会转移给响应
+  * @note Ownership of the data object transfers to the response
  */
 char *jsonrpc_create_error_response(const cJSON *id, int code, const char *message, cJSON *data);
 
 
 /**
- * @brief 创建解析错误响应
+  * @brief Create a parse error response
  */
 char *jsonrpc_create_parse_error_response(void);
 
 /**
- * @brief 创建无效请求响应
+  * @brief Create an invalid request response
  */
 char *jsonrpc_create_invalid_request_response(void);
 
 /**
- * @brief 创建方法未找到响应
+  * @brief Create a method-not-found response
  */
 char *jsonrpc_create_method_not_found_response(const cJSON *id);
 
 /**
- * @brief 创建无效参数响应
+  * @brief Create an invalid params response
  */
 char *jsonrpc_create_invalid_params_response(const cJSON *id, const char *detail);
 
 /**
- * @brief 创建内部错误响应
+  * @brief Create an internal error response
  */
 char *jsonrpc_create_internal_error_response(const cJSON *id, const char *detail);
 
 /**
- * @brief 创建限流响应
+  * @brief Create a rate-limited response
  */
 char *jsonrpc_create_rate_limited_response(const cJSON *id);
 
 /**
- * @brief 创建认证失败响应
+  * @brief Create an authentication failure response
  */
 char *jsonrpc_create_auth_failed_response(const cJSON *id);
 
 
 /**
- * @brief 获取标准错误消息
+  * @brief Get the standard error message
  *
- * @param[in] code 错误码
- * @return 错误消息字符串
+  * @param[in] code Error code
+  * @return Error message string
  */
 const char *jsonrpc_get_error_message(int code);
 
@@ -168,31 +166,31 @@ const char *jsonrpc_get_error_message(int code);
 #define JSONRPC_MAX_BATCH_SIZE 64
 
 /**
- * @brief 验证并解析批量请求（JSON数组）
+  * @brief Validate and parse a batch request (JSON array)
  *
- * 批量请求格式: [{req1}, {req2}, ...]
- * 每个子请求必须符合JSON-RPC 2.0规范。
+  * Batch format: [{req1}, {req2}, ...]
+  * Each sub-request must conform to JSON-RPC 2.0.
  *
- * @param[in] batch_json JSON数组对象
- * @param[out] out_count 解析出的请求数量
- * @return 0 成功
- * @return -1 输入为NULL或非数组
- * @return -2 数组元素不是对象
- * @return -3 超过最大批量大小
- * @return -4 包含无效子请求（部分成功）
+  * @param[in] batch_json JSON array object
+  * @param[out] out_count Parsed request count
+  * @return 0 success
+  * @return -1 input is NULL or not an array
+  * @return -2 array element is not an object
+  * @return -3 exceeds the maximum batch size
+  * @return -4 contains invalid sub-requests (partial success)
  */
 int jsonrpc_validate_batch_request(const cJSON *batch_json, size_t *out_count);
 
 /**
- * @brief 处理批量请求，返回响应数组
+  * @brief Handle a batch request and return a response array
  *
- * 对每个子请求调用处理函数，收集所有响应。
- * 即使部分请求失败，也会返回其他成功的响应。
+  * Calls the handler for each sub-request and collects all responses.
+  * Returns the successful responses even if some fail.
  *
- * @param[in] batch_json 批量请求数组
- * @param[in] handler 单请求处理回调
- * @param[in] user_data 用户数据传给handler
- * @return JSON响应数组字符串(需free)，失败返回NULL
+  * @param[in] batch_json Batch request array
+  * @param[in] handler Single-request handler callback
+  * @param[in] user_data User data passed to the handler
+  * @return JSON response array string (free required), NULL on failure
  */
 char *jsonrpc_process_batch(const cJSON *batch_json,
                             char *(*handler)(const cJSON *request, void *user_data),
@@ -200,38 +198,38 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
 
 /* ==================== Notifications (PROTO-004) ==================== */
 /**
- * @brief 创建通知（无id字段的特殊请求）
+  * @brief Create a notification (a request without an id)
  *
- * 通知格式:
+  * Notification format:
  * {
  *   "jsonrpc": "2.0",
  *   "method": "<method>",
  *   "params": <params>
  * }
  *
- * 与普通请求的区别：没有"id"字段，服务器不应返回响应。
+  * Unlike a normal request, no "id" field; the server must not reply.
  *
- * @param[in] method 方法名
- * @param[in] params 参数对象（可为NULL）
- * @return JSON通知字符串(需free)，失败返回NULL
+ * @param[in] method Method name
+ * @param[in] params Parameter object (may be NULL)
+  * @return JSON notification string (free required), NULL on failure
  */
 char *jsonrpc_create_notification(const char *method, cJSON *params);
 
 /**
- * @brief 验证是否为通知（无id字段）
+  * @brief Check whether a request is a notification (no id)
  *
- * @param[in] json JSON对象
- * @return true 是通知
- * @return false 不是通知或有id字段
+ * @param[in] json JSON object
+  * @return true if a notification
+  * @return false otherwise (has an id)
  */
 bool gw_jsonrpc_is_notification(const cJSON *json);
 
 /**
- * @brief 创建参数化通知（便捷函数）
+  * @brief Create a parameterized notification (convenience)
  *
- * @param[in] method 方法名
- * @param[in] params_json 参数JSON字符串
- * @return JSON通知字符串(需free)
+ * @param[in] method Method name
+ * @param[in] params_json Parameter JSON string
+  * @return JSON notification string (free required)
  */
 char *jsonrpc_create_notification_params(const char *method, const char *params_json);
 

@@ -6,14 +6,14 @@
  * @brief Gateway模块单元测试
  *
  * 测试网关模块的核心功能：
- * - 网关创建/销毁生命周期
+  * - 网关创建/销毁生命周期
  * - 公共API接口调用
- * - 类型查询和状态检查
- * - NULL安全验证
+  * - 类型查询和状态检查
+  * - NULL安全验证
  *
- * 设计原则：
- *   E-3 资源确定性：所有分配的资源都有对应释放
- *   K-2 接口契约化：验证所有API符合声明契约
+  * Design principles:
+  *   E-3 资源确定性：所有分配的资源都有对应释放
+  *   K-2 接口契约化：验证所有API符合声明契约
  *
  */
 
@@ -59,7 +59,7 @@ static int g_tests_passed = 0;
 #define ASSERT_EQ(a, b) ASSERT_TRUE((a) == (b))
 
 /**
- * @brief 验证网关类型枚举值正确性
+  * @brief Verify the gateway type enum values
  */
 static void test_gateway_types(void)
 {
@@ -75,7 +75,7 @@ static void test_gateway_types(void)
 }
 
 /**
- * @brief 验证网关错误码定义
+  * @brief Verify the gateway error code definitions
  */
 static void test_error_codes(void)
 {
@@ -93,9 +93,9 @@ static void test_error_codes(void)
 }
 
 /**
- * @brief 验证所有公共API对NULL输入的安全性
+  * @brief Verify all public APIs are safe against NULL input
  *
- * 符合 E-6 错误可追溯原则：无效输入不应导致崩溃
+  * Per E-6 error traceability: invalid input must not crash
  */
 static void test_null_safety(void)
 {
@@ -121,10 +121,10 @@ static void test_null_safety(void)
 }
 
 /**
- * @brief 测试 HTTP 网关创建接口存在性
+  * @brief Test the HTTP gateway creation interface
  *
- * 注意：实际创建需要 libmicrohttpd 运行环境。
- * 此测试仅验证编译链接和基本参数校验。
+  * Note: real creation needs a libmicrohttpd runtime.
+  * This test only verifies linking and basic arg validation.
  */
 static void test_http_gateway_create(void)
 {
@@ -149,7 +149,7 @@ static void test_http_gateway_create(void)
 }
 
 /**
- * @brief 测试 WebSocket 网关创建接口存在性
+  * @brief Test the WebSocket gateway creation interface
  */
 static void test_ws_gateway_create(void)
 {
@@ -173,7 +173,7 @@ static void test_ws_gateway_create(void)
 }
 
 /**
- * @brief 测试 Stdio 网关创建接口存在性
+  * @brief Test the stdio gateway creation interface
  */
 static void test_stdio_gateway_create(void)
 {
@@ -194,7 +194,7 @@ static void test_stdio_gateway_create(void)
 }
 
 /**
- * @brief 验证 gateway_destroy 对各种输入的安全性
+  * @brief Verify gateway_destroy is safe for various inputs
  */
 static void test_destroy_safety(void)
 {

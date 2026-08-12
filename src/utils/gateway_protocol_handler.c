@@ -4,10 +4,10 @@
 // @owner: team-B
 /**
  * @file gateway_protocol_handler.c
- * @brief 多协议网关请求处理器实现（生产级）
+ * @brief Multi-protocol gateway request handler implementation (production-grade).
  *
- * SEC-017合规：所有功能均为真实实现，无桩函数。
- * 支持 JSON-RPC / MCP / A2A / OpenAI API 四种协议的自适应处理。
+ * SEC-017 compliance: every feature is a real implementation, no stubs.
+ * Adaptive handling for JSON-RPC / MCP / A2A / OpenAI API protocols.
  */
 
 #include "gateway_protocol_handler.h"
@@ -175,8 +175,8 @@ static cJSON *extract_openai_to_jsonrpc(const char *request_data, size_t request
         cJSON_GetObjectItem(root, "url") ? cJSON_GetObjectItem(root, "url")->valuestring : NULL;
 
     if (out_method) {
-        /* P0: 请求无 "url" 字段（或非字符串）时 url_path 为 NULL，
-         * 直接 strstr(NULL, ...) 会崩溃，先判空走默认处理 */
+        /* P0: url_path is NULL when the request has no "url" field (or a non-string),
+          * and strstr(NULL, ...) would crash; check NULL first and use the default path */
         if (!url_path) {
             *out_method = AIRY_STRDUP("openai.unknown");
         } else if (strstr(url_path, "/chat/completions")) {
@@ -358,8 +358,8 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
 
     airy_protocol_type_t detected_type = protocol_type;
 
-    /* 调用方传入 AIRY_PROTOCOL_COUNT 表示"未知、需自动检测"（HTTP 层即如此）；
-     * 传 AIRY_PROTOCOL_A2A 时保留原有"指定 A2A 但内容不符则重检"的语义。 */
+    /* AIRY_PROTOCOL_COUNT means "unknown, auto-detect" (as the HTTP layer does);
+      * AIRY_PROTOCOL_A2A keeps the old re-check-when-content-mismatches semantics. */
     if ((protocol_type == AIRY_PROTOCOL_COUNT || protocol_type == AIRY_PROTOCOL_A2A) &&
         handler->config.enable_protocol_detection) {
         detected_type = detect_protocol_internal(request_data, request_size);

@@ -2,23 +2,18 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file gateway.h
- * @brief AgentRT 网关统一公共接口
+ * @brief AgentRT gateway unified public interface.
  *
- * 网关层只负责协议转换，将外部请求转换为系统调用。
- * 所有业务逻辑通过 agentrt/atoms/syscall 接口调用。
+ * The gateway layer only performs protocol translation, converting external
+ * requests into agentrt/atoms/syscall calls.
  *
- * 架构定位：
- *   agentrt/daemons/gateway_d/ --> agentrt/gateway/ --> agentrt/atoms/syscall/
- *                      ^
- *                 协议转换层
+ * Architecture: agentrt/daemons/gateway_d/ -> agentrt/gateway/ -> atoms/syscall/
  *
- * 设计原则（符合 ARCHITECTURAL_PRINCIPLES.md）：
- *   K-1 内核极简：网关只做协议翻译，零业务逻辑
- *   K-2 接口契约化：所有 API 带完整 Doxygen 契约
- *   S-2 层次分解：严格分层，不跳层访问
- *
+ * Design principles (per ARCHITECTURAL_PRINCIPLES.md):
+ *   K-1 minimal core: the gateway only translates protocols, zero business logic
+ *   K-2 contract interfaces: all APIs carry full Doxygen contracts
+ *   S-2 layered decomposition: strict layering, no cross-layer access
  */
 
 /* @owner: team-B */
@@ -37,10 +32,10 @@ extern "C" {
 
 
 /**
- * @brief 网关专用错误码（扩展 AgentRT 标准错误码）
+  * @brief Gateway-specific error codes (extend the AgentRT standard error codes)
  *
- * @note 网关层 API 同时返回 airy_err_t 和 gateway_error_t。
- *       gateway_error_t 用于网关特有的错误场景。
+ * @note Gateway APIs return both airy_err_t and gateway_error_t; the latter
+ *       covers gateway-specific error scenarios.
  */
 typedef enum {
     GATEWAY_SUCCESS = 0,
@@ -54,33 +49,33 @@ typedef enum {
 
 
 /**
- * @brief 网关类型枚举
+  * @brief Gateway type enumeration
  */
 typedef enum { GATEWAY_TYPE_HTTP = 0, GATEWAY_TYPE_WS, GATEWAY_TYPE_STDIO } gateway_type_t;
 
 
 /**
- * @brief 网关不透明句柄
+  * @brief Opaque gateway handle
  *
- * @note 内部包含 ops 操作表 + impl 实现指针 + type 类型标记
+ * @note Internally holds an ops table + impl pointer + type tag.
  */
 typedef struct gateway gateway_t;
 
 
 /**
- * @brief 请求处理回调函数类型
+  * @brief Request handler callback function type
  *
- * 当外部需要自定义请求处理逻辑时，通过此回调注入。
- * 网关层收到请求后，如果设置了 handler，会优先调用此回调；
- * 否则走默认的 syscall 路由流程。
+ * Inject a custom request handler when external logic is needed. Once set,
+ * the gateway invokes this callback first on incoming requests; otherwise
+ * it falls back to the default syscall routing.
  *
- * @param[in] request_json 请求 JSON 字符串（JSON-RPC 2.0 格式），不转让所有权
- * @param[out] response_json 输出响应 JSON 字符串，由回调分配，调用者释放
- * @param[in] user_data 用户数据（gateway_set_handler 时传入）
- * @return 0 成功，非0 失败（返回 gateway_error_t 负值）
+ * @param[in] request_json Request JSON string (JSON-RPC 2.0), ownership not transferred
+ * @param[out] response_json Output response JSON string, allocated by the callback, caller frees
+ * @param[in] user_data User data passed at gateway_set_handler() time
+ * @return 0 on success, non-zero on failure (negative gateway_error_t)
  *
- * @threadsafe 回调可能被多线程调用（HTTP/WebSocket 场景）
- * @ownership response_json 必须由回调 malloc/strdup，调用者负责 free
+ * @threadsafe The callback may be invoked from multiple threads (HTTP/WebSocket)
+ * @ownership response_json must be malloc/strdup'd by the callback; the caller frees it
  *
  * @see gateway_set_handler()
  */
@@ -89,118 +84,117 @@ typedef int (*gateway_request_handler_t)(const char *request_json, char **respon
 
 
 /**
- * @brief 创建 HTTP 网关实例
+  * @brief Create an HTTP gateway instance
  *
- * 创建基于 libmicrohttpd 的 HTTP 网关，监听指定地址和端口，
- * 接收 JSON-RPC 2.0 POST 请求并转换为系统调用。
+ * Create an HTTP gateway on libmicrohttpd, listening on the given address and
+ * port, receiving JSON-RPC 2.0 POST requests and translating them to syscalls.
  *
- * @param[in] host 监听地址（如 "127.0.0.1", "0.0.0.0"），不能为 NULL
- * @param[in] port 监听端口（如 8080）
- * @return 网关句柄，失败返回 NULL（内存不足或参数无效）
+ * @param[in] host Listen address (e.g. "127.0.0.1", "0.0.0.0"), must not be NULL
+ * @param[in] port Listen port (e.g. 8080)
+ * @return Gateway handle, or NULL on failure (OOM or invalid parameters)
  */
 gateway_t *gateway_http_create(const char *host, uint16_t port);
 
 /**
- * @brief 创建 WebSocket 网关实例
+  * @brief Create a WebSocket gateway instance
  *
- * 创建基于 libwebsockets 的 WebSocket 网关，支持双向 RPC 通信。
+ * Create a WebSocket gateway on libwebsockets, supporting bidirectional RPC.
  *
- * @param[in] host 监听地址，不能为 NULL
- * @param[in] port 监听端口
- * @return 网关句柄，失败返回 NULL
+ * @param[in] host Listen address, must not be NULL
+ * @param[in] port Listen port
+ * @return Gateway handle, or NULL on failure
  *
- * @ownership 调用者必须通过 gateway_destroy() 释放
- * @threadsafe 安全
+ * @ownership Caller must release via gateway_destroy()
+ * @threadsafe yes
  * @since 1.0.0
  */
 gateway_t *gateway_ws_create(const char *host, uint16_t port);
 
 /**
- * @brief 创建 Stdio 网关实例
+  * @brief Create a stdio gateway instance
  *
- * 创建基于标准输入输出的命令行网关，适用于 CLI/管道场景。
- * start() 后进入阻塞式交互循环，直到用户输入 "exit"。
+ * Create a stdio-based command-line gateway for CLI/pipe scenarios. After
+ * start(), it runs a blocking interactive loop until the user types "exit".
  *
- * @return 网关句柄，失败返回 NULL
+ * @return Gateway handle, or NULL on failure
  *
- * @ownership 调用者必须通过 gateway_destroy() 释放
- * @threadsafe 安全（但 start 后为阻塞式单线程）
+ * @ownership Caller must release via gateway_destroy()
+ * @threadsafe yes (single-threaded blocking after start())
  * @since 1.0.0
  *
- * @note Stdio 网关的 start() 是阻塞调用，会在当前线程运行 REPL 循环
+ * @note The stdio gateway's start() blocks and runs the REPL loop on the current thread
  */
 gateway_t *gateway_stdio_create(void);
 
 /**
- * @brief 销毁网关实例并释放所有资源
+  * @brief Destroy the gateway instance and free all resources
  *
- * 自动停止运行中的网关，然后释放所有关联资源。
- * 对 NULL 输入静默忽略（安全）。
+ * Stops a running gateway automatically, then frees all associated resources.
+ * Silently ignores NULL input.
  *
- * @param[in] gw 网关句柄（可为 NULL，静默忽略）
+ * @param[in] gw Gateway handle (may be NULL, silently ignored)
  *
- * @ownership 转移网关句柄所有权给此函数，调用后 gw 不可再使用
- * @threadsafe 不安全，需调用者保证串行
+ * @ownership Transfers ownership of the handle; gw must not be used afterwards
+ * @threadsafe no, the caller must serialize
  * @since 1.0.0
  */
 void gateway_destroy(gateway_t *gw);
 
 
 /**
- * @brief 启动网关
+  * @brief Start the gateway
  *
- * 启动网关开始监听连接/接收输入。
- * HTTP/WS 网关为非阻塞启动（后台线程处理）；
- * Stdio 网关为阻塞启动（REPL 循环）。
+ * Start listening/accepting input. HTTP/WS gateways start non-blocking
+ * (background thread); the stdio gateway starts blocking (REPL loop).
  *
- * @param[in] gw 网关句柄
- * @return AIRY_SUCCESS 成功
- * @return AIRY_EINVAL 参数无效
- * @return AIRY_EBUSY 端口占用或资源忙
+ * @param[in] gw Gateway handle
+ * @return AIRY_SUCCESS on success
+ * @return AIRY_EINVAL invalid parameters
+ * @return AIRY_EBUSY port busy or resource busy
  *
- * @pre 网关已通过 gateway_http/ws/stdio_create 创建
- * @post 网关状态变为运行中，可通过 gateway_is_running() 检查
- * @threadsafe 安全
+ * @pre The gateway was created via gateway_http/ws/stdio_create
+ * @post The gateway is running; check with gateway_is_running()
+ * @threadsafe yes
  * @since 1.0.0
  */
 int gateway_start(gateway_t *gw);
 
 /**
- * @brief 停止网关
+  * @brief Stop the gateway
  *
- * 优雅停止网关，等待进行中的请求处理完成。
- * 对 NULL 或已停止的网关静默忽略。
+ * Gracefully stop the gateway, waiting for in-flight requests to finish.
+ * Silently ignores NULL or already-stopped gateways.
  *
- * @param[in] gw 网关句柄（可为 NULL）
- * @return AIRY_SUCCESS 成功或静默忽略
+ * @param[in] gw Gateway handle (may be NULL)
+ * @return AIRY_SUCCESS on success or silent ignore
  *
- * @post 网关停止接受新连接，is_running() 返回 false
- * @threadsafe 安全
+ * @post The gateway stops accepting new connections; is_running() returns false
+ * @threadsafe yes
  * @since 1.0.0
  */
 int gateway_stop(gateway_t *gw);
 
 /**
- * @brief 设置自定义请求处理回调
+  * @brief Set a custom request handler callback
  *
- * 设置后，网关收到请求时会优先调用此回调。
- * 如果回调返回非 0，则使用回调的 response_json 作为响应；
- * 如果回调返回 0 且未设置 response_json，则走默认 syscall 路由。
+ * Once set, the gateway invokes this callback first on incoming requests.
+ * If the callback returns non-zero, its response_json is used as the response;
+ * if it returns 0 without setting response_json, the default syscall routing runs.
  *
- * @param[in] gw 网关句柄
- * @param[in] handler 回调函数（NULL 表示清除自定义处理器）
- * @param[in] user_data 传递给回调的用户数据
- * @return AIRY_SUCCESS 成功
- * @return AIRY_EINVAL 参数无效
+ * @param[in] gw Gateway handle
+ * @param[in] handler Callback (NULL clears the custom handler)
+ * @param[in] user_data User data passed to the callback
+ * @return AIRY_SUCCESS on success
+ * @return AIRY_EINVAL invalid parameters
  *
- * @threadsafe 安全（原子设置）
+ * @threadsafe yes (atomic set)
  * @since 1.0.0
  */
 int gateway_set_handler(gateway_t *gw, gateway_request_handler_t handler, void *user_data);
 
 
 /**
- * @brief 端点请求结构（动态注册端点使用）
+  * @brief Endpoint request structure (for dynamic endpoint registration)
  */
 typedef struct gateway_endpoint_request {
     const char *method;
@@ -211,10 +205,10 @@ typedef struct gateway_endpoint_request {
 } gateway_endpoint_request_t;
 
 /**
- * @brief 端点响应结构（动态注册端点使用）
+  * @brief Endpoint response structure (for dynamic endpoint registration)
  *
- * handler 负责分配 body（strdup/strndup），桥接层负责释放。
- * content_type 指向静态字符串字面量，桥接层不释放。
+ * The handler allocates body (strdup/strndup); the bridge layer frees it.
+ * content_type points to a static string literal; the bridge does not free it.
  */
 typedef struct gateway_endpoint_response {
     int status_code;
@@ -224,53 +218,53 @@ typedef struct gateway_endpoint_response {
 } gateway_endpoint_response_t;
 
 /**
- * @brief 动态端点处理回调函数类型
+  * @brief Dynamic endpoint handler callback type
  *
- * @param[in] req 请求信息
- * @param[out] resp 响应信息（handler 填充）
- * @return 0 成功，非0 失败
+ * @param[in] req Request information
+ * @param[out] resp Response information (filled by the handler)
+ * @return 0 on success, non-zero on failure
  *
- * @ownership resp->body 由 handler 分配（malloc/strdup），桥接层负责 free
+ * @ownership resp->body is allocated by the handler (malloc/strdup); the bridge frees it
  */
 typedef int (*gateway_endpoint_handler_t)(const gateway_endpoint_request_t *req,
                                           gateway_endpoint_response_t *resp);
 
 
 /**
- * @brief 获取网关类型
+  * @brief Get the gateway type
  *
- * @param[in] gw 网关句柄（可为 NULL）
- * @return 网关类型枚举值，NULL 返回 GATEWAY_TYPE_HTTP（默认值）
+ * @param[in] gw Gateway handle (may be NULL)
+ * @return Gateway type enumeration; NULL returns GATEWAY_TYPE_HTTP (default)
  *
- * @threadsafe 安全
+ * @threadsafe yes
  * @since 1.0.0
  */
 gateway_type_t gateway_get_type(gateway_t *gw);
 
 /**
- * @brief 检查网关是否正在运行
+  * @brief Check whether the gateway is running
  *
- * @param[in] gw 网关句柄（可为 NULL）
- * @return true 正在运行中
- * @return false 已停止或参数无效
+ * @param[in] gw Gateway handle (may be NULL)
+ * @return true if running
+ * @return false if stopped or parameters invalid
  *
- * @threadsafe 安全（原子读取）
+ * @threadsafe yes (atomic read)
  * @since 1.0.0
  */
 bool gateway_is_running(gateway_t *gw);
 
 /**
- * @brief 获取网关统计信息
+  * @brief Get gateway statistics
  *
- * 返回 JSON 格式的统计数据，包括请求数、字节数、错误数等。
+ * Returns statistics as a JSON string: request counts, bytes, errors, etc.
  *
- * @param[in] gw 网关句柄
- * @param[out] out_json 输出 JSON 字符串，需调用者 free()
- * @return AIRY_SUCCESS 成功
- * @return AIRY_EINVAL 参数无效
+ * @param[in] gw Gateway handle
+ * @param[out] out_json Output JSON string; caller must free()
+ * @return AIRY_SUCCESS on success
+ * @return AIRY_EINVAL invalid parameters
  *
- * @ownership out_json 由函数分配，调用者必须 free()
- * @threadsafe 安全（快照式读取）
+ * @ownership out_json is allocated by the function; the caller must free()
+ * @threadsafe yes (snapshot read)
  * @since 1.0.0
  *
  * @code
@@ -284,34 +278,35 @@ bool gateway_is_running(gateway_t *gw);
 int gateway_get_stats(gateway_t *gw, char **out_json);
 
 /**
- * @brief 获取网关名称
+  * @brief Get the gateway name
  *
- * @param[in] gw 网关句柄（可为 NULL）
- * @return 网关名称字符串（如 "HTTP Gateway"），NULL 返回 "unknown"
+ * @param[in] gw Gateway handle (may be NULL)
+ * @return Gateway name string (e.g. "HTTP Gateway"); NULL returns "unknown"
  *
- * @threadsafe 安全
+ * @threadsafe yes
  * @since 1.0.0
  */
 const char *gateway_get_name(gateway_t *gw);
 
 /**
- * @brief 注册动态 HTTP 端点
+  * @brief Register a dynamic HTTP endpoint
  *
- * 将自定义端点处理函数注册到网关的 HTTP 服务器。
- * 注册的端点优先于静态路由表中的同名路径。
- * 仅 HTTP 网关支持端点注册，其他类型返回 AIRY_EINVAL。
+ * Registers a custom endpoint handler with the gateway's HTTP server.
+ * Registered endpoints take precedence over same-path entries in the static
+ * route table. Only the HTTP gateway supports endpoint registration; other
+ * types return AIRY_EINVAL.
  *
- * @param[in] gw 网关句柄
- * @param[in] method HTTP 方法（如 "GET", "POST"），不能为 NULL
- * @param[in] path URL 路径（如 "/metrics"），不能为 NULL
- * @param[in] handler 端点处理回调函数，不能为 NULL
- * @param[in] user_data 传递给回调的用户数据（可为 NULL）
- * @return AIRY_SUCCESS 成功
- * @return AIRY_EINVAL 参数无效或网关类型不支持
- * @return AIRY_ENOMEM 内存不足
+ * @param[in] gw Gateway handle
+ * @param[in] method HTTP method (e.g. "GET", "POST"), must not be NULL
+ * @param[in] path URL path (e.g. "/metrics"), must not be NULL
+ * @param[in] handler Endpoint handler callback, must not be NULL
+ * @param[in] user_data User data passed to the callback (may be NULL)
+ * @return AIRY_SUCCESS on success
+ * @return AIRY_EINVAL invalid parameters or unsupported gateway type
+ * @return AIRY_ENOMEM out of memory
  *
- * @note 应在 gateway_start() 之前调用，运行时注册需确保线程安全
- * @threadsafe 注册操作本身安全，但与请求处理并发时需注意
+ * @note Should be called before gateway_start(); runtime registration must ensure thread safety
+ * @threadsafe The registration itself is safe, but be careful when racing request handling
  * @since 0.1.0
  */
 int gateway_register_endpoint(gateway_t *gw, const char *method, const char *path,

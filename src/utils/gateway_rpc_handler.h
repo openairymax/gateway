@@ -2,18 +2,16 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file gateway_rpc_handler.h
- * @brief 统一的RPC请求处理模块
+ * @brief Unified RPC request handling module.
  *
- * 提供HTTP/WS/Stdio三种网关共享的RPC处理逻辑，
- * 消除代码重复，确保DRY原则。
+ * Provides RPC handling logic shared by the HTTP/WS/Stdio gateways,
+ * eliminating code duplication per the DRY principle.
  *
- * 设计原则：
- *   K-1 内核极简：只做协议转换，零业务逻辑
- *   K-2 接口契约化：所有函数有完整Doxygen注释
- *   E-8 可测试性：独立可单元测试
- *
+ * Design principles:
+ *   K-1 minimal core: only protocol translation, zero business logic
+ *   K-2 contract interfaces: all functions have full Doxygen comments
+ *   E-8 testability: independently unit-testable
  */
 
 /* @owner: team-B */
@@ -26,7 +24,7 @@
 #include <stddef.h>
 
 /**
- * @brief RPC处理结果结构
+  * @brief RPC result structure
  */
 typedef struct {
     char *response_json;
@@ -35,21 +33,21 @@ typedef struct {
 } rpc_result_t;
 
 /**
- * @brief 处理JSON-RPC请求的统一接口
+  * @brief Unified interface for handling JSON-RPC requests
  *
- * 此函数封装了完整的JSON-RPC请求处理流程：
- * 1. 验证请求格式
- * 2. 提取method和params
- * 3. 调用自定义handler或默认syscall路由
- * 4. 生成响应
+  * Wraps the full JSON-RPC request handling flow:
+  * 1. 1. Validate the request format
+  * 2. 2. Extract method and params
+  * 3. 3. Call the custom handler or the default syscall routing
+  * 4. 4. Generate the response
  *
- * @param[in] request JSON-RPC请求对象（不释放）
- * @param[in] handler 自定义处理回调（可为NULL）
- * @param[in] handler_data 回调用户数据
- * @return RPC处理结果，需调用者使用rpc_result_free()释放
+  * @param[in] request JSON-RPC request object (not freed)
+  * @param[in] handler Custom handler callback (may be NULL)
+  * @param[in] handler_data Callback user data
+  * @return RPC result; caller must free with rpc_result_free()
  *
- * @ownership 返回值由调用者负责释放
- * @threadsafe 安全（如果handler是线程安全的）
+  * @ownership Return value is owned by the caller
+  * @threadsafe safe if the handler is thread-safe
  * @since 1.0.1
  *
  * @code
@@ -71,16 +69,16 @@ rpc_result_t gateway_rpc_handle_request(const cJSON *request,
                                         void *handler_data);
 
 /**
- * @brief 创建RPC错误结果
- * @param code 错误码
- * @param message 错误消息
- * @return RPC处理结果
+  * @brief Create an RPC error result
+  * @param code Error code
+  * @param message Error message
+  * @return RPC result
  */
 rpc_result_t gateway_rpc_create_error(int code, const char *message);
 
 /**
- * @brief 释放RPC处理结果
- * @param result RPC处理结果指针
+  * @brief Free an RPC result
+  * @param result RPC result pointer
  */
 void gateway_rpc_free(rpc_result_t *result);
 

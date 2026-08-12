@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file stdio_gateway.c
- * @brief Stdio网关实现 - 本地进程通信协议
+ * @brief Stdio gateway implementation - local process communication protocol.
  *
- * 实现标准输入输出通信协议，通过系统调用接口与内核通信。
- * 网关层只负责协议转换，不包含业务逻辑。
- *
+ * Implements the stdio communication protocol and talks to the kernel
+ * through the syscall interface. The gateway only translates protocols and
+ * contains no business logic.
  */
 
 // @owner: team-B
@@ -43,12 +42,12 @@
 #include "airy_memory.h"
 
 /*
- * time_ns() 已迁移至 gateway_utils.h (gateway_time_ns)
- * portable_sleep() 已迁移至 gateway_utils.h (gateway_sleep)
+ * time_ns() migrated to gateway_utils.h (gateway_time_ns);
+ * portable_sleep() migrated to gateway_utils.h (gateway_sleep).
  */
 
 /**
- * @brief Stdio网关内部结构
+  * @brief Stdio gateway internal structure
  */
 typedef struct stdio_gateway {
     void *handler_adapter;
@@ -68,8 +67,8 @@ typedef struct stdio_gateway {
 } stdio_gateway_t;
 
 /**
- * @brief 显示帮助信息
- * @return 帮助字符串（需调用者free）
+  * @brief Display help information
+  * @return Help string (caller frees)
  */
 static char *show_help(void)
 {
@@ -89,14 +88,14 @@ static char *show_help(void)
 }
 
 /**
- * @brief 处理JSON-RPC请求（使用统一RPC处理器）
+  * @brief Handle a JSON-RPC request (via the unified RPC handler)
  *
- * 通过 gateway_rpc_handle_request() 实现统一的请求处理流程，
- * 消除与 HTTP/WS 网关的代码重复。
+  * Unified request handling via gateway_rpc_handle_request(),
+  * removing duplication with the HTTP/WS gateways.
  *
- * @param gateway 网关实例
- * @param json_str JSON字符串
- * @return 响应字符串
+ * @param gateway Gateway instance
+ * @param json_str JSON string
+  * @return Response string
  */
 static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
 {
@@ -131,10 +130,10 @@ static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
 }
 
 /**
- * @brief 处理命令
- * @param gateway 网关实例
- * @param input 输入字符串
- * @return 响应字符串
+ * @brief Process a command
+ * @param gateway Gateway instance
+  * @param input Input string
+  * @return Response string
  */
 static char *process_command(stdio_gateway_t *gateway, const char *input)
 {
@@ -253,9 +252,10 @@ static airy_err_t stdio_gateway_start(void *gateway_impl)
                     }
                 }
             } else {
-                /* stdin 已到达 EOF 或读取错误（例如被重定向到 /dev/null 或已关闭）。
-                 * 此时 select 仍会因 fd 恒可读而立即返回，若继续循环将导致
-                 * 100% CPU 忙循环。stdio 传输已无输入源，退出循环停止该传输。 */
+                /* stdin hit EOF or a read error (e.g. redirected to /dev/null or closed).
+                 * select still returns immediately because the fd reads as always-ready,
+                 * so continuing would busy-loop at 100% CPU. With no input source left,
+                 * exit the loop to stop this transport. */
                 if (feof(stdin) || ferror(stdin)) {
                     atomic_store(&gateway->running, false);
                 }
@@ -333,7 +333,7 @@ static airy_err_t stdio_gateway_get_stats(void *gateway_impl, char **out_json)
 }
 
 /**
- * @brief 设置请求处理回调
+  * @brief Set the request handler callback
  */
 static airy_err_t stdio_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler,
                                             void *user_data)

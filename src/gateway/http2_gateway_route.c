@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_route.c
- * @brief HTTP/2 网关请求路由域（method/path 分发与响应提交触发）
+ * @brief HTTP/2 gateway request routing domain (method/path dispatch and response submission).
  */
 
 // @owner: team-B
@@ -14,10 +14,10 @@
 #ifdef AIRY_HAS_HTTP2
 
 /**
- * @brief 处理完整请求并提交响应
+  * @brief Handle the complete request and submit a response.
  *
- * 在 END_STREAM 收到后调用，根据 method + path 路由到对应的处理函数，
- * 生成 JSON 响应，然后通过 nghttp2_submit_response 提交。
+ * Called after END_STREAM; routes to the matching handler by method + path,
+ * generates the JSON response, then submits it via nghttp2_submit_response.
  */
 void http2_process_request(nghttp2_session *session, int32_t stream_id, void *user_data)
 {

@@ -3,15 +3,14 @@
 
 /**
  * @file http_gateway_routes.h
- * @brief HTTP 网关路由表声明
+ * @brief HTTP gateway route table declarations.
  *
- * 使用路由表模式降低 handle_http_request 的圈复杂度，
- * 将每个路由处理逻辑拆分为独立函数。
+ * Uses a route-table pattern to reduce the cyclomatic complexity of
+ * handle_http_request, splitting each route handler into its own function.
  *
- * 设计原则：
- *   E-8 可测试性：每个路由处理函数可独立测试
- *   K-1 内核极简：路由函数只做分发，不含业务逻辑
- *
+ * Design principles:
+ *   E-8 testability: each route handler can be tested independently
+ *   K-1 minimal core: route functions only dispatch, no business logic
  */
 
 /* @owner: team-B */
@@ -36,60 +35,60 @@ typedef struct cJSON cJSON;
 
 
 /**
- * @brief 处理 JSON-RPC POST 请求
+  * @brief Handle JSON-RPC POST requests
  */
 int handle_post_jsonrpc(http_gateway_t *gateway, struct MHD_Connection *connection,
                         http_request_context_t *context);
 
 /**
- * @brief 处理 OPTIONS 请求（CORS 预检）
+  * @brief Handle OPTIONS preflight requests (CORS)
  */
 int handle_options_preflight(http_gateway_t *gateway, struct MHD_Connection *connection,
                              http_request_context_t *context);
 
 /**
- * @brief 处理 GET /health 健康检查
+  * @brief Handle GET /health health checks
  */
 int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connection,
                         http_request_context_t *context);
 
 /**
- * @brief 处理 GET /metrics 指标导出
+  * @brief Handle GET /metrics
  */
 int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connection,
                           http_request_context_t *context);
 
 /**
- * @brief 处理 POST /api/v1/chat/stream（SSE 流式聊天）
+  * @brief Handle POST /api/v1/chat/stream (SSE streaming chat)
  *
- * 网关作为 llm_d complete_stream 的流式转发代理：解析 OpenAI messages /
- * JSON-RPC agent.run 简化格式请求体，直连 llm_d 拉取增量文本块并以 SSE
- * 事件（data: <块>\n\n，EOF 后 data: [DONE]）逐块转发。
+  * The gateway proxies llm_d complete_stream: parses OpenAI messages /
+  * simplified JSON-RPC agent.run bodies, pulls chunks from llm_d and forwards
+  * them as SSE events (data: <chunk>\n\n, then data: [DONE] at EOF).
  */
 int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
                            http_request_context_t *context);
 
 /**
- * @brief 处理 404 Not Found
+  * @brief Handle 404 Not Found
  */
 int handle_not_found(http_gateway_t *gateway, struct MHD_Connection *connection,
                      http_request_context_t *context);
 
 /**
- * @brief 处理请求大小超限错误
+  * @brief Handle request-too-large errors
  */
 int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *connection,
                              http_request_context_t *context, size_t data_size);
 
 /**
- * @brief 处理 JSON 解析错误
+  * @brief Handle JSON parse errors
  */
 int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connection,
                        http_request_context_t *context, size_t data_size);
 
 
 /**
- * @brief HTTP 路由条目
+  * @brief HTTP route entry
  */
 typedef struct {
     const char *method;
@@ -102,18 +101,18 @@ typedef int (*http_route_handler_t)(http_gateway_t *, struct MHD_Connection *,
 
 
 /**
- * @brief HTTP 请求处理主函数
+  * @brief HTTP request entry point
  *
- * 圈复杂度从~25 降至~8，通过路由表模式实现。
+  * Cyclomatic complexity reduced from ~25 to ~8 via the route-table pattern.
  *
- * @param cls 网关实例指针 (http_gateway_t*)
- * @param connection MHD 连接对象
- * @param url 请求 URL
- * @param method HTTP 方法
- * @param version HTTP 版本
- * @param upload_data 上传数据
- * @param upload_data_size 数据大小
- * @param con_cls 连接上下文
+  * @param cls Gateway instance pointer (http_gateway_t*)
+ * @param connection MHD connection object
+ * @param url Request URL
+ * @param method HTTP method
+ * @param version HTTP version
+  * @param upload_data Upload data
+  * @param upload_data_size Data size
+  * @param con_cls Connection context
  * @return MHD_YES/MHD_NO
  */
 int handle_http_request(void *cls, struct MHD_Connection *connection, const char *url,

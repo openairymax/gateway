@@ -3,17 +3,17 @@
 
 /**
  * @file test_gateway_rpc_handler.c
- * @brief 统一RPC处理模块单元测试
+  * @brief 统一RPC处理模块单元测试
  *
  * 测试 gateway_rpc_handler 模块的核心功能：
- * - 请求验证和格式检查
- * - 字段提取和处理
- * - 错误处理机制
+  * - 请求验证和格式检查
+  * - 字段提取和处理
+  * - 错误处理机制
  * - 内存管理安全性
  *
- * 设计原则：
+  * Design principles:
  *   E-8 可测试性：覆盖率目标≥95%
- *   K-2 接口契约化：验证所有接口契约
+  *   K-2 接口契约化：验证所有接口契约
  *
  */
 
@@ -67,7 +67,7 @@ static int g_tests_passed = 0;
 #define ASSERT_STR_EQ(a, b) ASSERT_TRUE(strcmp((a), (b)) == 0)
 
 /**
- * @brief 创建标准JSON-RPC请求
+  * @brief Create a standard JSON-RPC request
  */
 static cJSON *create_valid_request(const char *method, int id_val)
 {
@@ -83,7 +83,7 @@ static cJSON *create_valid_request(const char *method, int id_val)
 }
 
 /**
- * @brief 创建带参数的JSON-RPC请求
+  * @brief Create a JSON-RPC request with parameters
  */
 static cJSON *create_request_with_params(const char *method, cJSON *params, int id_val)
 {
@@ -102,7 +102,7 @@ static cJSON *create_request_with_params(const char *method, cJSON *params, int 
 }
 
 /**
- * @brief 测试有效请求处理
+  * @brief Test valid request handling
  */
 static void test_handle_valid_request(void)
 {
@@ -132,7 +132,7 @@ static void test_handle_valid_request(void)
 }
 
 /**
- * @brief 测试带参数的有效请求
+  * @brief Test a valid request with parameters
  */
 static void test_handle_request_with_params(void)
 {
@@ -156,7 +156,7 @@ static void test_handle_request_with_params(void)
 }
 
 /**
- * @brief 测试NULL请求
+  * @brief Test NULL requests
  */
 static void test_handle_null_request(void)
 {
@@ -185,7 +185,7 @@ static void test_handle_null_request(void)
 }
 
 /**
- * @brief 测试无效请求格式
+  * @brief Test invalid request formats
  */
 static void test_handle_invalid_format(void)
 {
@@ -206,7 +206,7 @@ static void test_handle_invalid_format(void)
 }
 
 /**
- * @brief 测试错误的jsonrpc版本
+  * @brief Test an invalid jsonrpc version
  */
 static void test_handle_wrong_version(void)
 {
@@ -229,7 +229,7 @@ static void test_handle_wrong_version(void)
 }
 
 /**
- * @brief 自定义Handler回调函数示例
+  * @brief Example custom handler callback
  */
 static int mock_handler(const char *request_str, char **response_str, void *user_data)
 {
@@ -252,7 +252,7 @@ static int mock_handler(const char *request_str, char **response_str, void *user
 }
 
 /**
- * @brief 测试自定义Handler调用
+  * @brief Test custom handler invocation
  */
 static void test_custom_handler_invocation(void)
 {
@@ -282,7 +282,7 @@ static void test_custom_handler_invocation(void)
 }
 
 /**
- * @brief 错误Handler回调函数
+  * @brief Error handler callback
  */
 static int error_handler_func(const char *req, char **resp, void *data)
 {
@@ -293,7 +293,7 @@ static int error_handler_func(const char *req, char **resp, void *data)
 }
 
 /**
- * @brief 测试Handler返回错误
+  * @brief Test handler error returns
  */
 static void test_custom_handler_error(void)
 {
@@ -314,7 +314,7 @@ static void test_custom_handler_error(void)
 }
 
 /**
- * @brief 测试创建错误结果
+  * @brief Test error result creation
  */
 static void test_create_error_result(void)
 {
@@ -347,7 +347,7 @@ static void test_create_error_result(void)
 }
 
 /**
- * @brief 测试NULL消息的错误创建
+  * @brief Test error creation with a NULL message
  */
 static void test_create_error_null_message(void)
 {
@@ -364,7 +364,7 @@ static void test_create_error_null_message(void)
 }
 
 /**
- * @brief 测试资源释放安全性
+  * @brief Test resource-free safety
  */
 static void test_resource_cleanup_safety(void)
 {
@@ -381,7 +381,7 @@ static void test_resource_cleanup_safety(void)
 }
 
 /**
- * @brief 测试大量请求处理的内存稳定性
+  * @brief Test memory stability under many requests
  */
 static void test_memory_stability_under_load(void)
 {
@@ -407,7 +407,7 @@ static void test_memory_stability_under_load(void)
 }
 
 /**
- * @brief 测试空方法名
+  * @brief Test an empty method name
  */
 static void test_empty_method_name(void)
 {
@@ -429,7 +429,7 @@ static void test_empty_method_name(void)
 }
 
 /**
- * @brief 测试超长方法名
+  * @brief Test an over-long method name
  */
 static void test_very_long_method_name(void)
 {
@@ -455,7 +455,7 @@ static void test_very_long_method_name(void)
 }
 
 /**
- * @brief 测试特殊字符方法名
+  * @brief Test a method name with special characters
  */
 static void test_special_characters_in_method(void)
 {

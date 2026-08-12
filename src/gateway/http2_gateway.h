@@ -2,18 +2,16 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file http2_gateway.h
- * @brief HTTP/2 网关接口 — 基于 nghttp2 的 HTTP/2 服务器
+ * @brief HTTP/2 gateway interface - nghttp2-based HTTP/2 server.
  *
- * 在 http_gateway_t 基础上扩展 HTTP/2 协议支持，复用 JSON-RPC
- * 路由逻辑和 gateway_protocol_handler 多协议处理器。
+ * Extends http_gateway_t with HTTP/2 protocol support, reusing the JSON-RPC
+ * routing logic and the gateway_protocol_handler multi-protocol processor.
  *
- * 设计原则：
- *   IRON-2 铁律：禁止桩函数和简化功能，必须实现真正可用的 HTTP/2 服务器
- *   K-1 内核极简：只做协议转换，零业务逻辑
- *   S-2 层次分解：每层职责单一，易于测试和维护
- *
+ * Design principles:
+ *   IRON-2: no stubs or simplified features; a truly usable HTTP/2 server
+ *   K-1 minimal core: only protocol translation, zero business logic
+ *   S-2 layered decomposition: single responsibility per layer
  */
 
 /* @owner: team-B */
@@ -32,10 +30,10 @@ extern "C" {
 #endif
 
 /**
- * @brief HTTP/2 流上下文
+ * @brief HTTP/2 stream context.
  *
- * 每个 HTTP/2 流（stream）对应一个请求上下文，
- * 存储请求头、请求体和响应数据。
+ * Each HTTP/2 stream maps to a request context storing request headers,
+ * request body and response data.
  */
 typedef struct http2_stream_context {
     int32_t stream_id;
@@ -57,9 +55,9 @@ typedef struct http2_stream_context {
 } http2_stream_context_t;
 
 /**
- * @brief HTTP/2 会话（每连接）
+ * @brief HTTP/2 session (per connection).
  *
- * 每个接受的 TCP 连接对应一个 nghttp2 服务端会话。
+ * Each accepted TCP connection maps to one nghttp2 server session.
  */
 typedef struct http2_gateway_session {
     int fd; /**< TCP socket fd */
@@ -69,19 +67,19 @@ typedef struct http2_gateway_session {
     uint64_t last_activity_ns;
     bool closing;
 
-    /* P0 修复: 部分写入缓冲区。
-     * nghttp2_session_mem_send() 返回数据后认为已被消费，
-     * 但 write() 可能只写入部分字节。剩余数据必须缓存到下次 POLLOUT。 */
+    /* P0 fix: partial-write buffer. nghttp2_session_mem_send() considers the
+     * data consumed once returned, but write() may write only part of it;
+     * the remainder must be buffered until the next POLLOUT. */
     uint8_t *pending_send_buf;
     size_t pending_send_len;
     size_t pending_send_offset;
 } http2_gateway_session_t;
 
 /**
- * @brief HTTP/2 gateway 扩展结构
+ * @brief HTTP/2 gateway extension structure.
  *
- * 在 http_gateway_t 基础上增加 HTTP/2 会话管理。
- * base 字段作为第一个成员，支持向 http_gateway_t* 的安全转换。
+ * Adds HTTP/2 session management on top of http_gateway_t. The base field
+ * is the first member to allow safe casts to http_gateway_t*.
  */
 typedef struct http2_gateway {
     http_gateway_t base;
@@ -96,36 +94,37 @@ typedef struct http2_gateway {
 } http2_gateway_t;
 
 /**
- * @brief 创建 HTTP/2 gateway
+  * @brief Create HTTP/2 gateway
  *
- * 创建 HTTP/2 网关实例，复用 HTTP/1.1 的路由逻辑和协议处理器。
- * 创建后通过 gateway_start() 启动，gateway_destroy() 销毁。
+ * Creates an HTTP/2 gateway instance, reusing the HTTP/1.1 routing logic and
+ * protocol handlers. Start it with gateway_start() and destroy with gateway_destroy().
  *
- * @param host 监听地址（如 "127.0.0.1", "0.0.0.0"）
- * @param port 监听端口
- * @return gateway 实例，失败返回 NULL
+ * @param host Listen address (e.g. "127.0.0.1", "0.0.0.0")
+ * @param port Listen port
+ * @return Gateway instance, or NULL on failure
  *
- * @ownership 调用者需通过 gateway_destroy() 释放
+ * @ownership Caller must release via gateway_destroy()
  */
 gateway_t *http2_gateway_create(const char *host, uint16_t port);
 
 /**
- * @brief 启动 HTTP/2 gateway
+  * @brief Start HTTP/2 gateway
  *
- * 创建监听 socket 并启动事件循环线程。
+ * Creates the listening socket and starts the event-loop thread.
  *
- * @param gw HTTP/2 网关实例
- * @return AIRY_SUCCESS 成功，负数错误码失败
+ * @param gw HTTP/2 gateway instance
+ * @return AIRY_SUCCESS on success, negative error code on failure
  */
 int http2_gateway_start(http2_gateway_t *gw);
 
 /**
- * @brief 停止 HTTP/2 gateway
+  * @brief Stop HTTP/2 gateway
  *
- * 设置运行标志为 false，关闭监听 socket，等待事件循环线程退出。
+ * Sets the running flag to false, closes the listening socket and waits for
+ * the event-loop thread to exit.
  *
- * @param gw HTTP/2 网关实例
- * @return AIRY_SUCCESS 成功
+ * @param gw HTTP/2 gateway instance
+ * @return AIRY_SUCCESS on success
  */
 int http2_gateway_stop(http2_gateway_t *gw);
 
