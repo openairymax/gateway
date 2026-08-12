@@ -1,0 +1,208 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
+/**
+ * @file syscall_router_runtime.c
+ * @brief 系统调用路由器运行时域（全局状态、开放寻址哈希表、构造/析构初始化）
+ */
+
+// @owner: team-B
+#include "syscall_router.h"
+#include "syscall_router_internal.h"
+
+size_t g_max_tasks = 0;
+size_t g_max_sessions = 0;
+
+unsigned long hash_fn(const char *str)
+{
+    unsigned long h = 5381;
+    int c;
+    while ((c = (unsigned char)*str++))
+        h = ((h << 5) + h) + c;
+    return h;
+}
+
+int ht_init(hash_table_t *ht, size_t capacity)
+{
+    ht->entries = (hash_entry_t *)AIRY_CALLOC(capacity, sizeof(hash_entry_t));
+    if (!ht->entries) {
+        ht->capacity = 0;
+        airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+                         "ht_init: allocation failed");
+        return AIRY_ERR_OUT_OF_MEMORY;
+    }
+    ht->capacity = capacity;
+    ht->count = 0;
+    return 0;
+}
+
+void ht_destroy(hash_table_t *ht)
+{
+    if (!ht->entries)
+        return;
+    for (size_t i = 0; i < ht->capacity; i++) {
+        AIRY_FREE(ht->entries[i].key);
+    }
+    AIRY_FREE(ht->entries);
+    ht->entries = NULL;
+    ht->capacity = 0;
+    ht->count = 0;
+}
+
+bool ht_insert(hash_table_t *ht, const char *key, size_t index)
+{
+    if (!ht->entries || ht->count >= ht->capacity * 3 / 4)
+        return false;
+    unsigned long h = hash_fn(key) % ht->capacity;
+    for (size_t i = 0; i < ht->capacity; i++) {
+        size_t pos = (h + i) % ht->capacity;
+        if (!ht->entries[pos].occupied) {
+            /* P0: tombstone 槽位（deleted=true）可复用；复用前必须复位 deleted，
+             * 否则会被 ht_lookup 跳过 */
+            ht->entries[pos].key = AIRY_STRDUP(key);
+            ht->entries[pos].index = index;
+            ht->entries[pos].occupied = true;
+            ht->entries[pos].deleted = false;
+            ht->count++;
+            return true;
+        }
+    }
+    return false;
+}
+
+ssize_t ht_lookup(hash_table_t *ht, const char *key)
+{
+    if (!ht->entries || ht->count == 0) {
+        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "ht_lookup: failed");
+        return AIRY_ERR_UNKNOWN;
+    }
+    unsigned long h = hash_fn(key) % ht->capacity;
+    for (size_t i = 0; i < ht->capacity; i++) {
+        size_t pos = (h + i) % ht->capacity;
+        if (!ht->entries[pos].occupied) {
+            if (ht->entries[pos].deleted)
+                continue;
+            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "hash_fn: failed");
+            return AIRY_ERR_UNKNOWN;
+        }
+        if (strcmp(ht->entries[pos].key, key) == 0)
+            return (ssize_t)ht->entries[pos].index;
+    }
+    airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
+    return AIRY_ERR_UNKNOWN;
+}
+
+static void __attribute__((unused)) ht_remove(hash_table_t *ht, const char *key)
+{
+    if (!ht->entries || ht->count == 0)
+        return;
+    unsigned long h = hash_fn(key) % ht->capacity;
+    for (size_t i = 0; i < ht->capacity; i++) {
+        size_t pos = (h + i) % ht->capacity;
+        if (!ht->entries[pos].occupied) {
+            if (ht->entries[pos].deleted)
+                continue;
+            return;
+        }
+        if (strcmp(ht->entries[pos].key, key) == 0) {
+            AIRY_FREE(ht->entries[pos].key);
+            ht->entries[pos].key = NULL;
+            ht->entries[pos].occupied = false;
+            ht->entries[pos].index = 0;
+            /* P0: 用 tombstone 标记删除，保持探测链连续，
+             * 否则后续 ht_lookup 会因空槽提前终止而漏查元素 */
+            ht->entries[pos].deleted = true;
+            ht->count--;
+            return;
+        }
+    }
+}
+
+static void __attribute__((unused)) ht_update(hash_table_t *ht, const char *key, size_t new_index)
+{
+    ssize_t idx = ht_lookup(ht, key);
+    if (idx >= 0) {
+        ht->entries[(size_t)idx].index = new_index;
+    }
+}
+
+struct syscall_runtime_s g_runtime = {0};
+
+static void __attribute__((constructor)) runtime_init(void)
+{
+    airy_mtx_init(&g_runtime.mutex);
+
+    const char *env;
+    g_max_tasks = MAX_TASKS_DEFAULT;
+    g_max_sessions = MAX_SESSIONS_DEFAULT;
+
+    env = getenv("AIRY_MAX_TASKS");
+    if (env) {
+        unsigned long v = strtoul(env, NULL, 10);
+        if (v > 0 && v < 65536)
+            g_max_tasks = (size_t)v;
+    }
+    env = getenv("AIRY_MAX_SESSIONS");
+    if (env) {
+        unsigned long v = strtoul(env, NULL, 10);
+        if (v > 0 && v < 65536)
+            g_max_sessions = (size_t)v;
+    }
+    /* Phase 3：memory/agent 容量由 mem_d/agent_d 守护进程独立管理，
+     * AIRY_MAX_RECORDS / AIRY_MAX_AGENTS 环境变量转发至对应 daemon 解析。 */
+
+    g_runtime.tasks = (task_entry_t *)AIRY_CALLOC(g_max_tasks, sizeof(task_entry_t));
+    g_runtime.sessions = (session_entry_t *)AIRY_CALLOC(g_max_sessions, sizeof(session_entry_t));
+    if (!g_runtime.tasks || !g_runtime.sessions) {
+        AIRY_LOG_ERROR("syscall_router: runtime_init calloc failed");
+        AIRY_FREE(g_runtime.tasks);
+        AIRY_FREE(g_runtime.sessions);
+        g_runtime.tasks = NULL;
+        g_runtime.sessions = NULL;
+        return;
+    }
+    if (ht_init(&g_runtime.task_index, g_max_tasks * 2) != 0 ||
+        ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
+        ht_destroy(&g_runtime.task_index);
+        ht_destroy(&g_runtime.session_index);
+        AIRY_FREE(g_runtime.tasks);
+        AIRY_FREE(g_runtime.sessions);
+        g_runtime.tasks = NULL;
+        g_runtime.sessions = NULL;
+        return;
+    }
+    g_runtime.initialized = true;
+}
+
+static void __attribute__((destructor)) runtime_cleanup(void)
+{
+
+    for (size_t i = 0; i < g_runtime.task_count; i++) {
+        AIRY_FREE(g_runtime.tasks[i].task_id);
+        AIRY_FREE(g_runtime.tasks[i].input);
+        AIRY_FREE(g_runtime.tasks[i].result);
+    }
+
+    for (size_t i = 0; i < g_runtime.session_count; i++) {
+        AIRY_FREE(g_runtime.sessions[i].session_id);
+        AIRY_FREE(g_runtime.sessions[i].metadata);
+    }
+
+    airy_mtx_destroy(&g_runtime.mutex);
+    ht_destroy(&g_runtime.task_index);
+    ht_destroy(&g_runtime.session_index);
+    AIRY_FREE(g_runtime.tasks);
+    AIRY_FREE(g_runtime.sessions);
+    g_runtime.tasks = NULL;
+    g_runtime.sessions = NULL;
+    g_runtime.initialized = false;
+}
+
+const char *generate_uuid(void)
+{
+    static char uuid[37];
+    static uint64_t counter = 0;
+    snprintf(uuid, sizeof(uuid), "agentrt-%016llx-%08llx", (unsigned long long)time(NULL),
+             (unsigned long long)++counter);
+    return uuid;
+}

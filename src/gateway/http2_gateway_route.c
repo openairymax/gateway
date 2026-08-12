@@ -1,0 +1,94 @@
+// SPDX-FileCopyrightText: 2025-2026 SPHARX Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
+
+/**
+ * @file http2_gateway_route.c
+ * @brief HTTP/2 网关请求路由域（method/path 分发与响应提交触发）
+ */
+
+// @owner: team-B
+#define LOG_TAG "http2_gateway"
+#include "http2_gateway.h"
+#include "http2_gateway_internal.h"
+
+#ifdef AIRY_HAS_HTTP2
+
+/**
+ * @brief 处理完整请求并提交响应
+ *
+ * 在 END_STREAM 收到后调用，根据 method + path 路由到对应的处理函数，
+ * 生成 JSON 响应，然后通过 nghttp2_submit_response 提交。
+ */
+void http2_process_request(nghttp2_session *session, int32_t stream_id, void *user_data)
+{
+    http2_gateway_t *gw = (http2_gateway_t *)user_data;
+    http2_stream_context_t *ctx =
+        (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
+
+    if (!ctx || ctx->response_sent_flag) {
+        LOG_WARN("process_request skipped: ctx=%p, already_sent=%d", (void *)ctx,
+                 ctx ? ctx->response_sent_flag : 0);
+        return;
+    }
+
+    char *response_json = NULL;
+
+    LOG_INFO("processing request: stream_id=%d, method=%s, path=%s, body_len=%zu", ctx->stream_id,
+             ctx->method ? ctx->method : "(null)", ctx->path ? ctx->path : "(null)",
+             ctx->request_body_len);
+
+    if (ctx->method && strcmp(ctx->method, "POST") == 0) {
+        /* POST / → JSON-RPC */
+        if (ctx->request_body_len > gw->base.max_request_size) {
+            LOG_WARN("request too large: %zu > %zu (stream_id=%d)", ctx->request_body_len,
+                     gw->base.max_request_size, ctx->stream_id);
+            ctx->response_status = 413;
+            response_json = jsonrpc_create_error_response(NULL, -413, "Request too large", NULL);
+        } else {
+            response_json = http2_handle_jsonrpc(gw, ctx);
+            if (!response_json) {
+                LOG_ERROR("jsonrpc handler returned NULL (stream_id=%d)", ctx->stream_id);
+                ctx->response_status = 500;
+                response_json = jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
+            }
+        }
+    } else if (ctx->method && strcmp(ctx->method, "GET") == 0) {
+        if (ctx->path && strcmp(ctx->path, "/health") == 0) {
+            LOG_DEBUG("health check request (stream_id=%d)", ctx->stream_id);
+            response_json = http2_handle_health();
+        } else {
+            LOG_WARN("GET path not found: %s (stream_id=%d)", ctx->path ? ctx->path : "(null)",
+                     ctx->stream_id);
+            ctx->response_status = 404;
+            response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
+        }
+    } else if (ctx->method && strcmp(ctx->method, "OPTIONS") == 0) {
+        LOG_DEBUG("OPTIONS preflight request (stream_id=%d)", ctx->stream_id);
+        response_json = http2_handle_preflight();
+    } else {
+        LOG_WARN("unsupported method: %s (stream_id=%d)", ctx->method ? ctx->method : "(null)",
+                 ctx->stream_id);
+        ctx->response_status = 404;
+        response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
+    }
+
+    if (response_json) {
+        ctx->response_body = response_json;
+        ctx->response_body_len = strlen(response_json);
+    } else {
+        ctx->response_body = AIRY_STRDUP("{}");
+        ctx->response_body_len = 2;
+    }
+
+    ctx->response_sent = 0;
+
+    atomic_fetch_add(&gw->base.requests_total, 1);
+    atomic_fetch_add(&gw->base.bytes_received, ctx->request_body_len);
+    atomic_fetch_add(&gw->base.bytes_sent, ctx->response_body_len);
+
+    int submit_ret = http2_submit_response_impl(session, ctx, gw);
+    LOG_INFO("response submitted: stream_id=%d, status=%d, resp_len=%zu, ret=%d", ctx->stream_id,
+             ctx->response_status, ctx->response_body_len, submit_ret);
+}
+
+#endif /* AIRY_HAS_HTTP2 */
