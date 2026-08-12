@@ -38,11 +38,24 @@ set(GATEWAY_SOURCES
     src/gateway/http_gateway.c
     src/gateway/http_gateway_routes.c
     src/gateway/http2_gateway.c
+    src/gateway/http2_gateway_event.c
+    src/gateway/http2_gateway_frame.c
+    src/gateway/http2_gateway_headers.c
+    src/gateway/http2_gateway_response.c
+    src/gateway/http2_gateway_route.c
+    src/gateway/http2_gateway_session.c
+    src/gateway/http2_gateway_stream.c
     src/gateway/ws_gateway.c
     src/gateway/stdio_gateway.c
     src/gateway/gateway_protocol_bridge.c
     src/utils/jsonrpc.c
     src/utils/syscall_router.c
+    src/utils/syscall_router_agent.c
+    src/utils/syscall_router_memory.c
+    src/utils/syscall_router_runtime.c
+    src/utils/syscall_router_session.c
+    src/utils/syscall_router_task.c
+    src/utils/syscall_router_telemetry.c
     src/utils/gateway_rpc_handler.c
     src/utils/gateway_rate_limiter.c
     src/utils/gateway_protocol_handler.c
@@ -102,6 +115,13 @@ endif()
 if(AIRY_HAS_HTTP2)
     set_source_files_properties(
         src/gateway/http2_gateway.c
+        src/gateway/http2_gateway_event.c
+        src/gateway/http2_gateway_frame.c
+        src/gateway/http2_gateway_headers.c
+        src/gateway/http2_gateway_response.c
+        src/gateway/http2_gateway_route.c
+        src/gateway/http2_gateway_session.c
+        src/gateway/http2_gateway_stream.c
         PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
     )
 endif()
