@@ -3,7 +3,7 @@
 
 /**
  * @file syscall_router_agent.c
- * @brief 系统调用路由器 Agent 域（airy_sys_agent_* IPC 转发与路由分发）
+ * @brief Syscall router agent domain (airy_sys_agent_* IPC forwarding and routing).
  */
 
 // @owner: team-B
@@ -11,7 +11,7 @@
 #include "syscall_router_internal.h"
 
 /**
- * @brief 路由 Agent 管理相关系统调用
+  * @brief Route Agent-management syscalls
  */
 char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id)
 {
@@ -100,11 +100,11 @@ char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id)
     return jsonrpc_create_success_response(request_id, result);
 }
 
-/* Agent 管理 — Phase 3：thin IPC client 转发至 agent_d 守护进程
+/* Agent management - Phase 3: thin IPC client forwarding to the agent_d daemon
  *
- * 保持原 airy_sys_agent_* 函数签名与 ABI 兼容；运行时通过 Unix socket
- * 向 agent_d 发送 JSON-RPC 请求（agent.spawn/terminate/invoke/list），
- * 解析响应后按原 C ABI 返回。daemon 不可达时返回 AIRY_ERR_FAIL。 */
+  * Keeps the airy_sys_agent_* signatures and ABI; at runtime, JSON-RPC requests
+  * (agent.spawn/terminate/invoke/list) go to agent_d over a Unix socket,
+  * and responses return via the original C ABI. AIRY_ERR_FAIL when the daemon is down. */
 airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
 {
     if (!spec || !out_agent_id)

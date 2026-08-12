@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file http_gateway_routes.c
- * @brief HTTP 网关路由处理函数实现
+ * @brief HTTP gateway route handler implementations.
  *
- * 将 handle_http_request 的复杂逻辑拆分为独立的路由处理函数，
- * 降低圈复杂度，提高可维护性。
- *
+ * Splits the complex handle_http_request logic into separate route handler
+ * functions to lower cyclomatic complexity and improve maintainability.
  */
 
 // @owner: team-B
@@ -58,7 +56,7 @@ static int parse_headers(void *cls __attribute__((unused)),
 #include "atomic_compat.h"
 
 /**
- * @brief 处理 JSON-RPC POST 请求 (CC=3)
+  * @brief Handle JSON-RPC POST requests (CC=3)
  */
 int handle_post_jsonrpc(http_gateway_t *gateway, struct MHD_Connection *connection,
                         http_request_context_t *context)
@@ -91,7 +89,7 @@ int handle_post_jsonrpc(http_gateway_t *gateway, struct MHD_Connection *connecti
 }
 
 /**
- * @brief 处理 OPTIONS 请求（CORS 预检）(CC=2)
+  * @brief Handle OPTIONS requests (CORS preflight) (CC=2)
  */
 int handle_options_preflight(http_gateway_t *gateway, struct MHD_Connection *connection,
                              http_request_context_t *context __attribute__((unused)))
@@ -110,10 +108,10 @@ int handle_options_preflight(http_gateway_t *gateway, struct MHD_Connection *con
 }
 
 /**
- * @brief 验证API密钥（用于敏感端点保护）
- * @param connection MHD连接对象
- * @param gateway 网关实例
- * @return true 验证通过，false 拒绝访问
+  * @brief Validate the API key (protects sensitive endpoints)
+  * @param connection MHD connection object
+ * @param gateway Gateway instance
+  * @return true if the key is valid, false otherwise
  */
 static bool gateway_verify_api_key(struct MHD_Connection *connection,
                                    http_gateway_t *gateway __attribute__((unused)))
@@ -139,9 +137,9 @@ static bool gateway_verify_api_key(struct MHD_Connection *connection,
 }
 
 /**
- * @brief URL路径安全净化
- * @param url 原始URL路径
- * @return true 路径安全，false 检测到可疑模式
+  * @brief URL path sanitization
+  * @param url Raw URL path
+  * @return true if safe, false if suspicious patterns detected
  */
 static bool gateway_is_url_safe(const char *url)
 {
@@ -171,7 +169,7 @@ static bool gateway_is_url_safe(const char *url)
 }
 
 /**
- * @brief 处理 GET /health 健康检查 (CC=2)
+  * @brief Handle GET /health (CC=2)
  */
 int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connection,
                         http_request_context_t *context __attribute__((unused)))
@@ -190,7 +188,7 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
 }
 
 /**
- * @brief 处理 GET /metrics 指标导出 (CC=3) — 需要API密钥认证
+  * @brief Handle GET /metrics (CC=3) - requires API key authentication
  */
 int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connection,
                           http_request_context_t *context __attribute__((unused)))
@@ -227,7 +225,7 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
 }
 
 /**
- * @brief 处理 404 Not Found (CC=2)
+  * @brief Handle 404 Not Found (CC=2)
  */
 int handle_not_found(http_gateway_t *gateway, struct MHD_Connection *connection,
                      http_request_context_t *context)
@@ -247,7 +245,7 @@ int handle_not_found(http_gateway_t *gateway, struct MHD_Connection *connection,
 }
 
 /**
- * @brief 处理请求大小超限错误 (CC=2)
+  * @brief Handle request-size-limit errors (CC=2)
  */
 int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *connection,
                              http_request_context_t *context __attribute__((unused)),
@@ -269,7 +267,7 @@ int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *con
 }
 
 /**
- * @brief 处理 JSON 解析错误 (CC=2)
+  * @brief Handle JSON parse errors (CC=2)
  */
 int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connection,
                        http_request_context_t *context __attribute__((unused)), size_t data_size)
@@ -290,12 +288,12 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
 }
 
 /**
- * @brief SSE 流式聊天端点常量
+  * @brief SSE streaming chat endpoint constants
  *
- * 端点语义：网关作为 llm_d complete_stream 的流式转发代理。客户端 POST
- * OpenAI messages 格式（或 JSON-RPC agent.run 简化格式），网关直连 llm_d
- * 拉取增量文本块，以 SSE 事件逐块转发，供 TUI 增量渲染对话。
- * 设计决定：仅 LLM 直连流式，无工具循环/无 think_d（Claude Code 风格对话流式）。
+  * The gateway proxies llm_d complete_stream. Clients POST
+  * OpenAI messages format (or the simplified JSON-RPC agent.run form); the gateway connects to llm_d
+  * and forwards incremental text chunks as SSE events for TUI rendering.
+  * Design: LLM-direct streaming only, no tool loop / no think_d (Claude Code style).
  */
 #define GW_SSE_CHAT_PATH "/api/v1/chat/stream"
 #define GW_SSE_DEFAULT_MODEL "deepseek-v4-flash"
@@ -304,10 +302,10 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
 #define GW_SSE_DONE_EVENT "data: [DONE]\n\n"
 
 /**
- * @brief SSE 流式响应回调上下文
+  * @brief SSE streaming response callback context
  *
- * MHD_create_response_from_callback 的 cls：持有 llm_d socket fd 与结束标志。
- * 由 MHD 的 free_cb（gw_sse_content_free）统一释放（关闭 fd + AIRY_FREE）。
+  * cls for MHD_create_response_from_callback: holds the llm_d socket fd and an end flag.
+  * Freed by MHD's free_cb (gw_sse_content_free): closes the fd and AIRY_FREE.
  */
 typedef struct {
     int fd;
@@ -315,11 +313,11 @@ typedef struct {
 } gw_sse_ctx_t;
 
 /**
- * @brief 解析 llm_d socket 路径：env AIRY_LLM_SOCK → airy_runtime_dir()/llm.sock
+  * @brief Resolve the llm_d socket path: env AIRY_LLM_SOCK -> airy_runtime_dir()/llm.sock
  *
- * 与 gateway_business_handler.c 的 gw_resolve_daemon_sock 同源：
- * airy_runtime_dir() 解析 $AIRY_HOME/run，缺省 ~/.airymaxrt/run。
- * （airy_runtime_dir_socket 使用静态缓冲仅限启动期单线程，故此处自行拼接。）
+  * Same origin as gw_resolve_daemon_sock in gateway_business_handler.c:
+  * airy_runtime_dir() resolves $AIRY_HOME/run, defaulting to ~/.airymaxrt/run.
+  * (airy_runtime_dir_socket uses a static buffer, so splice the path here.)
  */
 static void gw_sse_resolve_llm_sock(char *out, size_t out_size)
 {
@@ -337,7 +335,7 @@ static void gw_sse_resolve_llm_sock(char *out, size_t out_size)
 }
 
 /**
- * @brief 发送 JSON 错误响应（SSE 端点非流式失败路径：400/500/502）
+  * @brief Send a JSON error response (non-streaming failure path: 400/500/502)
  */
 static int gw_sse_send_json_error(http_gateway_t *gateway, struct MHD_Connection *connection,
                                   int status, const char *message)
@@ -360,16 +358,16 @@ static int gw_sse_send_json_error(http_gateway_t *gateway, struct MHD_Connection
 }
 
 /**
- * @brief MHD content_reader：从 llm_d socket 拉取增量块并包装为 SSE 事件
+  * @brief MHD content_reader: pull incremental chunks from the llm_d socket and wrap them as SSE events
  *
- * MHD 语义（microhttpd.h）：返回值 >0 为写入 buf 的字节数；
- * MHD_CONTENT_READER_END_OF_STREAM (-1) 表示流结束（size=MHD_SIZE_UNKNOWN +
- * chunked 编码下 MHD 结束 chunk 并完成传输）。size=MHD_SIZE_UNKNOWN 时
- * pos 为已输出累计长度（本实现不依赖）。
+  * MHD semantics (microhttpd.h): a return >0 is the number of bytes written to buf;
+  * MHD_CONTENT_READER_END_OF_STREAM (-1) marks the stream end (size=MHD_SIZE_UNKNOWN +
+  * chunked encoding ends the final chunk). With size=MHD_SIZE_UNKNOWN,
+  * pos is the accumulated output length (not relied upon here).
  *
- * 每轮输出格式：`data: <块内容>\n\n`（块内容按字节转发，逐块）。
- * recv 返回 0（llm_d 连接关闭）或超时/错误时输出 `data: [DONE]\n\n`
- * 并置 done，下一轮回调返回 MHD_CONTENT_READER_END_OF_STREAM 终止。
+  * Per round: `data: <chunk>\n\n` (chunks forwarded byte-wise).
+  * On recv 0 (llm_d closed), timeout or error, emit `data: [DONE]\n\n`
+  * set done; the next round returns MHD_CONTENT_READER_END_OF_STREAM.
  */
 static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t max)
 {
@@ -377,8 +375,8 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
     gw_sse_ctx_t *sctx = (gw_sse_ctx_t *)cls;
     if (!sctx || sctx->fd < 0 || sctx->done)
         return MHD_CONTENT_READER_END_OF_STREAM;
-    /* 防御：buf 需容纳 "data: "(6) + 数据 + "\n\n"(2)；
-     * block_size=1024 下 max>=1024，此分支不会触发 */
+    /* Safety: buf must fit "data: "(6) + data + "\n\n"(2);
+      * with block_size=1024, max>=1024, so this branch never triggers */
     if (max < sizeof(GW_SSE_DONE_EVENT))
         return MHD_CONTENT_READER_END_OF_STREAM;
 
@@ -400,7 +398,7 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
 }
 
 /**
- * @brief MHD free_cb：释放 SSE 流式响应回调上下文（关闭 fd + 释放内存）
+  * @brief MHD free_cb: release the SSE callback context (close fd + free memory)
  */
 static void gw_sse_content_free(void *cls)
 {
@@ -413,19 +411,19 @@ static void gw_sse_content_free(void *cls)
 }
 
 /**
- * @brief 处理 POST /api/v1/chat/stream（SSE 流式聊天，CC=5）
+  * @brief Handle POST /api/v1/chat/stream (SSE streaming chat, CC=5)
  *
- * 请求体（二选一）：
- *   1. OpenAI 格式：{"model":"...","messages":[{"role":"user","content":"..."}]}
- *   2. JSON-RPC agent.run 简化：{"jsonrpc":"2.0","method":"agent.run",
+  * Request body (one of two):
+  *   1. OpenAI format: {"model":"...","messages":[{"role":"user","content":"..."}]}
+  *   2. Simplified JSON-RPC agent.run: {"jsonrpc":"2.0","method":"agent.run",
  *      "params":{"prompt":"...","model":"...","messages":[...]}}
- * messages 可为空数组，此时用 prompt 构造 [{"role":"user","content":prompt}]；
- * 两者均缺省返回 400。
+  * messages may be empty; then build [{"role":"user","content":prompt}] from prompt;
+  * Return 400 if both are missing.
  *
- * 处理流程：解析 model/messages → 构造 complete_stream JSON-RPC 请求 →
- * 连接 llm_d（AIRY_LLM_SOCK → $AIRY_RUNTIME_DIR/llm.sock，SO_RCVTIMEO 30s）
- * → 发送请求 → MHD_create_response_from_callback 流式转发（content_reader
- * 逐块 recv 并包装为 SSE 事件，EOF 输出 [DONE]）。llm_d 不可达时返回 502。
+  * Flow: parse model/messages -> build the complete_stream JSON-RPC request ->
+  * connect to llm_d (AIRY_LLM_SOCK -> $AIRY_RUNTIME_DIR/llm.sock, SO_RCVTIMEO 30s)
+  * -> send -> stream via MHD_create_response_from_callback (content_reader
+  * wraps each recv chunk as an SSE event, EOF emits [DONE]). 502 if llm_d is unreachable.
  */
 int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
                            http_request_context_t *context)
@@ -589,12 +587,12 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
 }
 
 /**
- * @brief HTTP 路由表（按优先级排序）
+  * @brief HTTP route table (priority-ordered)
  *
- * 路由匹配规则：
- * 1. 先匹配 HTTP 方法
- * 2. 再匹配路径（支持通配符 "*"）
- * 3. 未匹配则走默认路由 (handle_not_found)
+  * Route matching rules:
+  * 1. 1. Match the HTTP method
+  * 2. 2. Match the path ("*" wildcard supported)
+  * 3. 3. Fall back to the default route (handle_not_found)
  */
 static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc},
                                            {"POST", "/api/v1/chat/stream", handle_chat_stream_sse},
@@ -604,11 +602,11 @@ static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc},
                                            {NULL, NULL, handle_not_found}};
 
 /**
- * @brief 查找匹配的路由处理函数 (CC=2)
+  * @brief Find the matching route handler (CC=2)
  *
- * @param method HTTP 方法（如 "POST", "GET"）
- * @param path URL 路径（如 "/", "/health"）
- * @return 匹配的路由处理函数，未匹配返回 NULL
+ * @param method HTTP method (e.g. "POST", "GET")
+ * @param path URL path (e.g. "/", "/health")
+  * @return Matching route handler, or NULL if none
  */
 static http_route_handler_t find_http_route(const char *method, const char *path)
 {
@@ -623,16 +621,16 @@ static http_route_handler_t find_http_route(const char *method, const char *path
 }
 
 /**
- * @brief 搜索并处理动态注册的端点 (CC=4)
+  * @brief Search and handle dynamically registered endpoints (CC=4)
  *
- * 将 MHD 请求/响应桥接到 gateway_endpoint_request_t / gateway_endpoint_response_t，
- * 调用用户注册的 handler，再将响应桥接回 MHD。
+  * Bridge MHD request/response to gateway_endpoint_request_t / gateway_endpoint_response_t,
+  * call the user handler, then bridge the response back to MHD.
  *
- * @param gateway HTTP网关实例
- * @param connection MHD连接对象
- * @param context 请求上下文
- * @param method HTTP方法
- * @param url 请求URL
+  * @param gateway HTTP gateway instance
+  * @param connection MHD connection object
+  * @param context Request context
+ * @param method HTTP method
+ * @param url Request URL
  * @return MHD_YES/MHD_NO
  */
 static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Connection *connection,
@@ -701,13 +699,13 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
 }
 
 /**
- * @brief HTTP 请求处理主函数
+  * @brief HTTP request entry point
  *
- * 处理流程（4个阶段）：
- * 阶段1: 初始化请求上下文（首次调用）
- * 阶段2: 接收 POST 数据体
- * 阶段3: 处理完整 JSON-RPC 请求
- * 阶段4: 路由到其他端点（OPTIONS/GET等）
+  * Processing flow (4 phases):
+  * Phase 1: initialize the request context (first call)
+  * Phase 2: receive the POST body
+  * Phase 3: handle the complete JSON-RPC request
+  * Phase 4: route to other endpoints (OPTIONS/GET, etc.)
  */
 int handle_http_request(void *cls, struct MHD_Connection *connection, const char *url,
                         const char *method, const char *version __attribute__((unused)),
@@ -809,9 +807,9 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         return MHD_YES;
     }
 
-    /* 阶段 3: 处理完整请求（路由分发）——JSON-RPC 或非 JSON-RPC 原始 body 均处理。
-     * SSE 流式端点（POST /api/v1/chat/stream）除外：响应为持续 SSE 事件流，
-     * 必须由静态路由表直接处理（handle_chat_stream_sse），不能走一次性 JSON 响应。 */
+    /* Stage 3: dispatch the complete request - both JSON-RPC and raw non-JSON-RPC bodies.
+     * Except the SSE endpoint: its response is a continuous SSE event stream handled
+     * directly by the static route (handle_chat_stream_sse), not a one-shot JSON reply. */
     if (strcmp(method, "POST") == 0 && strcmp(url, GW_SSE_CHAT_PATH) != 0 &&
         (context->json_request || (context->upload_data && context->upload_data_size > 0))) {
         return handle_post_jsonrpc(gateway, connection, context);

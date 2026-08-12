@@ -3,7 +3,7 @@
 
 /**
  * @file syscall_router_task.c
- * @brief 系统调用路由器任务域（airy_sys_task_* 实现与路由分发）
+ * @brief Syscall router task domain (airy_sys_task_* implementation and routing).
  */
 
 // @owner: team-B
@@ -11,7 +11,7 @@
 #include "syscall_router_internal.h"
 
 /**
- * @brief 路由任务管理相关系统调用
+  * @brief Route task-management syscalls
  */
 char *route_task_methods(const char *method, cJSON *params, cJSON *request_id)
 {
@@ -107,8 +107,8 @@ airy_err_t airy_sys_task_submit(const char *input, size_t len, uint32_t timeout_
         return AIRY_ERR_OUT_OF_MEMORY;
     }
 
-    /* P0: 参数校验前置，避免副作用先于校验（原实现先 task_count++ 再校验
-     * len，超限时留下已占用的空槽） */
+    /* P0: validate first to avoid side effects before checks (the old code did task_count++
+      * before validating len, leaving a claimed empty slot when over limit) */
     if (len > MAX_INPUT_SIZE) {
         RUNTIME_UNLOCK();
         return AIRY_ERR_OUT_OF_MEMORY;

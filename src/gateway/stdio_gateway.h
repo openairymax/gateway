@@ -2,10 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file stdio_gateway.h
- * @brief Stdio网关接口
- *
+ * @brief Stdio gateway interface.
  */
 
 /* @owner: team-B */
@@ -19,11 +17,11 @@ extern "C" {
 #endif
 
 /**
- * @brief 创建Stdio网关
+ * @brief Create a stdio gateway
  *
- * @return 网关实例，失败返回NULL
+ * @return Gateway instance, or NULL on failure
  *
- * @ownership 调用者需通过gateway_destroy()释放
+ * @ownership Caller must release via gateway_destroy()
  */
 gateway_t *stdio_gateway_create(void);
 

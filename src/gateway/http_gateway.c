@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file http_gateway.c
- * @brief HTTP网关实现 - libmicrohttpd集成
+ * @brief HTTP gateway implementation - libmicrohttpd integration.
  *
- * 实现JSON-RPC 2.0协议处理，通过系统调用接口与内核通信。
- * 网关层只负责协议转换，不包含业务逻辑。
- *
+ * Implements JSON-RPC 2.0 protocol handling, communicating with the kernel
+ * through the syscall interface. The gateway only translates protocols and
+ * contains no business logic.
  */
 
 // @owner: team-B
@@ -48,8 +47,8 @@
 #endif
 
 /*
- * time_ns() 已迁移至 gateway_utils.h (gateway_time_ns)
- * 本文件统一使用 gateway_time_ns()
+ * time_ns() migrated to gateway_utils.h (gateway_time_ns); this file
+ * uses gateway_time_ns() consistently.
  */
 
 void gateway_apply_security_headers(struct MHD_Response *response)
@@ -67,10 +66,10 @@ void gateway_apply_security_headers(struct MHD_Response *response)
 }
 
 /**
- * @brief 检查 Origin 是否在 CORS 白名单中
- * @param gateway HTTP网关实例
- * @param origin 请求头中的Origin值
- * @return true 允许访问，false 拒绝访问
+  * @brief Check whether Origin is in the CORS whitelist
+  * @param gateway HTTP gateway instance
+  * @param origin Origin header value
+  * @return true if allowed, false if rejected
  */
 static bool is_cors_origin_allowed(const http_gateway_t *gateway, const char *origin)
 {
@@ -92,14 +91,15 @@ static bool is_cors_origin_allowed(const http_gateway_t *gateway, const char *or
 }
 
 /**
- * @brief 应用 CORS 响应头
+  * @brief Apply CORS response headers
  *
- * 根据网关CORS配置和请求Origin头，自动设置CORS响应头。
- * 应在所有直接创建MHD_Response的地方调用（配合 gateway_apply_security_headers）。
+ * Sets CORS response headers automatically based on the gateway CORS config
+ * and the request Origin header. Call it everywhere MHD_Response objects are
+ * created directly (alongside gateway_apply_security_headers).
  *
- * @param gateway HTTP网关实例
- * @param connection MHD连接对象
- * @param response MHD响应对象
+  * @param gateway HTTP gateway instance
+  * @param connection MHD connection object
+  * @param response MHD response object
  */
 void gateway_apply_cors_headers(http_gateway_t *gateway, struct MHD_Connection *connection,
                                 struct MHD_Response *response)
@@ -130,13 +130,13 @@ void gateway_apply_cors_headers(http_gateway_t *gateway, struct MHD_Connection *
 }
 
 /**
- * @brief 生成 HTTP 响应（安全CORS版本）
- * @param gateway HTTP网关实例
- * @param connection MHD连接对象
- * @param status_code HTTP 状态码
- * @param content 响应内容
- * @param content_len 内容长度
- * @return MHD 响应对象
+  * @brief Build an HTTP response (CORS-safe variant)
+  * @param gateway HTTP gateway instance
+  * @param connection MHD connection object
+  * @param status_code HTTP status code
+  * @param content Response content
+  * @param content_len Content length
+ * @return MHD response object
  */
 struct MHD_Response *create_http_response_ex(http_gateway_t *gateway,
                                              struct MHD_Connection *connection,
@@ -161,12 +161,12 @@ struct MHD_Response *create_http_response_ex(http_gateway_t *gateway,
 }
 
 /**
- * @brief 生成 HTTP 响应（兼容旧版本）
- * @param status_code HTTP 状态码
- * @param content 响应内容
- * @param content_len 内容长度
- * @return MHD 响应对象
- * @deprecated 请使用 create_http_response_ex() 以获得安全的CORS处理
+  * @brief Build an HTTP response (legacy-compatible variant)
+  * @param status_code HTTP status code
+  * @param content Response content
+  * @param content_len Content length
+ * @return MHD response object
+ * @deprecated Use create_http_response_ex() for CORS-safe handling
  */
 struct MHD_Response *create_http_response(int status_code, const char *content, size_t content_len)
 {
@@ -186,7 +186,7 @@ struct MHD_Response *create_http_response(int status_code, const char *content, 
 }
 
 /**
- * @brief 解析HTTP请求头
+  * @brief Parse HTTP request headers
  */
 static int __attribute__((unused)) parse_headers(void *cls __attribute__((unused)),
                                                  enum MHD_ValueKind kind __attribute__((unused)),
@@ -197,12 +197,12 @@ static int __attribute__((unused)) parse_headers(void *cls __attribute__((unused
 }
 
 /**
- * @brief 解析JSON请求体
- * @param gateway 网关实例
- * @param context 请求上下文
- * @param data 请求体数据
- * @param size 数据大小
- * @return 0 成功，非0 失败
+  * @brief Parse a JSON request body
+ * @param gateway Gateway instance
+  * @param context Request context
+  * @param data Request body data
+  * @param size Data size
+  * @return 0 on success, non-zero on failure
  */
 int parse_json_request(http_gateway_t *gateway, http_request_context_t *context, const char *data,
                        size_t size)
@@ -220,18 +220,18 @@ int parse_json_request(http_gateway_t *gateway, http_request_context_t *context,
         return AIRY_ERR_UNKNOWN;
     }
 
-    /* P0: MHD upload_data 不保证 '\0' 结尾，cJSON_Parse 按 NUL 扫描会越界读；
-     * 改用 cJSON_ParseWithLength 按 size 解析 */
+    /* P0: MHD upload_data is not '\0'-terminated; cJSON_Parse would overrun;
+      * parse by size with cJSON_ParseWithLength instead */
     context->json_request = cJSON_ParseWithLength(data, size);
     if (!context->json_request) {
-        /* 非 JSON body：不视为解析错误，保留 upload_data 交 handler 兜底
-         * （OpenAI/MCP/A2A 等外部协议由 gateway_d 的协议入口做检测路由） */
+        /* Non-JSON body: not a parse error; keep upload_data for the handler fallback
+          * (external protocols such as OpenAI/MCP/A2A are detected by gateway_d's entry) */
         return 0;
     }
 
     if (gw_jsonrpc_validate_request(context->json_request) != 0) {
-        /* 合法 JSON 但非 JSON-RPC 结构（如 OpenAI chat/completions）：
-         * 保留 upload_data，由协议入口 handler 检测路由 */
+        /* Valid JSON but not JSON-RPC (e.g. OpenAI chat/completions):
+          * keep upload_data for the protocol entry handler to route */
         cJSON_Delete(context->json_request);
         context->json_request = NULL;
         return 0;
@@ -240,12 +240,12 @@ int parse_json_request(http_gateway_t *gateway, http_request_context_t *context,
     return 0;
 }
 /**
- * @brief 请求处理适配器 - 将公共回调签名转换为内部使用
+  * @brief Request handler adapter - converts the public callback signature to the internal one
  *
- * 公共签名: (const char* request_json, char** response_json, void* user_data) -> int
- * 内部签名: (void* request, void* user_data) -> char*
+  * Public signature: (const char* request_json, char** response_json, void* user_data) -> int
+  * Internal signature: (void* request, void* user_data) -> char*
  *
- * 此函数在内部存储公共类型的回调，并在调用时进行适配。
+  * Stores the public-style callback internally and adapts it on invocation。
  */
 typedef struct {
     int (*public_handler)(const char *, char **, void *);
@@ -253,10 +253,10 @@ typedef struct {
 } http_handler_adapter_t;
 
 /**
- * @brief 内部回调包装函数（符合内部 gateway_request_handler_t 签名）
- * @param request cJSON 请求对象
- * @param user_data 指向 http_handler_adapter_t 的指针
- * @return JSON 响应字符串（需调用者 free），或 NULL
+  * @brief Internal callback wrapper (matches the internal gateway_request_handler_t signature)
+  * @param request cJSON request object
+  * @param user_data Pointer to http_handler_adapter_t
+  * @return JSON response string (caller frees), or NULL
  */
 static char *__attribute__((used)) http_handler_adapter(void *request, void *user_data)
 {
@@ -304,10 +304,10 @@ static int internal_handler_public_wrapper(const char *request_json, char **resp
 }
 
 /**
- * @brief 处理JSON-RPC请求（使用统一RPC处理器）
- * @param gateway 网关实例
- * @param context 请求上下文
- * @return JSON响应字符串
+  * @brief Handle a JSON-RPC request (via the unified RPC handler)
+ * @param gateway Gateway instance
+  * @param context Request context
+  * @return JSONResponse string
  */
 char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *context)
 {
@@ -325,8 +325,8 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
         result = gateway_rpc_handle_request(context->json_request, internal_handler_public_wrapper,
                                             &adapter);
     } else if (context->upload_data && context->upload_data_size > 0 && gateway->handler) {
-        /* 非 JSON-RPC 原始 body（OpenAI/MCP/A2A 外部协议）：直通协议入口 handler
-         * 做协议检测路由（gateway_d 侧统一翻译，D2） */
+        /* Raw non-JSON-RPC body (OpenAI/MCP/A2A): pass straight to the protocol entry handler
+          * for detection and routing (translated uniformly by gateway_d, D2) */
         char *resp = gateway->handler((void *)context->upload_data, gateway->handler_data);
         AIRY_MEMSET(&result, 0, sizeof(result));
         if (resp) {
@@ -506,9 +506,9 @@ static airy_err_t http_gateway_get_stats(void *gateway_impl, char **out_json)
 }
 
 /**
- * @brief 检查 HTTP 网关是否运行中
- * @param gateway_impl 网关实现指针
- * @return true 运行中，false 已停止或无效
+  * @brief Check whether the HTTP gateway is running
+  * @param gateway_impl Gateway implementation pointer
+  * @return true if running, false if stopped or invalid
  */
 static bool http_gateway_is_running(void *gateway_impl)
 {
@@ -519,12 +519,12 @@ static bool http_gateway_is_running(void *gateway_impl)
 }
 
 /**
- * @brief 设置请求处理回调
+  * @brief Set the request handler callback
  *
- * 支持两种回调模式：
- * 1. 内部模式：直接传入 (void*, void*) -> char* 类型的回调
- * 2. 公共模式（推荐）：通过 gateway_set_handler() API 传入，
- *    自动创建适配器将公共签名 (const char*, char**, void*) -> int 转换为内部签名
+  * Two callback modes are supported:
+  * 1. Internal mode: pass a (void*, void*) -> char* callback directly
+  * 2. Public mode (recommended): pass via gateway_set_handler(),
+  *    an adapter auto-converts the public signature to the internal one
  */
 static airy_err_t http_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler,
                                            void *user_data)
@@ -649,10 +649,10 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
         gateway->rate_limiter = gateway_rate_limiter_create(&rl_config);
     }
 
-    /* 初始化多协议处理器（默认关闭）
+    /* Initialize the multi-protocol handler (off by default)
      *
-     * 协议检测与翻译集中在 gateway_d 的协议适配器（D2），此处避免双重翻译层
-     * 重复耦合；需启用 gateway 库级转换时设 GATEWAY_PROTOCOL_HANDLER=true。 */
+      * Protocol detection/translation lives in gateway_d's adapter (D2); avoid a double translation layer here
+      * Set GATEWAY_PROTOCOL_HANDLER=true only to enable gateway-level conversion. */
     gateway->protocol_handler = NULL;
     const char *proto_handler_env = getenv("GATEWAY_PROTOCOL_HANDLER");
     if (proto_handler_env && strcmp(proto_handler_env, "true") == 0) {

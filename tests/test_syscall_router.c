@@ -5,14 +5,14 @@
  * @file test_syscall_router.c
  * @brief syscall_router 模块单元测试
  *
- * 测试系统调用路由器的核心功能：
- * - 方法名路由到正确的 syscall
- * - 参数验证和错误处理
- * - 响应生成正确性
+  * 测试系统调用路由器的核心功能：
+  * - 方法名路由到正确的 syscall
+  * - 参数验证和错误处理
+  * - 响应生成正确性
  *
- * 设计原则：
+  * Design principles:
  *   E-8 可测试性：单元测试覆盖率≥80%
- *   K-2 接口契约化：验证路由契约
+  *   K-2 接口契约化：验证路由契约
  *
  */
 
@@ -91,7 +91,7 @@ static cJSON *create_jsonrpc_request_with_params(const char *method, cJSON *para
 }
 
 /**
- * @brief 测试任务管理方法的路由
+  * @brief Test routing of task-management methods
  */
 static void test_route_task_methods(void)
 {
@@ -138,7 +138,7 @@ static void test_route_task_methods(void)
 }
 
 /**
- * @brief 测试记忆管理方法的路由
+  * @brief Test routing of memory-management methods
  */
 static void test_route_memory_methods(void)
 {
@@ -173,7 +173,7 @@ static void test_route_memory_methods(void)
 }
 
 /**
- * @brief 测试会话管理方法的路由
+  * @brief Test routing of session-management methods
  */
 static void test_route_session_methods(void)
 {
@@ -201,7 +201,7 @@ static void test_route_session_methods(void)
 }
 
 /**
- * @brief 测试可观测性方法的路由
+  * @brief Test routing of observability methods
  */
 static void test_route_telemetry_methods(void)
 {
@@ -221,7 +221,7 @@ static void test_route_telemetry_methods(void)
 }
 
 /**
- * @brief 测试 Agent 管理方法的路由
+  * @brief Test routing of Agent-management methods
  */
 static void test_route_agent_methods(void)
 {
@@ -249,7 +249,7 @@ static void test_route_agent_methods(void)
 }
 
 /**
- * @brief 测试未知方法名的错误处理
+  * @brief Test error handling for unknown method names
  */
 static void test_route_unknown_method(void)
 {
@@ -276,7 +276,7 @@ static void test_route_unknown_method(void)
 }
 
 /**
- * @brief 验证 syscall_router 对 NULL 参数的安全性
+  * @brief Verify syscall_router safety against NULL arguments
  */
 static void test_null_safety(void)
 {
@@ -299,7 +299,7 @@ static void test_null_safety(void)
 }
 
 /**
- * @brief 测试方法名前缀匹配逻辑
+  * @brief Test method-name prefix matching
  */
 static void test_method_prefix_matching(void)
 {

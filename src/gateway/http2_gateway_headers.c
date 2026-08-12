@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_headers.c
- * @brief HTTP/2 网关响应头域（nghttp2_nv 响应头构建与释放）
+ * @brief HTTP/2 gateway response header domain (nghttp2_nv header building and release).
  */
 
 // @owner: team-B
@@ -14,15 +14,15 @@
 #ifdef AIRY_HAS_HTTP2
 
 /**
- * @brief 构建 HTTP/2 响应头（nghttp2_nv 数组）
+  * @brief Build HTTP/2 response headers (nghttp2_nv array)
  *
- * 包含 :status 伪头、content-type、安全头和 CORS 头。
+ * Includes the :status pseudo-header, content-type, security and CORS headers.
  *
- * @param ctx 流上下文（用于读取 origin）
- * @param gw 网关实例（用于 CORS 配置）
- * @param nva 输出头数组（调用者分配）
- * @param max_nva 数组最大容量
- * @return 实际填充的头数量
+ * @param ctx Stream context (used to read origin)
+ * @param gw Gateway instance (for CORS config)
+ * @param nva Output header array (caller-allocated)
+ * @param max_nva Maximum array capacity
+ * @return Number of headers actually filled
  */
 size_t http2_build_response_headers(http2_stream_context_t *ctx, http2_gateway_t *gw,
                                     nghttp2_nv *nva, size_t max_nva)
@@ -155,7 +155,7 @@ size_t http2_build_response_headers(http2_stream_context_t *ctx, http2_gateway_t
 }
 
 /**
- * @brief 释放响应头数组中动态分配的 value 字符串
+  * @brief Free the dynamically allocated value strings in a response header array
  */
 void http2_free_response_headers(nghttp2_nv *nva, size_t count)
 {

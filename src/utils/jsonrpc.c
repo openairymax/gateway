@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file jsonrpc.c
- * @brief JSON-RPC 2.0 协议工具函数实现
- *
+ * @brief JSON-RPC 2.0 protocol utility functions implementation.
  */
 
 // @owner: team-B
@@ -248,9 +246,9 @@ char *jsonrpc_create_auth_failed_response(const cJSON *id)
     return jsonrpc_create_error_response(id, JSONRPC_AUTH_FAILED, NULL, NULL);
 }
 
-/* P0.18.1: jsonrpc_get_error_message 已统一至 daemons/common/src/jsonrpc_helpers.c，
- * 消除 gateway_lib_obj 与 svc_common 链接时的 multiple definition 错误。
- * 声明见 jsonrpc.h:173 及 jsonrpc_helpers.h:56（AIRY_API 权威声明）。 */
+/* P0.18.1: jsonrpc_get_error_message moved to daemons/common/src/jsonrpc_helpers.c,
+  * fixing the multiple-definition error when linking gateway_lib_obj and svc_common.
+  * Declared in jsonrpc.h:173 and jsonrpc_helpers.h:56 (the AIRY_API authority). */
 
 int jsonrpc_validate_batch_request(const cJSON *batch_json, size_t *out_count)
 {

@@ -2,13 +2,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file gateway_utils.h
- * @brief 网关模块公共工具函数
+ * @brief Common utility functions for the gateway module.
  *
- * 提供各网关实现共用的辅助函数，
- * 避免代码重复和定义冲突。
- *
+ * Provides helpers shared by all gateway implementations to avoid code
+ * duplication and definition conflicts.
  */
 
 /* @owner: team-B */
@@ -33,15 +31,15 @@ extern "C" {
 #endif
 
 /**
- * @brief 获取当前单调时钟时间（纳秒精度）
+  * @brief Get the current monotonic clock time (nanosecond precision)
  *
- * 跨平台的高精度时间获取函数。
- * Windows 使用 FILETIME，POSIX 使用 clock_gettime。
+  * Cross-platform high-resolution time function。
+  * Windows uses FILETIME, POSIX uses clock_gettime。
  *
- * @return 当前时间戳（纳秒），基于 CLOCK_REALTIME/系统启动时间
+  * @return Current timestamp (ns), based on CLOCK_REALTIME/system boot time
  *
- * @threadsafe 安全（只读操作）
- * @note 精度：Windows ~100ns，POSIX ~1ns（取决于硬件）
+ * @threadsafe yes (read-only operation)
+  * @note Precision: ~100ns on Windows, ~1ns on POSIX (hardware dependent)
  */
 static inline uint64_t gateway_time_ns(void)
 {
@@ -62,9 +60,9 @@ static inline uint64_t gateway_time_ns(void)
 }
 
 /**
- * @brief 跨平台 sleep 函数
+  * @brief Cross-platform sleep function
  *
- * @param seconds 睡眠秒数
+  * @param seconds Seconds to sleep
  */
 static inline void gateway_sleep(unsigned int seconds)
 {
@@ -76,10 +74,10 @@ static inline void gateway_sleep(unsigned int seconds)
 }
 
 /**
- * @brief 计算经过的时间（纳秒）
+  * @brief Compute elapsed time (nanoseconds)
  *
- * @param start_ns 起始时间戳
- * @return 从 start_ns 到现在经过的纳秒数
+  * @param start_ns Start timestamp
+  * @return Nanoseconds elapsed from start_ns to now
  */
 static inline uint64_t gateway_elapsed_ns(uint64_t start_ns)
 {
@@ -87,10 +85,10 @@ static inline uint64_t gateway_elapsed_ns(uint64_t start_ns)
 }
 
 /**
- * @brief 将纳秒转换为毫秒
+  * @brief Convert nanoseconds to milliseconds
  *
- * @param ns 纳秒值
- * @return 毫秒值
+ * @param ns Nanoseconds value
+  * @return Millisecond value
  */
 static inline uint64_t gateway_ns_to_ms(uint64_t ns)
 {

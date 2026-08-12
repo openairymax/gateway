@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_session.c
- * @brief HTTP/2 网关会话管理域（nghttp2 会话创建/销毁/收发/增删）
+ * @brief HTTP/2 gateway session management domain (nghttp2 session create/destroy/send/recv).
  */
 
 // @owner: team-B
@@ -14,7 +14,7 @@
 #ifdef AIRY_HAS_HTTP2
 
 /**
- * @brief 创建新的 HTTP/2 会话
+  * @brief Create a new HTTP/2 session
  */
 http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd)
 {
@@ -76,7 +76,7 @@ http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd)
 }
 
 /**
- * @brief 销毁 HTTP/2 会话
+  * @brief Destroy an HTTP/2 session
  */
 void http2_session_destroy(http2_gateway_session_t *sess)
 {
@@ -106,8 +106,8 @@ void http2_session_destroy(http2_gateway_session_t *sess)
 }
 
 /**
- * @brief 从 socket 读取数据并送入 nghttp2 处理
- * @return 0 正常，1 连接关闭，负数错误
+  * @brief Read data from the socket and feed it to nghttp2
+  * @return 0 normal, 1 connection closed, negative on error
  */
 int http2_session_recv_data(http2_gateway_session_t *sess)
 {
@@ -148,16 +148,17 @@ int http2_session_recv_data(http2_gateway_session_t *sess)
 }
 
 /**
- * @brief 将 nghttp2 待发送数据写入 socket
+  * @brief Write nghttp2 pending data to the socket
  *
- * P0 修复: 原实现在 write() 部分写入时直接调用 nghttp2_session_mem_send()
- * 获取下一块数据，导致未写完的数据丢失。修复方案：
- *   1. 先尝试 flush pending_send_buf 中的残留数据
- *   2. 只有当 pending_send_buf 为空时才调用 nghttp2_session_mem_send
- *   3. 如果 write() 部分写入，将剩余数据缓存到 pending_send_buf
- *   4. 下次 POLLOUT 时从 pending_send_buf 继续发送
+ * P0 fix: the original implementation called nghttp2_session_mem_send() again
+ * when write() wrote only part of the data, losing the unwritten bytes.
+ * Fix:
+ *   1. first try to flush residual data in pending_send_buf
+ *   2. call nghttp2_session_mem_send only when pending_send_buf is empty
+ *   3. if write() partially writes, cache the remainder in pending_send_buf
+ *   4. on the next POLLOUT, continue sending from pending_send_buf
  *
- * @return 0 正常，负数错误
+ * @return 0 on success, negative on error
  */
 int http2_session_send_data(http2_gateway_session_t *sess)
 {
@@ -243,7 +244,7 @@ int http2_session_send_data(http2_gateway_session_t *sess)
 }
 
 /**
- * @brief 添加会话到网关的会话数组
+  * @brief Add a session to the gateway's session array
  */
 int http2_gateway_add_session(http2_gateway_t *gw, http2_gateway_session_t *sess)
 {
@@ -265,7 +266,7 @@ int http2_gateway_add_session(http2_gateway_t *gw, http2_gateway_session_t *sess
 }
 
 /**
- * @brief 从会话数组中移除并销毁指定索引的会话
+  * @brief Remove and destroy the session at the given index
  */
 void http2_gateway_remove_session(http2_gateway_t *gw, size_t index)
 {

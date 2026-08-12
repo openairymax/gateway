@@ -6,14 +6,14 @@
  * @brief JSON-RPC 2.0 协议工具单元测试
  *
  * 测试 JSON-RPC 协议工具的完整功能：
- * - 请求验证
- * - 响应生成
- * - 错误处理
+  * - 请求验证
+  * - 响应生成
+  * - 错误处理
  * - 边界条件
  *
- * 设计原则：
- *   E-8 可测试性：协议合规性验证
- *   K-2 接口契约化：验证 JSON-RPC 2.0 标准
+  * Design principles:
+  *   E-8 可测试性：协议合规性验证
+  *   K-2 接口契约化：验证 JSON-RPC 2.0 标准
  *
  */
 
@@ -75,7 +75,7 @@ static cJSON *parse_json(const char *json_str)
 }
 
 /**
- * @brief 测试有效的 JSON-RPC 请求验证
+  * @brief Test valid JSON-RPC request validation
  */
 static void test_validate_valid_request(void)
 {
@@ -101,7 +101,7 @@ static void test_validate_valid_request(void)
 }
 
 /**
- * @brief 测试带参数的有效请求
+  * @brief Test a valid request with parameters
  */
 static void test_validate_request_with_params(void)
 {
@@ -127,7 +127,7 @@ static void test_validate_request_with_params(void)
 }
 
 /**
- * @brief 测试缺少必需字段的请求
+  * @brief Test requests missing required fields
  */
 static void test_validate_missing_fields(void)
 {
@@ -155,7 +155,7 @@ static void test_validate_missing_fields(void)
 }
 
 /**
- * @brief 测试 jsonrpc 版本错误
+  * @brief Test jsonrpc version errors
  */
 static void test_validate_wrong_version(void)
 {
@@ -173,7 +173,7 @@ static void test_validate_wrong_version(void)
 }
 
 /**
- * @brief 测试字段类型错误
+  * @brief Test field type errors
  */
 static void test_validate_wrong_field_types(void)
 {
@@ -195,7 +195,7 @@ static void test_validate_wrong_field_types(void)
 }
 
 /**
- * @brief 测试创建成功响应
+  * @brief Test success response creation
  */
 static void test_create_success_response(void)
 {
@@ -238,7 +238,7 @@ static void test_create_success_response(void)
 }
 
 /**
- * @brief 测试 NULL 结果的响应
+  * @brief Test responses with a NULL result
  */
 static void test_create_success_response_null_result(void)
 {
@@ -266,7 +266,7 @@ static void test_create_success_response_null_result(void)
 }
 
 /**
- * @brief 测试创建错误响应
+  * @brief Test error response creation
  */
 static void test_create_error_response(void)
 {
@@ -308,7 +308,7 @@ static void test_create_error_response(void)
 }
 
 /**
- * @brief 测试创建错误响应带详细数据
+  * @brief Test error responses with detailed data
  */
 static void test_create_error_response_with_data(void)
 {
@@ -340,7 +340,7 @@ static void test_create_error_response_with_data(void)
 }
 
 /**
- * @brief 测试解析错误响应
+  * @brief Test parse error responses
  */
 static void test_create_parse_error_response(void)
 {
@@ -367,7 +367,7 @@ static void test_create_parse_error_response(void)
 }
 
 /**
- * @brief 测试无效请求响应
+  * @brief Test invalid request responses
  */
 static void test_create_invalid_request_response(void)
 {
@@ -391,7 +391,7 @@ static void test_create_invalid_request_response(void)
 }
 
 /**
- * @brief 测试方法未找到响应
+  * @brief Test method-not-found responses
  */
 static void test_create_method_not_found_response(void)
 {
@@ -417,7 +417,7 @@ static void test_create_method_not_found_response(void)
 }
 
 /**
- * @brief 测试无效参数响应
+  * @brief Test invalid params responses
  */
 static void test_create_invalid_params_response(void)
 {
@@ -445,7 +445,7 @@ static void test_create_invalid_params_response(void)
 }
 
 /**
- * @brief 测试内部错误响应
+  * @brief Test internal error responses
  */
 static void test_create_internal_error_response(void)
 {
@@ -471,7 +471,7 @@ static void test_create_internal_error_response(void)
 }
 
 /**
- * @brief 测试限流响应
+  * @brief Test rate-limit responses
  */
 static void test_create_rate_limited_response(void)
 {
@@ -497,7 +497,7 @@ static void test_create_rate_limited_response(void)
 }
 
 /**
- * @brief 测试认证失败响应
+  * @brief Test auth-failure responses
  */
 static void test_create_auth_failed_response(void)
 {
@@ -523,7 +523,7 @@ static void test_create_auth_failed_response(void)
 }
 
 /**
- * @brief 测试获取标准错误消息
+  * @brief Test standard error message lookup
  */
 static void test_get_error_message(void)
 {
@@ -555,7 +555,7 @@ static void test_get_error_message(void)
 }
 
 /**
- * @brief 测试 NULL 输入的处理
+  * @brief Test NULL input handling
  */
 static void test_null_input_handling(void)
 {
@@ -577,7 +577,7 @@ static void test_null_input_handling(void)
 }
 
 /**
- * @brief 测试内存分配失败场景（通过 NULL 参数模拟）
+  * @brief Test allocation-failure scenarios (simulated via NULL args)
  */
 static void test_memory_allocation_failure(void)
 {

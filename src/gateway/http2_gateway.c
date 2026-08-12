@@ -2,23 +2,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file http2_gateway.c
- * @brief HTTP/2 网关实现 — 基于 nghttp2 的 HTTP/2 服务器
+ * @brief HTTP/2 gateway implementation - nghttp2-based HTTP/2 server.
  *
- * 实现完整的 HTTP/2 协议服务器，复用 HTTP/1.1 网关的协议处理逻辑
- * （gateway_protocol_handle_request / gateway_rpc_handle_request）。
+ * Implements a full HTTP/2 protocol server, reusing the HTTP/1.1 gateway's
+ * protocol handling (gateway_protocol_handle_request / gateway_rpc_handle_request).
  *
- * 核心流程：
- *   1. TCP 监听 socket（非阻塞）
- *   2. poll() 事件循环（专用 pthread）
- *   3. 每连接一个 nghttp2 服务端会话
- *   4. nghttp2 回调收集 HTTP/2 请求头和 DATA 帧
- *   5. END_STREAM 触发请求处理 → 生成 JSON 响应
- *   6. nghttp2_submit_response 提交响应（data_provider 回调送数据）
+ * Core flow:
+ *   1. TCP listening socket (non-blocking)
+ *   2. poll() event loop (dedicated pthread)
+ *   3. one nghttp2 server session per connection
+ *   4. nghttp2 callbacks collect HTTP/2 request headers and DATA frames
+ *   5. END_STREAM triggers request handling -> JSON response
+ *   6. nghttp2_submit_response submits the response (data_provider callback feeds data)
  *
- * IRON-2 铁律：禁止桩函数和简化功能，必须实现真正可用的 HTTP/2 服务器。
- *
+ * IRON-2 rule: no stubs or simplified features; a truly usable HTTP/2 server.
  */
 
 // @owner: team-B
@@ -286,7 +284,7 @@ static airy_err_t http2_gateway_set_handler_impl(void *impl, gateway_internal_ha
 }
 
 /**
- * @brief HTTP/2 网关操作表
+  * @brief HTTP/2 gateway operations table
  */
 static const gateway_ops_t http2_gateway_ops = {
     .start = http2_gateway_start_impl,
@@ -299,7 +297,7 @@ static const gateway_ops_t http2_gateway_ops = {
 };
 
 /**
- * @brief 初始化 CORS 配置（从环境变量读取）
+  * @brief Initialize CORS config (read from environment variables)
  */
 static void http2_init_cors_config(http_gateway_t *base)
 {

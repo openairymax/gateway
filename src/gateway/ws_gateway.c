@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file ws_gateway.c
- * @brief WebSocket网关实现 - libwebsockets集成
+ * @brief WebSocket gateway implementation - libwebsockets integration.
  *
- * 实现WebSocket双向通信协议，通过系统调用接口与内核通信。
- * 网关层只负责协议转换，不包含业务逻辑。
+ * Implements the WebSocket bidirectional communication protocol and talks
+ * to the kernel through the syscall interface. The gateway only translates
+ * protocols and contains no business logic.
  *
- * 设计原则：
- *   K-1 内核极简：只做协议转换，零业务逻辑
- *   S-2 层次分解：每层职责单一，易于测试和维护
- *   E-8 可测试性：路由处理函数独立可测试
- *
+ * Design principles:
+ *   K-1 minimal core: only protocol translation, zero business logic
+ *   S-2 layered decomposition: single responsibility per layer
+ *   E-8 testability: route handlers independently testable
  */
 
 // @owner: team-B
@@ -70,7 +69,7 @@ static const struct lws_protocols ws_protocols[] = {{
                                                     {NULL, NULL, 0, 0, 0, NULL, 0}};
 
 /**
- * @brief WebSocket连接上下文
+  * @brief WebSocket connection context
  */
 typedef struct ws_connection_context {
     struct lws *wsi;
@@ -86,7 +85,7 @@ typedef struct ws_connection_context {
 } ws_connection_context_t;
 
 /**
- * @brief WebSocket网关内部结构
+  * @brief WebSocket gateway internal structure
  */
 struct ws_gateway {
     struct lws_context *context;
@@ -110,7 +109,7 @@ struct ws_gateway {
 };
 
 /**
- * @brief WebSocket消息类型
+  * @brief WebSocket message type
  */
 typedef enum {
     WS_MSG_TYPE_PING = 1,
@@ -122,7 +121,7 @@ typedef enum {
 } ws_message_type_t;
 
 /**
- * @brief WebSocket消息结构
+  * @brief WebSocket message structure
  */
 typedef struct ws_message {
     ws_message_type_t type;
@@ -132,11 +131,11 @@ typedef struct ws_message {
 } ws_message_t;
 
 /**
- * @brief 创建WebSocket消息
- * @param type 消息类型
- * @param session_id 会话ID（可为NULL）
- * @param payload 消息载荷（可为NULL）
- * @return 消息结构指针，失败返回NULL
+  * @brief Create a WebSocket message
+  * @param type Message type
+  * @param session_id Session ID (may be NULL)
+  * @param payload Message payload (may be NULL)
+  * @return Message struct pointer, or NULL on failure
  */
 static ws_message_t *ws_message_create(ws_message_type_t type, const char *session_id,
                                        cJSON *payload)
@@ -154,8 +153,8 @@ static ws_message_t *ws_message_create(ws_message_type_t type, const char *sessi
 }
 
 /**
- * @brief 销毁WebSocket消息
- * @param msg 消息结构指针
+  * @brief Destroy a WebSocket message
+  * @param msg Message struct pointer
  */
 static void ws_message_destroy(ws_message_t *msg)
 {
@@ -170,9 +169,9 @@ static void ws_message_destroy(ws_message_t *msg)
 }
 
 /**
- * @brief 序列化WebSocket消息为JSON字符串
- * @param msg 消息结构指针
- * @return JSON字符串，需调用者AIRY_FREE()
+  * @brief Serialize a WebSocket message to a JSON string
+  * @param msg Message struct pointer
+  * @return JSON string; caller must AIRY_FREE()
  */
 static char *ws_message_to_json(ws_message_t *msg)
 {
@@ -220,10 +219,10 @@ static char *ws_message_to_json(ws_message_t *msg)
 }
 
 /**
- * @brief 发送WebSocket消息
- * @param wsi WebSocket实例
- * @param msg 消息结构指针
- * @return 成功返回发送字节数，失败返回-1
+  * @brief Send a WebSocket message
+  * @param wsi WebSocket instance
+  * @param msg Message struct pointer
+  * @return Bytes sent on success, -1 on failure
  */
 static int ws_send_message(struct lws *wsi, ws_message_t *msg)
 {
@@ -264,14 +263,14 @@ static int ws_rpc_handler_adapter(const char *request_json, char **response_json
 }
 
 /**
- * @brief 处理RPC请求（使用统一RPC处理器）
+  * @brief Handle an RPC request (via the unified RPC handler)
  *
- * 通过 gateway_rpc_handle_request() 实现统一的请求处理流程，
- * 消除与 HTTP/Stdio 网关的代码重复。
+  * Unified request handling via gateway_rpc_handle_request(),
+  * removing duplication with the HTTP/stdio gateways.
  *
- * @param gateway 网关实例
- * @param request JSON-RPC请求对象
- * @return JSON响应字符串，需调用者AIRY_FREE()
+ * @param gateway Gateway instance
+  * @param request JSON-RPC request object
+  * @return JSON response string; caller must AIRY_FREE()
  */
 static char *handle_rpc_request(ws_gateway_t *gateway, cJSON *request)
 {
@@ -298,11 +297,11 @@ static char *handle_rpc_request(ws_gateway_t *gateway, cJSON *request)
 }
 
 /**
- * @brief 处理连接建立
- * @param gateway 网关实例
- * @param context 连接上下文
- * @param user 用户指针
- * @return 成功返回0，失败返回-1
+  * @brief Handle connection establishment
+ * @param gateway Gateway instance
+  * @param context Connection context
+  * @param user User pointer
+  * @return 0 on success, -1 on failure
  */
 static int handle_ws_established(ws_gateway_t *gateway, ws_connection_context_t **context_ptr,
                                  void **user)
@@ -328,10 +327,10 @@ static int handle_ws_established(ws_gateway_t *gateway, ws_connection_context_t 
 }
 
 /**
- * @brief 处理Ping消息
- * @param context 连接上下文
- * @param wsi WebSocket实例
- * @return 成功返回0
+  * @brief Handle Ping messages
+  * @param context Connection context
+  * @param wsi WebSocket instance
+  * @return 0 on success
  */
 static int handle_ws_ping(ws_connection_context_t *context, struct lws *wsi)
 {
@@ -344,12 +343,12 @@ static int handle_ws_ping(ws_connection_context_t *context, struct lws *wsi)
 }
 
 /**
- * @brief 处理RPC请求消息
- * @param gateway 网关实例
- * @param context 连接上下文
- * @param rpc_request RPC请求对象
- * @param wsi WebSocket实例
- * @return 成功返回0
+  * @brief Handle RPC request messages
+ * @param gateway Gateway instance
+  * @param context Connection context
+ * @param rpc_request RPC request object
+  * @param wsi WebSocket instance
+  * @return 0 on success
  */
 static int handle_ws_rpc_request(ws_gateway_t *gateway, ws_connection_context_t *context,
                                  cJSON *rpc_request, struct lws *wsi)
@@ -381,10 +380,10 @@ static int handle_ws_rpc_request(ws_gateway_t *gateway, ws_connection_context_t 
 }
 
 /**
- * @brief 处理未知消息类型
- * @param wsi WebSocket实例
- * @param unknown_type 未知类型字符串
- * @return 成功返回0
+  * @brief Handle unknown message types
+  * @param wsi WebSocket instance
+  * @param unknown_type Unknown type string
+  * @return 0 on success
  */
 static int handle_ws_unknown_message(struct lws *wsi, const char *unknown_type)
 {
@@ -415,10 +414,10 @@ static int handle_ws_unknown_message(struct lws *wsi, const char *unknown_type)
 }
 
 /**
- * @brief 处理连接关闭
- * @param gateway 网关实例
- * @param context_ptr 连接上下文指针
- * @return 成功返回0
+  * @brief Handle connection close
+ * @param gateway Gateway instance
+  * @param context_ptr Connection context pointer
+  * @return 0 on success
  */
 static int handle_ws_closed(ws_gateway_t *gateway, ws_connection_context_t **context_ptr)
 {
@@ -440,17 +439,17 @@ static int handle_ws_closed(ws_gateway_t *gateway, ws_connection_context_t **con
 }
 
 /**
- * @brief WebSocket回调函数
+  * @brief WebSocket callback function
  *
- * 采用路由模式，将不同reason的处理分离到独立函数，
- * 大幅降低圈复杂度，提高可测试性。
+  * Uses the routing pattern, splitting handling of each reason into its own function,
+  * greatly reducing cyclomatic complexity and improving testability.
  *
- * @param wsi WebSocket实例
- * @param reason 回调原因
- * @param user 用户指针
- * @param in 输入数据
- * @param len 数据长度
- * @return 成功返回0，失败返回-1
+  * @param wsi WebSocket instance
+  * @param reason Callback reason
+  * @param user User pointer
+  * @param in Input data
+  * @param len Data length
+  * @return 0 on success, -1 on failure
  */
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in,
                        size_t len)
@@ -458,9 +457,9 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
     ws_gateway_t *gateway = (ws_gateway_t *)lws_context_user(lws_get_context(wsi));
     ws_connection_context_t *context = NULL;
 
-    /* 连接建立前的回调（如 LWS_CALLBACK_PROTOCOL_INIT/DESTROY，在
-     * lws_create_context 期间触发）user 为 NULL，解引用会段错误；
-     * 仅对已建立连接的会话回调解析 per_session_data。 */
+    /* Callbacks before connection setup (e.g. LWS_CALLBACK_PROTOCOL_INIT/DESTROY,
+      * fired during lws_create_context) have user == NULL; dereferencing would segfault;
+      * resolve per_session_data only for established-connection callbacks. */
     if (user)
         context = (ws_connection_context_t *)*(void **)user;
 
@@ -498,8 +497,8 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
         atomic_fetch_add(&gateway->messages_total, 1);
         atomic_fetch_add(&gateway->bytes_received, len);
 
-        /* P0: lws 的 in 缓冲区不保证 '\0' 结尾，cJSON_Parse 按 NUL 扫描会越界读；
-         * 改用 cJSON_ParseWithLength 按 len 解析（CJSON_AUTO_FREE 保留自动释放） */
+        /* P0: lws's in buffer is not '\0'-terminated; cJSON_Parse would overrun;
+          * parse by len with cJSON_ParseWithLength (CJSON_AUTO_FREE kept) */
         CJSON_AUTO_FREE cJSON *json = cJSON_ParseWithLength((const char *)in, len);
         if (!json) {
 
@@ -552,11 +551,11 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
 #ifndef _WIN32
 /**
- * @brief libwebsockets 事件循环线程
+  * @brief libwebsockets event-loop thread
  *
- * lws_create_context 只创建上下文，必须持续调用 lws_service 驱动
- * 连接收发（IRON-2：真实可用的 WebSocket 服务器，非桩）。
- * 50ms 超时便于 running=false 后及时退出并 join。
+  * lws_create_context only creates the context; lws_service must be called
+  * to drive I/O (IRON-2: a real WebSocket server, not a stub).
+  * 50ms timeout lets the thread exit and join promptly after running=false.
  */
 static void *ws_gateway_event_loop(void *arg)
 {
@@ -619,11 +618,11 @@ static void ws_gateway_stop(void *gateway_impl)
 
 #ifndef _WIN32
     if (gateway->event_thread) {
-        /* lws_cancel_service 可从其他线程安全唤醒 lws_service 事件循环，
-         * 使 event thread 在 running=false 后立即退出。若不唤醒，事件循环
-         * 依赖下一次 poll 超时（50ms）返回，在 netlink 事件风暴等场景下
-         * lws_service 可能长时间处理事件，导致 stop 的 join 阻塞数秒，
-         * 使守护进程优雅退出超过外部停止阈值而被强制 KILL。 */
+        /* lws_cancel_service safely wakes the lws_service loop from other threads,
+          * so the event thread exits right after running=false. Otherwise the loop
+          * waits for the next 50ms poll timeout; under netlink event storms,
+          * lws_service may process events for long, blocking join for seconds,
+          * and the graceful exit exceeds the external stop threshold, getting KILLed. */
         if (gateway->context) {
             lws_cancel_service(gateway->context);
         }
@@ -727,13 +726,13 @@ static const gateway_ops_t ws_gateway_ops = {.start = ws_gateway_start,
                                              .set_handler = ws_gateway_set_handler};
 
 /**
- * @brief 创建WebSocket网关实例
- * @param host 监听地址（如 "127.0.0.1", "0.0.0.0"），不能为NULL
- * @param port 监听端口（如 8081）
- * @return 网关句柄，失败返回NULL（内存不足或参数无效）
+  * @brief Create a WebSocket gateway instance
+  * @param host Listen address (e.g. "127.0.0.1", "0.0.0.0"); must not be NULL
+  * @param port Listen port (e.g. 8081)
+  * @return Gateway handle, or NULL on failure (OOM or invalid args)
  *
- * @ownership 调用者必须通过 gateway_destroy() 释放
- * @threadsafe 安全
+ * @ownership Caller must release via gateway_destroy()
+ * @threadsafe yes
  * @since 1.0.0
  */
 gateway_t *ws_gateway_create(const char *host, uint16_t port)

@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file gateway_rpc_handler.c
- * @brief 统一的RPC请求处理模块实现
+ * @brief Unified RPC request handling implementation.
  *
- * 实现HTTP/WS/Stdio三种网关共享的RPC处理逻辑。
- * 圈复杂度控制在7以下，确保高可维护性。
- *
+ * Implements RPC handling shared by the HTTP/WS/Stdio gateways, keeping
+ * cyclomatic complexity below 7 for maintainability.
  */
 
 // @owner: team-B
@@ -24,7 +22,7 @@
 #include <string.h>
 
 /**
- * @brief 验证JSON-RPC请求格式 (CC=3)
+  * @brief Validate the JSON-RPC request format (CC=3)
  */
 static int validate_rpc_request(const cJSON *request)
 {
@@ -49,7 +47,7 @@ static int validate_rpc_request(const cJSON *request)
 }
 
 /**
- * @brief 提取请求字段 (CC=4)
+  * @brief Extract request fields (CC=4)
  */
 static int extract_request_fields(const cJSON *request, const char **method_out,
                                   const cJSON **params_out, const cJSON **id_out)

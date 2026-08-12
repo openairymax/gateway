@@ -2,10 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 */
 
 /*
- *
  * @file http_gateway.h
- * @brief HTTP网关接口
- *
+ * @brief HTTP gateway interface.
  */
 
 /* @owner: team-B */
@@ -39,10 +37,10 @@ struct MHD_Connection;
 struct MHD_Response;
 
 /**
- * @brief CORS 配置结构
+  * @brief CORS configuration structure
  *
- * 用于控制跨源资源共享(CORS)的安全设置。
- * 生产环境应配置白名单，开发环境可允许所有来源。
+  * Security settings for Cross-Origin Resource Sharing (CORS)。
+  * Configure a whitelist in production; allow all origins in development。
  */
 typedef struct {
     bool allow_all_origins;
@@ -95,44 +93,44 @@ typedef struct http_gateway {
 } http_gateway_t;
 
 /**
- * @brief 创建HTTP网关
+  * @brief Create an HTTP gateway
  *
- * @param host 监听地址
- * @param port 监听端口
- * @return 网关实例，失败返回NULL
+ * @param host Listen address
+ * @param port Listen port
+ * @return Gateway instance, or NULL on failure
  *
- * @ownership 调用者需通过gateway_destroy()释放
+ * @ownership Caller must release via gateway_destroy()
  */
 gateway_t *http_gateway_create(const char *host, uint16_t port);
 
 /**
- * @brief 处理JSON-RPC请求
+  * @brief Handle a JSON-RPC request
  */
 char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *context);
 
 /**
- * @brief 创建HTTP响应
+  * @brief Create an HTTP response
  */
 struct MHD_Response *create_http_response(int status_code, const char *content, size_t content_len);
 
 /**
- * @brief 创建HTTP响应（安全CORS版本）
+  * @brief Create an HTTP response (CORS-safe variant)
  *
- * 根据网关CORS配置自动设置CORS响应头，所有路由处理函数应优先使用此函数。
+ * Automatically set CORS headers per gateway config; prefer this in all route handlers.
  *
- * @param gateway HTTP网关实例（用于CORS配置）
- * @param connection MHD连接对象（用于获取Origin头）
- * @param status_code HTTP状态码（当前未使用，保留供未来扩展）
- * @param content 响应内容
- * @param content_len 内容长度
- * @return MHD响应对象
+ * @param gateway HTTP gateway instance (for CORS config)
+ * @param connection MHD connection object (for the Origin header)
+ * @param status_code HTTP status code (currently unused; kept for future extension)
+  * @param content Response content
+  * @param content_len Content length
+  * @return MHD response object
  */
 struct MHD_Response *create_http_response_ex(http_gateway_t *gateway,
                                              struct MHD_Connection *connection, int status_code,
                                              const char *content, size_t content_len);
 
 /**
- * @brief HTTP请求处理回调函数类型
+  * @brief HTTP request handler callback type
  */
 typedef int (*http_request_handler_t)(void *cls, struct MHD_Connection *connection, const char *url,
                                       const char *method, const char *version,
@@ -140,55 +138,57 @@ typedef int (*http_request_handler_t)(void *cls, struct MHD_Connection *connecti
                                       void **con_cls);
 
 /**
- * @brief HTTP请求处理函数
+  * @brief HTTP request handler function
  */
 int handle_http_request(void *cls, struct MHD_Connection *connection, const char *url,
                         const char *method, const char *version, const char *upload_data,
                         size_t *upload_data_size, void **con_cls);
 
 /**
- * @brief 应用安全HTTP响应头
+  * @brief Apply secure HTTP response headers
  *
- * 添加安全相关的HTTP头，如X-Content-Type-Options, X-Frame-Options等
+ * Adds security-related HTTP headers such as X-Content-Type-Options,
+ * X-Frame-Options, etc.
  *
- * @param response MHD响应对象
+  * @param response MHD response object
  */
 void gateway_apply_security_headers(struct MHD_Response *response);
 
 /**
- * @brief 应用CORS响应头
+  * @brief Apply CORS response headers
  *
- * 根据网关CORS配置和请求Origin头，自动设置CORS响应头。
- * 应在所有直接创建MHD_Response的地方调用（配合 gateway_apply_security_headers）。
+ * Sets CORS response headers automatically based on the gateway CORS config
+ * and the request Origin header. Call it everywhere MHD_Response objects are
+ * created directly (alongside gateway_apply_security_headers).
  *
- * @param gateway HTTP网关实例
- * @param connection MHD连接对象
- * @param response MHD响应对象
+  * @param gateway HTTP gateway instance
+  * @param connection MHD connection object
+  * @param response MHD response object
  */
 void gateway_apply_cors_headers(http_gateway_t *gateway, struct MHD_Connection *connection,
                                 struct MHD_Response *response);
 
 /**
- * @brief 解析JSON请求体
+  * @brief Parse a JSON request body
  *
- * @param gateway HTTP网关实例
- * @param context 请求上下文
- * @param data 请求体数据
- * @param size 数据大小
- * @return 0成功，非0失败
+  * @param gateway HTTP gateway instance
+  * @param context Request context
+  * @param data Request body data
+  * @param size Data size
+ * @return 0 on success, non-zero on failure
  */
 int parse_json_request(http_gateway_t *gateway, http_request_context_t *context, const char *data,
                        size_t size);
 
 /**
- * @brief 注册动态端点到HTTP网关
+  * @brief Register a dynamic endpoint on the HTTP gateway
  *
- * @param gateway HTTP网关实例
- * @param method HTTP方法（将内部复制）
- * @param path URL路径（将内部复制）
- * @param handler 端点处理回调
- * @param user_data 传递给回调的用户数据
- * @return 0 成功，-1 参数无效，-2 内存不足
+  * @param gateway HTTP gateway instance
+  * @param method HTTP method (copied internally)
+  * @param path URL path (copied internally)
+  * @param handler Endpoint handler callback
+  * @param user_data User data passed to the callback
+  * @return 0 on success, -1 invalid args, -2 out of memory
  */
 int http_gateway_register_endpoint(http_gateway_t *gateway, const char *method, const char *path,
                                    gateway_endpoint_handler_t handler, void *user_data);

@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_response.c
- * @brief HTTP/2 网关响应域（data provider 回调、响应提交与 JSON-RPC/健康/预检处理）
+ * @brief HTTP/2 gateway response domain (data provider callback, submission, JSON-RPC/health/preflight).
  */
 
 // @owner: team-B
@@ -14,10 +14,10 @@
 #ifdef AIRY_HAS_HTTP2
 
 /**
- * @brief 数据源读取回调 — 向 nghttp2 提供 HTTP/2 DATA 帧的响应体
+  * @brief Data source read callback - feeds the HTTP/2 DATA frame response body to nghttp2.
  *
- * 从流上下文的 response_body 中读取数据，拷贝到 nghttp2 提供的 buf 中。
- * 当所有数据读取完毕时设置 NGHTTP2_DATA_FLAG_EOF。
+ * Reads from the stream context's response_body into the buffer provided by
+ * nghttp2, setting NGHTTP2_DATA_FLAG_EOF when all data has been consumed.
  */
 ssize_t http2_data_source_read_callback(nghttp2_session *session, int32_t stream_id,
                                         uint8_t *buf, size_t length, uint32_t *data_flags,
@@ -52,10 +52,11 @@ ssize_t http2_data_source_read_callback(nghttp2_session *session, int32_t stream
 }
 
 /**
- * @brief 提交 HTTP/2 响应
+  * @brief Submit the HTTP/2 response
  *
- * 构建响应头，设置 data_provider，调用 nghttp2_submit_response。
- * 响应体通过 data_source_read_callback 异步发送。
+ * Builds the response headers, sets up the data_provider and calls
+ * nghttp2_submit_response. The response body is sent asynchronously via
+ * data_source_read_callback.
  */
 int http2_submit_response_impl(nghttp2_session *session, http2_stream_context_t *ctx,
                                http2_gateway_t *gw)
@@ -72,8 +73,9 @@ int http2_submit_response_impl(nghttp2_session *session, http2_stream_context_t 
     nghttp2_nv nva[16];
     size_t nvlen = http2_build_response_headers(ctx, gw, nva, 16);
     if (nvlen == (size_t)-1) {
-        /* P0: 头构建 OOM — 已清理部分分配，不得提交 value=NULL 的非法 nv；
-         * 终止该流，避免 nghttp2_submit_response 崩溃 */
+        /* P0: header-build OOM - partial allocations were cleaned up, so never
+         * submit an illegal nv with value=NULL; terminate the stream instead to
+         * avoid an nghttp2_submit_response crash. */
         LOG_ERROR("failed to build response headers (stream_id=%d)", ctx->stream_id);
         nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, ctx->stream_id,
                                   NGHTTP2_INTERNAL_ERROR);
@@ -100,10 +102,10 @@ int http2_submit_response_impl(nghttp2_session *session, http2_stream_context_t 
 }
 
 /**
- * @brief 处理 JSON-RPC POST 请求
+  * @brief Handle JSON-RPC POST requests
  *
- * 复用 gateway_protocol_handle_request 进行多协议处理，
- * 回退到 gateway_rpc_handle_request 处理已解析的 JSON。
+ * Reuses gateway_protocol_handle_request for multi-protocol handling,
+ * falling back to gateway_rpc_handle_request for parsed JSON.
  */
 char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
 {
@@ -140,7 +142,7 @@ char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
 }
 
 /**
- * @brief 处理健康检查请求 GET /health
+  * @brief Handle health check requests GET /health
  */
 char *http2_handle_health(void)
 {
@@ -148,7 +150,7 @@ char *http2_handle_health(void)
 }
 
 /**
- * @brief 处理 OPTIONS 预检请求
+  * @brief Handle OPTIONS preflight requests
  */
 char *http2_handle_preflight(void)
 {

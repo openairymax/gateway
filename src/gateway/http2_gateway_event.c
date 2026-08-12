@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_event.c
- * @brief HTTP/2 网关事件循环域（accept/超时清理/poll 循环/socket 选项）
+ * @brief HTTP/2 gateway event loop domain (accept, timeout cleanup, poll loop, socket options).
  */
 
 // @owner: team-B
@@ -14,7 +14,7 @@
 #ifdef AIRY_HAS_HTTP2
 
 /**
- * @brief 接受新连接
+ * @brief Accept a new connection
  */
 void http2_event_loop_accept(http2_gateway_t *gw)
 {
@@ -67,7 +67,7 @@ void http2_event_loop_accept(http2_gateway_t *gw)
 }
 
 /**
- * @brief 检查会话超时并清理
+  * @brief Check session timeouts and clean up
  */
 void http2_event_loop_cleanup(http2_gateway_t *gw)
 {
@@ -116,7 +116,7 @@ void http2_event_loop_cleanup(http2_gateway_t *gw)
 }
 
 /**
- * @brief 事件循环主函数（在专用线程中运行）
+ * @brief Main event loop (runs on a dedicated thread)
  */
 void *http2_event_loop(void *arg)
 {
@@ -242,7 +242,7 @@ void *http2_event_loop(void *arg)
 }
 
 /**
- * @brief 设置 socket 为非阻塞模式
+  * @brief Set a socket to non-blocking mode
  */
 int http2_set_nonblocking(int fd)
 {
@@ -253,7 +253,7 @@ int http2_set_nonblocking(int fd)
 }
 
 /**
- * @brief 设置 SO_REUSEADDR
+  * @brief Set SO_REUSEADDR
  */
 void http2_set_reuseaddr(int fd)
 {

@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file syscall_router.c
- * @brief 系统调用路由器实现
+ * @brief Syscall router implementation.
  *
- * 统一处理 JSON-RPC 请求到系统调用的路由。
- *
+ * Routes JSON-RPC requests to syscalls uniformly.
  */
 
 // @owner: team-B
@@ -15,7 +13,7 @@
 #include "syscall_router_internal.h"
 
 /**
- * @brief 路由系统调用请求
+  * @brief Route a system call request
  */
 char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id)
 {

@@ -3,7 +3,7 @@
 
 /**
  * @file syscall_router_memory.c
- * @brief 系统调用路由器记忆域（airy_sys_memory_* IPC 转发与路由分发）
+ * @brief Syscall router memory domain (airy_sys_memory_* IPC forwarding and routing).
  */
 
 // @owner: team-B
@@ -11,7 +11,7 @@
 #include "syscall_router_internal.h"
 
 /**
- * @brief 路由记忆管理相关系统调用
+  * @brief Route memory-management syscalls
  */
 char *route_memory_methods(const char *method, cJSON *params, cJSON *request_id)
 {
@@ -114,11 +114,11 @@ char *route_memory_methods(const char *method, cJSON *params, cJSON *request_id)
     return jsonrpc_create_success_response(request_id, result);
 }
 
-/* Memory 管理 — Phase 3：thin IPC client 转发至 mem_d 守护进程
+/* Memory management - Phase 3: thin IPC client forwarding to the mem_d daemon
  *
- * 保持原 airy_sys_memory_* 函数签名与 ABI 兼容；运行时通过 Unix socket
- * 向 mem_d 发送 JSON-RPC 请求（mem.write/search/get/delete），解析响应后
- * 按原 C ABI 返回。daemon 不可达时返回 AIRY_ERR_FAIL，由调用方降级处理。 */
+  * Keeps the airy_sys_memory_* signatures and ABI; at runtime, JSON-RPC requests
+  * (mem.write/search/get/delete) go to mem_d over a Unix socket; responses
+  * return via the original C ABI. AIRY_ERR_FAIL when the daemon is down; callers degrade. */
 airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metadata,
                                  char **out_record_id)
 {

@@ -3,7 +3,7 @@
 
 /**
  * @file syscall_router_telemetry.c
- * @brief 系统调用路由器可观测性域（airy_sys_telemetry_* 实现与路由分发）
+ * @brief Syscall router observability domain (airy_sys_telemetry_* implementation and routing).
  */
 
 // @owner: team-B
@@ -11,7 +11,7 @@
 #include "syscall_router_internal.h"
 
 /**
- * @brief 路由可观测性相关系统调用
+  * @brief Route observability syscalls
  */
 char *route_telemetry_methods(const char *method, cJSON *params, cJSON *request_id)
 {

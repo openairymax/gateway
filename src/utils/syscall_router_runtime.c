@@ -3,7 +3,7 @@
 
 /**
  * @file syscall_router_runtime.c
- * @brief 系统调用路由器运行时域（全局状态、开放寻址哈希表、构造/析构初始化）
+ * @brief Syscall router runtime domain (global state, open-addressing hash table, ctor/dtor init).
  */
 
 // @owner: team-B
@@ -57,8 +57,8 @@ bool ht_insert(hash_table_t *ht, const char *key, size_t index)
     for (size_t i = 0; i < ht->capacity; i++) {
         size_t pos = (h + i) % ht->capacity;
         if (!ht->entries[pos].occupied) {
-            /* P0: tombstone 槽位（deleted=true）可复用；复用前必须复位 deleted，
-             * 否则会被 ht_lookup 跳过 */
+            /* P0: tombstone slots (deleted=true) are reusable; reset deleted before reuse,
+              * or ht_lookup skips them */
             ht->entries[pos].key = AIRY_STRDUP(key);
             ht->entries[pos].index = index;
             ht->entries[pos].occupied = true;
@@ -109,8 +109,8 @@ static void __attribute__((unused)) ht_remove(hash_table_t *ht, const char *key)
             ht->entries[pos].key = NULL;
             ht->entries[pos].occupied = false;
             ht->entries[pos].index = 0;
-            /* P0: 用 tombstone 标记删除，保持探测链连续，
-             * 否则后续 ht_lookup 会因空槽提前终止而漏查元素 */
+            /* P0: mark deletions with tombstones to keep the probe chain contiguous;
+              * otherwise ht_lookup stops at the empty slot and misses elements */
             ht->entries[pos].deleted = true;
             ht->count--;
             return;
@@ -148,8 +148,8 @@ static void __attribute__((constructor)) runtime_init(void)
         if (v > 0 && v < 65536)
             g_max_sessions = (size_t)v;
     }
-    /* Phase 3：memory/agent 容量由 mem_d/agent_d 守护进程独立管理，
-     * AIRY_MAX_RECORDS / AIRY_MAX_AGENTS 环境变量转发至对应 daemon 解析。 */
+    /* Phase 3: memory/agent capacity is managed by the mem_d/agent_d daemons;
+      * AIRY_MAX_RECORDS / AIRY_MAX_AGENTS env vars are forwarded to the daemons. */
 
     g_runtime.tasks = (task_entry_t *)AIRY_CALLOC(g_max_tasks, sizeof(task_entry_t));
     g_runtime.sessions = (session_entry_t *)AIRY_CALLOC(g_max_sessions, sizeof(session_entry_t));

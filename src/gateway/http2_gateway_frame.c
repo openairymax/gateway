@@ -3,7 +3,7 @@
 
 /**
  * @file http2_gateway_frame.c
- * @brief HTTP/2 网关帧解析域（nghttp2 会话回调与回调表构建）
+ * @brief HTTP/2 gateway frame parsing domain (nghttp2 session callbacks and callback-table building).
  */
 
 // @owner: team-B
@@ -14,7 +14,7 @@
 #ifdef AIRY_HAS_HTTP2
 
 /**
- * @brief on_begin_headers 回调 — 分配流上下文
+  * @brief on_begin_headers callback - allocate a stream context
  */
 int http2_on_begin_headers(nghttp2_session *session, const nghttp2_frame *frame,
                            void *user_data)
@@ -39,7 +39,7 @@ int http2_on_begin_headers(nghttp2_session *session, const nghttp2_frame *frame,
 }
 
 /**
- * @brief on_header 回调 — 收集请求头
+  * @brief on_header callback - collect request headers
  */
 int http2_on_header(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name,
                     size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags,
@@ -79,7 +79,7 @@ int http2_on_header(nghttp2_session *session, const nghttp2_frame *frame, const 
 }
 
 /**
- * @brief on_data_chunk_recv 回调 — 接收 DATA 帧数据块
+  * @brief on_data_chunk_recv callback - receive DATA frame chunks
  */
 int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t stream_id,
                              const uint8_t *data, size_t len, void *user_data)
@@ -92,9 +92,10 @@ int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t st
     if (!ctx)
         return 0;
 
-    /* P0: 请求体无上限时，超大 body 会在完整接收后才被 max_request_size
-     * 校验拦截，导致内存耗尽 DoS。此处按 gw->base.max_request_size 在累加
-     * 内存前限流，超限立即 RST_STREAM 终止该流。 */
+    /* P0: without a body limit, an oversized body would only be rejected by
+     * max_request_size after being fully received, enabling memory-exhaustion DoS.
+     * Throttle by gw->base.max_request_size before accumulating memory and
+     * immediately RST_STREAM the stream when the limit is exceeded. */
     if (gw && ctx->request_body_len + len > gw->base.max_request_size) {
         LOG_WARN("request body exceeds limit: %zu + %zu > %zu (stream_id=%d)",
                  ctx->request_body_len, len, gw->base.max_request_size, stream_id);
@@ -113,10 +114,10 @@ int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t st
 }
 
 /**
- * @brief on_frame_recv 回调 — 帧接收完成
+  * @brief on_frame_recv callback - frame receive complete
  *
- * 检测 HEADERS 或 DATA 帧的 END_STREAM 标志，
- * 触发请求处理。
+ * Detects the END_STREAM flag on HEADERS or DATA frames and triggers
+ * request handling.
  */
 int http2_on_frame_recv(nghttp2_session *session, const nghttp2_frame *frame, void *user_data)
 {
@@ -133,7 +134,7 @@ int http2_on_frame_recv(nghttp2_session *session, const nghttp2_frame *frame, vo
 }
 
 /**
- * @brief on_stream_close 回调 — 流关闭，清理资源
+  * @brief on_stream_close callback - stream closed, free resources
  */
 int http2_on_stream_close(nghttp2_session *session, int32_t stream_id, uint32_t error_code,
                           void *user_data)
@@ -157,7 +158,7 @@ int http2_on_stream_close(nghttp2_session *session, int32_t stream_id, uint32_t 
 }
 
 /**
- * @brief 创建 nghttp2 回调表
+  * @brief Build the nghttp2 callback table
  */
 int http2_create_callbacks(nghttp2_session_callbacks **callbacks)
 {

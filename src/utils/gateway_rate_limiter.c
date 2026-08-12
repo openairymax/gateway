@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0
 
 /*
- *
  * @file gateway_rate_limiter.c
- * @brief Gateway 内置速率限制器实现
+ * @brief Built-in gateway rate limiter implementation.
  *
- * 实现基于令牌桶算法的速率限制功能。
- *
+ * Implements token-bucket based rate limiting.
  */
 
 // @owner: team-B
@@ -30,7 +28,7 @@
 #include <time.h>
 
 /**
- * @brief 单个客户端的速率限制状态
+  * @brief Per-client rate limit state
  */
 typedef struct client_state {
     char *client_key;
@@ -65,7 +63,7 @@ struct gateway_rate_limiter {
 };
 
 /**
- * @brief 简单的字符串哈希函数（djb2算法）
+  * @brief Simple string hash function (djb2)
  */
 static uint32_t hash_string(const char *str, size_t table_size)
 {
@@ -80,7 +78,7 @@ static uint32_t hash_string(const char *str, size_t table_size)
 }
 
 /**
- * @brief 创建客户端状态
+  * @brief Create a client state
  */
 static client_state_t *client_state_create(const char *client_key, uint64_t now_ns)
 {
@@ -107,7 +105,7 @@ static client_state_t *client_state_create(const char *client_key, uint64_t now_
 }
 
 /**
- * @brief 销毁客户端状态
+  * @brief Destroy a client state
  */
 static void client_state_destroy(client_state_t *state)
 {
@@ -121,10 +119,10 @@ static void client_state_destroy(client_state_t *state)
 }
 
 /**
- * @brief 查找或创建客户端状态
+  * @brief Find or create a client state
  *
- * @note P0: 调用者必须持有 limiter->table_lock。与 cleanup_expired_clients
- * 互斥，确保 client 在 check_rate_limit 读写期间不会被并发 free（UAF）。
+  * @note P0: caller must hold limiter->table_lock. Mutually exclusive with
+  * cleanup_expired_clients so a client is not freed while check_rate_limit reads it (UAF).
  */
 static client_state_t *get_or_create_client_locked(gateway_rate_limiter_t *limiter,
                                                    const char *client_key, uint64_t now_ns)
@@ -153,7 +151,7 @@ static client_state_t *get_or_create_client_locked(gateway_rate_limiter_t *limit
 }
 
 /**
- * @brief 更新令牌数
+  * @brief Update the token count
  */
 static void update_tokens(client_state_t *client, const gateway_rate_limit_config_t *config,
                           uint64_t now_ns)
@@ -174,7 +172,7 @@ static void update_tokens(client_state_t *client, const gateway_rate_limit_confi
 }
 
 /**
- * @brief 检查时间窗口计数器
+  * @brief Check the time-window counter
  */
 static bool check_time_windows(client_state_t *client, const gateway_rate_limit_config_t *config,
                                uint64_t now_ns)
@@ -205,7 +203,7 @@ static bool check_time_windows(client_state_t *client, const gateway_rate_limit_
 }
 
 /**
- * @brief 清理长时间未活跃的客户端
+  * @brief Clean up long-inactive clients
  */
 static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
 {
@@ -243,7 +241,7 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
 }
 
 /**
- * @brief 前置条件检查
+  * @brief Precondition checks
  */
 static inline bool is_rate_limiter_valid(const gateway_rate_limiter_t *limiter,
                                          const char *client_key)
@@ -256,7 +254,7 @@ static inline bool is_rate_limiter_valid(const gateway_rate_limiter_t *limiter,
 }
 
 /**
- * @brief 可能执行清理（基于时间间隔）
+  * @brief Possibly run cleanup (time-interval based)
  */
 static inline void maybe_cleanup_clients(gateway_rate_limiter_t *limiter, time_t now)
 {
@@ -266,7 +264,7 @@ static inline void maybe_cleanup_clients(gateway_rate_limiter_t *limiter, time_t
 }
 
 /**
- * @brief 消耗令牌并更新计数器
+  * @brief Consume a token and update counters
  */
 static inline void consume_token(client_state_t *client)
 {
@@ -276,7 +274,7 @@ static inline void consume_token(client_state_t *client)
 }
 
 /**
- * @brief 检查速率限制（核心逻辑）
+  * @brief Check the rate limit (core logic)
  */
 static bool check_rate_limit(client_state_t *client, gateway_rate_limiter_t *limiter,
                              const gateway_rate_limit_config_t *config, uint64_t now_ns)
@@ -407,9 +405,9 @@ bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *cli
 
     maybe_cleanup_clients(limiter, now);
 
-    /* 步骤 4-5: P0 — client 的获取与状态读写必须与 cleanup_expired_clients
-     * 在同一把锁下完成。否则清理线程可能在 check_rate_limit 读写 client
-     * 期间将其 free（数据竞争 + UAF）。 */
+    /* Steps 4-5: P0 - client lookup and state read/write must happen under the
+      * same lock as cleanup_expired_clients. Otherwise the cleaner may free the
+      * client mid-read/write (data race + UAF). */
 #ifdef _WIN32
     airy_mtx_lock(&limiter->table_lock);
 #else
@@ -423,8 +421,8 @@ bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *cli
 #else
         airy_mtx_unlock(&limiter->table_lock);
 #endif
-        /* 内存分配失败：采用可用性优先策略放行，避免内存压力导致网关全量拒绝服务。
-         * 此为 fail-open 取舍——已知风险：极端 OOM 下速率限制可被绕过。 */
+        /* On allocation failure, allow the request (availability first) so memory pressure
+          * does not take the whole gateway down. Known trade-off: limits may be bypassed under OOM. */
         return true;
     }
 
