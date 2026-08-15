@@ -76,7 +76,7 @@ int handle_post_jsonrpc(http_gateway_t *gateway, struct MHD_Connection *connecti
         create_http_response_ex(gateway, connection, 200, json_response, strlen(json_response));
 
     uint64_t response_time_ns = gateway_time_ns() - context->start_time_ns;
-    LOG_DEBUG("请求处理耗时: %lu ns", response_time_ns);
+    AIRY_LOG_DEBUG("请求处理耗时: %lu ns", response_time_ns);
 
     atomic_fetch_add(&gateway->requests_total, 1);
     atomic_fetch_add(&gateway->bytes_received, context->upload_data_size);
@@ -528,7 +528,7 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     addr.sun_family = AF_UNIX;
     AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        LOG_WARN("gateway sse: cannot connect to llm_d (sock=%s)", sock_path);
+        AIRY_LOG_WARN("gateway sse: cannot connect to llm_d (sock=%s)", sock_path);
         close(fd);
         AIRY_FREE(req_str);
         return gw_sse_send_json_error(gateway, connection, 502, "LLM service unreachable");
@@ -542,7 +542,7 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     while (sent < len) {
         ssize_t n = send(fd, req_str + sent, len - sent, 0);
         if (n <= 0) {
-            LOG_WARN("gateway sse: failed to send complete_stream to llm_d");
+            AIRY_LOG_WARN("gateway sse: failed to send complete_stream to llm_d");
             close(fd);
             AIRY_FREE(req_str);
             return gw_sse_send_json_error(gateway, connection, 502, "LLM service unreachable");

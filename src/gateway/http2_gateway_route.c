@@ -26,47 +26,47 @@ void http2_process_request(nghttp2_session *session, int32_t stream_id, void *us
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
 
     if (!ctx || ctx->response_sent_flag) {
-        LOG_WARN("process_request skipped: ctx=%p, already_sent=%d", (void *)ctx,
+        AIRY_LOG_WARN("process_request skipped: ctx=%p, already_sent=%d", (void *)ctx,
                  ctx ? ctx->response_sent_flag : 0);
         return;
     }
 
     char *response_json = NULL;
 
-    LOG_INFO("processing request: stream_id=%d, method=%s, path=%s, body_len=%zu", ctx->stream_id,
+    AIRY_LOG_INFO("processing request: stream_id=%d, method=%s, path=%s, body_len=%zu", ctx->stream_id,
              ctx->method ? ctx->method : "(null)", ctx->path ? ctx->path : "(null)",
              ctx->request_body_len);
 
     if (ctx->method && strcmp(ctx->method, "POST") == 0) {
         /* POST / → JSON-RPC */
         if (ctx->request_body_len > gw->base.max_request_size) {
-            LOG_WARN("request too large: %zu > %zu (stream_id=%d)", ctx->request_body_len,
+            AIRY_LOG_WARN("request too large: %zu > %zu (stream_id=%d)", ctx->request_body_len,
                      gw->base.max_request_size, ctx->stream_id);
             ctx->response_status = 413;
             response_json = jsonrpc_create_error_response(NULL, -413, "Request too large", NULL);
         } else {
             response_json = http2_handle_jsonrpc(gw, ctx);
             if (!response_json) {
-                LOG_ERROR("jsonrpc handler returned NULL (stream_id=%d)", ctx->stream_id);
+                AIRY_LOG_ERROR("jsonrpc handler returned NULL (stream_id=%d)", ctx->stream_id);
                 ctx->response_status = 500;
                 response_json = jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
             }
         }
     } else if (ctx->method && strcmp(ctx->method, "GET") == 0) {
         if (ctx->path && strcmp(ctx->path, "/health") == 0) {
-            LOG_DEBUG("health check request (stream_id=%d)", ctx->stream_id);
+            AIRY_LOG_DEBUG("health check request (stream_id=%d)", ctx->stream_id);
             response_json = http2_handle_health();
         } else {
-            LOG_WARN("GET path not found: %s (stream_id=%d)", ctx->path ? ctx->path : "(null)",
+            AIRY_LOG_WARN("GET path not found: %s (stream_id=%d)", ctx->path ? ctx->path : "(null)",
                      ctx->stream_id);
             ctx->response_status = 404;
             response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
         }
     } else if (ctx->method && strcmp(ctx->method, "OPTIONS") == 0) {
-        LOG_DEBUG("OPTIONS preflight request (stream_id=%d)", ctx->stream_id);
+        AIRY_LOG_DEBUG("OPTIONS preflight request (stream_id=%d)", ctx->stream_id);
         response_json = http2_handle_preflight();
     } else {
-        LOG_WARN("unsupported method: %s (stream_id=%d)", ctx->method ? ctx->method : "(null)",
+        AIRY_LOG_WARN("unsupported method: %s (stream_id=%d)", ctx->method ? ctx->method : "(null)",
                  ctx->stream_id);
         ctx->response_status = 404;
         response_json = jsonrpc_create_error_response(NULL, -32601, "Not Found", NULL);
@@ -87,7 +87,7 @@ void http2_process_request(nghttp2_session *session, int32_t stream_id, void *us
     atomic_fetch_add(&gw->base.bytes_sent, ctx->response_body_len);
 
     int submit_ret = http2_submit_response_impl(session, ctx, gw);
-    LOG_INFO("response submitted: stream_id=%d, status=%d, resp_len=%zu, ret=%d", ctx->stream_id,
+    AIRY_LOG_INFO("response submitted: stream_id=%d, status=%d, resp_len=%zu, ret=%d", ctx->stream_id,
              ctx->response_status, ctx->response_body_len, submit_ret);
 }
 

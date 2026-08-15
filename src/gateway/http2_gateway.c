@@ -40,7 +40,7 @@ static airy_err_t http2_gateway_start_impl(void *impl)
     http2_gateway_t *gw = (http2_gateway_t *)impl;
 
     if (atomic_load(&gw->running)) {
-        LOG_WARN("HTTP/2 gateway already running");
+        AIRY_LOG_WARN("HTTP/2 gateway already running");
         return AIRY_EBUSY;
     }
 
@@ -112,7 +112,7 @@ static airy_err_t http2_gateway_start_impl(void *impl)
 
     gw->event_thread = thread;
 
-    LOG_INFO("HTTP/2 gateway started on %s:%u (max_streams=%u)", gw->base.host, gw->base.port,
+    AIRY_LOG_INFO("HTTP/2 gateway started on %s:%u (max_streams=%u)", gw->base.host, gw->base.port,
              gw->max_concurrent_streams);
 
     return AIRY_SUCCESS;
@@ -140,7 +140,7 @@ static void http2_gateway_stop_impl(void *impl)
         gw->event_thread = NULL;
     }
 
-    LOG_INFO("HTTP/2 gateway stopped");
+    AIRY_LOG_INFO("HTTP/2 gateway stopped");
 }
 
 static void http2_gateway_destroy_impl(void *impl)
@@ -456,7 +456,7 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
     gateway->public_handler = NULL;
     gateway->public_handler_data = NULL;
 
-    LOG_INFO("HTTP/2 gateway created on %s:%u", host, port);
+    AIRY_LOG_INFO("HTTP/2 gateway created on %s:%u", host, port);
 
     return gateway;
 }
@@ -482,7 +482,7 @@ int http2_gateway_stop(http2_gateway_t *gw)
 gateway_t *http2_gateway_create(const char *host __attribute__((unused)),
                                 uint16_t port __attribute__((unused)))
 {
-    LOG_WARN("HTTP/2 gateway not available: nghttp2 not compiled in");
+    AIRY_LOG_WARN("HTTP/2 gateway not available: nghttp2 not compiled in");
     return NULL;
 }
 

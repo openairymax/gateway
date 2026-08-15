@@ -26,7 +26,7 @@ http2_stream_context_t *http2_stream_create(int32_t stream_id)
     }
     ctx->stream_id = stream_id;
     ctx->response_status = 200;
-    LOG_DEBUG("stream created: stream_id=%d", stream_id);
+    AIRY_LOG_DEBUG("stream created: stream_id=%d", stream_id);
     return ctx;
 }
 
@@ -38,7 +38,7 @@ void http2_stream_destroy(http2_stream_context_t *ctx)
     if (!ctx)
         return;
 
-    LOG_DEBUG("stream destroyed: stream_id=%d, req_body=%zuB, resp_body=%zuB, status=%d",
+    AIRY_LOG_DEBUG("stream destroyed: stream_id=%d, req_body=%zuB, resp_body=%zuB, status=%d",
               ctx->stream_id, ctx->request_body_len, ctx->response_body_len, ctx->response_status);
 
     AIRY_FREE(ctx->method);

@@ -104,7 +104,7 @@ char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id)
  *
   * Keeps the airy_sys_agent_* signatures and ABI; at runtime, JSON-RPC requests
   * (agent.spawn/terminate/invoke/list) go to agent_d over a Unix socket,
-  * and responses return via the original C ABI. AIRY_ERR_FAIL when the daemon is down. */
+  * and responses return via the original C ABI. AIRY_ERR_GENERIC_FAIL when the daemon is down. */
 airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
 {
     if (!spec || !out_agent_id)
@@ -137,12 +137,12 @@ airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
     AIRY_FREE(result_str);
     if (!result) {
         SVC_LOG_ERROR("airy_sys_agent_spawn: malformed result JSON");
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     cJSON *aid = cJSON_GetObjectItem(result, "agent_id");
     if (!cJSON_IsString(aid)) {
         cJSON_Delete(result);
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     *out_agent_id = AIRY_STRDUP(aid->valuestring);
     cJSON_Delete(result);
@@ -207,12 +207,12 @@ airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t
     AIRY_FREE(result_str);
     if (!result) {
         SVC_LOG_ERROR("airy_sys_agent_invoke: malformed result JSON");
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     cJSON *out_field = cJSON_GetObjectItem(result, "output");
     if (!cJSON_IsString(out_field)) {
         cJSON_Delete(result);
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     *out_output = AIRY_STRDUP(out_field->valuestring);
     cJSON_Delete(result);
@@ -237,12 +237,12 @@ airy_err_t airy_sys_agent_list(char ***agent_ids, size_t *count)
     AIRY_FREE(result_str);
     if (!result) {
         SVC_LOG_ERROR("airy_sys_agent_list: malformed result JSON");
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     cJSON *arr = cJSON_GetObjectItem(result, "agent_ids");
     if (!cJSON_IsArray(arr)) {
         cJSON_Delete(result);
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     int n = cJSON_GetArraySize(arr);
     if (n <= 0) {
