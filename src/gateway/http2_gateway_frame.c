@@ -97,7 +97,7 @@ int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t st
      * Throttle by gw->base.max_request_size before accumulating memory and
      * immediately RST_STREAM the stream when the limit is exceeded. */
     if (gw && ctx->request_body_len + len > gw->base.max_request_size) {
-        LOG_WARN("request body exceeds limit: %zu + %zu > %zu (stream_id=%d)",
+        AIRY_LOG_WARN("request body exceeds limit: %zu + %zu > %zu (stream_id=%d)",
                  ctx->request_body_len, len, gw->base.max_request_size, stream_id);
         ctx->response_status = 413;
         nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, stream_id, NGHTTP2_CANCEL);
@@ -106,7 +106,7 @@ int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t st
 
     int ret = http2_stream_append_body(ctx, data, len);
     if (ret != 0) {
-        LOG_ERROR("Failed to append body data: %d (stream_id=%d)", ret, stream_id);
+        AIRY_LOG_ERROR("Failed to append body data: %d (stream_id=%d)", ret, stream_id);
         return NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
     }
 
@@ -145,10 +145,10 @@ int http2_on_stream_close(nghttp2_session *session, int32_t stream_id, uint32_t 
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
     if (ctx) {
         if (error_code != NGHTTP2_NO_ERROR) {
-            LOG_WARN("stream closed with error: stream_id=%d, error_code=%u (%s)", stream_id,
+            AIRY_LOG_WARN("stream closed with error: stream_id=%d, error_code=%u (%s)", stream_id,
                      error_code, nghttp2_http2_strerror(error_code));
         } else {
-            LOG_DEBUG("stream closed normally: stream_id=%d", stream_id);
+            AIRY_LOG_DEBUG("stream closed normally: stream_id=%d", stream_id);
         }
         http2_stream_destroy(ctx);
         nghttp2_session_set_stream_user_data(session, stream_id, NULL);

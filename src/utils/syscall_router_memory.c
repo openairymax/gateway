@@ -118,7 +118,7 @@ char *route_memory_methods(const char *method, cJSON *params, cJSON *request_id)
  *
   * Keeps the airy_sys_memory_* signatures and ABI; at runtime, JSON-RPC requests
   * (mem.write/search/get/delete) go to mem_d over a Unix socket; responses
-  * return via the original C ABI. AIRY_ERR_FAIL when the daemon is down; callers degrade. */
+  * return via the original C ABI. AIRY_ERR_GENERIC_FAIL when the daemon is down; callers degrade. */
 airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metadata,
                                  char **out_record_id)
 {
@@ -153,12 +153,12 @@ airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metad
     AIRY_FREE(result_str);
     if (!result) {
         SVC_LOG_ERROR("airy_sys_memory_write: malformed result JSON");
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     cJSON *rid = cJSON_GetObjectItem(result, "record_id");
     if (!cJSON_IsString(rid)) {
         cJSON_Delete(result);
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     *out_record_id = AIRY_STRDUP(rid->valuestring);
     cJSON_Delete(result);
@@ -195,12 +195,12 @@ airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***rec
     AIRY_FREE(result_str);
     if (!result) {
         SVC_LOG_ERROR("airy_sys_memory_search: malformed result JSON");
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     cJSON *arr = cJSON_GetObjectItem(result, "results");
     if (!cJSON_IsArray(arr)) {
         cJSON_Delete(result);
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     int n = cJSON_GetArraySize(arr);
     if (n <= 0) {
@@ -259,7 +259,7 @@ airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *o
     AIRY_FREE(result_str);
     if (!result) {
         SVC_LOG_ERROR("airy_sys_memory_get: malformed result JSON");
-        return AIRY_ERR_FAIL;
+        return AIRY_ERR_GENERIC_FAIL;
     }
     cJSON *data = cJSON_GetObjectItem(result, "data");
     cJSON *len_field = cJSON_GetObjectItem(result, "length");

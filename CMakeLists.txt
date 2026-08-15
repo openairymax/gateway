@@ -145,6 +145,9 @@ target_include_directories(gateway
         ${COMMONS_DIR}/platform/include
         ${COMMONS_DIR}/utils/error/include
         ${COMMONS_DIR}/utils/logging/include
+        # S-2 收敛 (2026-08-14): AIRY_LOG_* 权威宏源
+        # commons/utils/observability/include/logger.h（logging.h 统一入口已引用）
+        ${COMMONS_DIR}/utils/observability/include
         ${COMMONS_DIR}/utils/memory/include
         ${COMMONS_DIR}/utils/sync/include
         ${COMMONS_DIR}/utils/compat/include
@@ -273,7 +276,7 @@ if(BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR}/include
         )
-        target_link_libraries(gateway_benchmark PRIVATE gateway Threads::Threads m)
+        target_link_libraries(gateway_benchmark PRIVATE gateway Threads::Threads airy_platform_libs)
 
         if(AIRY_HAS_CURL)
             target_include_directories(gateway_benchmark PRIVATE ${CURL_INCLUDE_DIRS})

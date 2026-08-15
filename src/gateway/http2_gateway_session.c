@@ -64,13 +64,13 @@ http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd)
 
     ret = nghttp2_submit_settings(sess->session, NGHTTP2_FLAG_NONE, settings_entries, num_entries);
     if (ret != 0) {
-        LOG_ERROR("nghttp2_submit_settings failed: %s (fd=%d)", nghttp2_strerror(ret), fd);
+        AIRY_LOG_ERROR("nghttp2_submit_settings failed: %s (fd=%d)", nghttp2_strerror(ret), fd);
         nghttp2_session_del(sess->session);
         AIRY_FREE(sess);
         return NULL;
     }
 
-    LOG_INFO("HTTP/2 session created: fd=%d, max_streams=%u, window=%d", fd,
+    AIRY_LOG_INFO("HTTP/2 session created: fd=%d, max_streams=%u, window=%d", fd,
              gw->max_concurrent_streams, HTTP2_INITIAL_WINDOW_SIZE);
     return sess;
 }
@@ -83,7 +83,7 @@ void http2_session_destroy(http2_gateway_session_t *sess)
     if (!sess)
         return;
 
-    LOG_INFO("HTTP/2 session destroying: fd=%d", sess->fd);
+    AIRY_LOG_INFO("HTTP/2 session destroying: fd=%d", sess->fd);
 
     if (sess->session) {
         nghttp2_session_del(sess->session);
@@ -118,29 +118,29 @@ int http2_session_recv_data(http2_gateway_session_t *sess)
         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
             return 0;
         }
-        LOG_ERROR("read failed on fd %d: %s", sess->fd, strerror(errno));
+        AIRY_LOG_ERROR("read failed on fd %d: %s", sess->fd, strerror(errno));
         return -1;
     }
 
     if (nread == 0) {
 
-        LOG_INFO("peer closed connection: fd=%d", sess->fd);
+        AIRY_LOG_INFO("peer closed connection: fd=%d", sess->fd);
         return 1;
     }
 
     sess->last_activity_ns = gateway_time_ns();
     atomic_fetch_add(&sess->gateway->base.bytes_received, (uint64_t)nread);
-    LOG_DEBUG("recv %zd bytes on fd=%d", nread, sess->fd);
+    AIRY_LOG_DEBUG("recv %zd bytes on fd=%d", nread, sess->fd);
 
     ssize_t processed = nghttp2_session_mem_recv(sess->session, buf, (size_t)nread);
     if (processed < 0) {
-        LOG_ERROR("nghttp2_session_mem_recv failed: %s (fd=%d, processed=%zd/%zd)",
+        AIRY_LOG_ERROR("nghttp2_session_mem_recv failed: %s (fd=%d, processed=%zd/%zd)",
                   nghttp2_strerror((int)processed), sess->fd, processed, nread);
         return -1;
     }
 
     if ((size_t)processed < (size_t)nread) {
-        LOG_DEBUG("nghttp2 partial recv: processed=%zd/%zd bytes (fd=%d)", processed, nread,
+        AIRY_LOG_DEBUG("nghttp2 partial recv: processed=%zd/%zd bytes (fd=%d)", processed, nread,
                   sess->fd);
     }
 
@@ -170,17 +170,17 @@ int http2_session_send_data(http2_gateway_session_t *sess)
 
         if (written < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                LOG_DEBUG("pending flush deferred: fd=%d, remaining=%zu", sess->fd, remaining);
+                AIRY_LOG_DEBUG("pending flush deferred: fd=%d, remaining=%zu", sess->fd, remaining);
                 return 0;
             }
-            LOG_ERROR("pending write failed on fd %d: %s", sess->fd, strerror(errno));
+            AIRY_LOG_ERROR("pending write failed on fd %d: %s", sess->fd, strerror(errno));
             return -1;
         }
 
         sess->pending_send_offset += (size_t)written;
         sess->last_activity_ns = gateway_time_ns();
         atomic_fetch_add(&sess->gateway->base.bytes_sent, (uint64_t)written);
-        LOG_DEBUG("pending flush: wrote %zd/%zu bytes (fd=%d)", written, remaining, sess->fd);
+        AIRY_LOG_DEBUG("pending flush: wrote %zd/%zu bytes (fd=%d)", written, remaining, sess->fd);
 
         if (sess->pending_send_offset < sess->pending_send_len) {
 
@@ -209,18 +209,18 @@ int http2_session_send_data(http2_gateway_session_t *sess)
                     size_t remaining = total - offset;
                     sess->pending_send_buf = AIRY_MALLOC(remaining);
                     if (!sess->pending_send_buf) {
-                        LOG_ERROR("pending buffer alloc failed: fd=%d, size=%zu", sess->fd,
+                        AIRY_LOG_ERROR("pending buffer alloc failed: fd=%d, size=%zu", sess->fd,
                                   remaining);
                         return -1;
                     }
                     memcpy(sess->pending_send_buf, data_ptr + offset, remaining);
                     sess->pending_send_len = remaining;
                     sess->pending_send_offset = 0;
-                    LOG_WARN("partial write: buffered %zu bytes for fd=%d (total=%zu, sent=%zu)",
+                    AIRY_LOG_WARN("partial write: buffered %zu bytes for fd=%d (total=%zu, sent=%zu)",
                              remaining, sess->fd, total, offset);
                     return 0;
                 }
-                LOG_ERROR("write failed on fd %d: %s", sess->fd, strerror(errno));
+                AIRY_LOG_ERROR("write failed on fd %d: %s", sess->fd, strerror(errno));
                 return -1;
             }
 
@@ -229,13 +229,13 @@ int http2_session_send_data(http2_gateway_session_t *sess)
 
         sess->last_activity_ns = gateway_time_ns();
         atomic_fetch_add(&sess->gateway->base.bytes_sent, (uint64_t)total);
-        LOG_DEBUG("send %zu bytes on fd=%d", total, sess->fd);
+        AIRY_LOG_DEBUG("send %zu bytes on fd=%d", total, sess->fd);
 
         send_len = nghttp2_session_mem_send(sess->session, &data_ptr);
     }
 
     if (send_len < 0) {
-        LOG_ERROR("nghttp2_session_mem_send failed: %s (fd=%d)", nghttp2_strerror((int)send_len),
+        AIRY_LOG_ERROR("nghttp2_session_mem_send failed: %s (fd=%d)", nghttp2_strerror((int)send_len),
                   sess->fd);
         return -1;
     }

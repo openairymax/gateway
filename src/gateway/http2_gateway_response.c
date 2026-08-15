@@ -76,7 +76,7 @@ int http2_submit_response_impl(nghttp2_session *session, http2_stream_context_t 
         /* P0: header-build OOM - partial allocations were cleaned up, so never
          * submit an illegal nv with value=NULL; terminate the stream instead to
          * avoid an nghttp2_submit_response crash. */
-        LOG_ERROR("failed to build response headers (stream_id=%d)", ctx->stream_id);
+        AIRY_LOG_ERROR("failed to build response headers (stream_id=%d)", ctx->stream_id);
         nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, ctx->stream_id,
                                   NGHTTP2_INTERNAL_ERROR);
         ctx->response_sent_flag = true;
@@ -92,7 +92,7 @@ int http2_submit_response_impl(nghttp2_session *session, http2_stream_context_t 
     http2_free_response_headers(nva, nvlen);
 
     if (ret != 0) {
-        LOG_ERROR("nghttp2_submit_response failed: %s (stream_id=%d)", nghttp2_strerror(ret),
+        AIRY_LOG_ERROR("nghttp2_submit_response failed: %s (stream_id=%d)", nghttp2_strerror(ret),
                   ctx->stream_id);
     } else {
         ctx->response_sent_flag = true;

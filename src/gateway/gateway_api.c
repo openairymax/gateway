@@ -59,7 +59,7 @@ void gateway_destroy(gateway_t *gw)
 int gateway_start(gateway_t *gw)
 {
     AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
-    LOG_INFO("gateway_start: starting gateway (type=%d)", gw->type);
+    AIRY_LOG_INFO("gateway_start: starting gateway (type=%d)", gw->type);
     int err = 0;
     if (gw->ops && gw->ops->start) {
         err = gw->ops->start(gw->impl);
@@ -67,9 +67,9 @@ int gateway_start(gateway_t *gw)
     if (err == 0) {
         g_gateway_stats.start_time = time(NULL);
         g_gateway_stats.running = true;
-        LOG_INFO("gateway_start: gateway started successfully");
+        AIRY_LOG_INFO("gateway_start: gateway started successfully");
     } else {
-        LOG_ERROR("gateway_start: start failed, err=%d", err);
+        AIRY_LOG_ERROR("gateway_start: start failed, err=%d", err);
     }
     return err;
 }
@@ -77,14 +77,14 @@ int gateway_start(gateway_t *gw)
 int gateway_stop(gateway_t *gw)
 {
     AIRY_CHECK(gw != NULL, AIRY_ERR_NULL_POINTER, "gw is NULL");
-    LOG_INFO("gateway_stop: stopping gateway (type=%d, uptime=%gs)", gw->type,
+    AIRY_LOG_INFO("gateway_stop: stopping gateway (type=%d, uptime=%gs)", gw->type,
              difftime(time(NULL), g_gateway_stats.start_time));
     if (gw->ops && gw->ops->stop) {
         gw->ops->stop(gw->impl);
     }
     g_gateway_stats.running = false;
     g_gateway_stats.active_connections = 0;
-    LOG_INFO("gateway_stop: gateway stopped");
+    AIRY_LOG_INFO("gateway_stop: gateway stopped");
     return 0;
 }
 

@@ -24,13 +24,13 @@ void http2_event_loop_accept(http2_gateway_t *gw)
     int fd = accept(gw->listen_fd, (struct sockaddr *)&addr, &addr_len);
     if (fd < 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-            LOG_ERROR("accept failed: %s", strerror(errno));
+            AIRY_LOG_ERROR("accept failed: %s", strerror(errno));
         }
         return;
     }
 
     if (gw->session_count >= gw->max_concurrent_streams) {
-        LOG_WARN("connection limit reached (%zu/%u), rejecting new connection", gw->session_count,
+        AIRY_LOG_WARN("connection limit reached (%zu/%u), rejecting new connection", gw->session_count,
                  gw->max_concurrent_streams);
         close(fd);
         return;
@@ -62,7 +62,7 @@ void http2_event_loop_accept(http2_gateway_t *gw)
 
     char ip_buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &addr.sin_addr, ip_buf, sizeof(ip_buf));
-    LOG_INFO("connection accepted: %s:%d → fd=%d (sessions=%zu/%u)", ip_buf, ntohs(addr.sin_port),
+    AIRY_LOG_INFO("connection accepted: %s:%d → fd=%d (sessions=%zu/%u)", ip_buf, ntohs(addr.sin_port),
              fd, gw->session_count, gw->max_concurrent_streams);
 }
 
@@ -81,7 +81,7 @@ void http2_event_loop_cleanup(http2_gateway_t *gw)
 
         if (!should_close && timeout_ns > 0) {
             if ((now - sess->last_activity_ns) > timeout_ns) {
-                LOG_INFO("session timeout: fd=%d, idle=%llums", sess->fd,
+                AIRY_LOG_INFO("session timeout: fd=%d, idle=%llums", sess->fd,
                          (unsigned long long)((now - sess->last_activity_ns) / 1000000ULL));
                 should_close = true;
             }
@@ -90,7 +90,7 @@ void http2_event_loop_cleanup(http2_gateway_t *gw)
         if (!should_close) {
             if (!nghttp2_session_want_read(sess->session) &&
                 !nghttp2_session_want_write(sess->session)) {
-                LOG_DEBUG("nghttp2 session done: fd=%d (no more read/write)", sess->fd);
+                AIRY_LOG_DEBUG("nghttp2 session done: fd=%d (no more read/write)", sess->fd);
                 should_close = true;
             }
         }
@@ -98,7 +98,7 @@ void http2_event_loop_cleanup(http2_gateway_t *gw)
         if (should_close) {
 
             if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
-                LOG_WARN("closing session with %zu bytes unsent: fd=%d",
+                AIRY_LOG_WARN("closing session with %zu bytes unsent: fd=%d",
                          sess->pending_send_len - sess->pending_send_offset, sess->fd);
             }
 
@@ -122,7 +122,7 @@ void *http2_event_loop(void *arg)
 {
     http2_gateway_t *gw = (http2_gateway_t *)arg;
 
-    LOG_INFO("HTTP/2 event loop started (port=%u)", gw->base.port);
+    AIRY_LOG_INFO("HTTP/2 event loop started (port=%u)", gw->base.port);
 
     while (atomic_load(&gw->running)) {
 
@@ -170,7 +170,7 @@ void *http2_event_loop(void *arg)
                 AIRY_FREE(fds);
                 continue;
             }
-            LOG_ERROR("poll failed: %s", strerror(errno));
+            AIRY_LOG_ERROR("poll failed: %s", strerror(errno));
             AIRY_FREE(fds);
             break;
         }
@@ -179,7 +179,7 @@ void *http2_event_loop(void *arg)
             http2_event_loop_accept(gw);
         }
         if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            LOG_ERROR("Listen socket error");
+            AIRY_LOG_ERROR("Listen socket error");
             AIRY_FREE(fds);
             break;
         }
@@ -190,7 +190,7 @@ void *http2_event_loop(void *arg)
 
             if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
 
-                LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)", sess->fd, revents,
+                AIRY_LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)", sess->fd, revents,
                          (revents & POLLERR) ? "ERR " : "", (revents & POLLHUP) ? "HUP " : "",
                          (revents & POLLNVAL) ? "NVAL" : "");
                 http2_gateway_remove_session(gw, i);
@@ -237,7 +237,7 @@ void *http2_event_loop(void *arg)
         http2_gateway_remove_session(gw, 0);
     }
 
-    LOG_INFO("HTTP/2 event loop stopped");
+    AIRY_LOG_INFO("HTTP/2 event loop stopped");
     return NULL;
 }
 
