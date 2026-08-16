@@ -44,6 +44,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 /*
@@ -394,14 +395,36 @@ static airy_err_t http_gateway_start(void *gateway_impl)
             conn_timeout = (unsigned int)v;
     }
 
+    /* HTTP 线程池大小（工业级目标：大型服务器吞吐可扩展）。
+     * GATEWAY_HTTP_THREADS 显式覆盖；缺省按 CPU 核数自适应，
+     * 下限 4、上限 32，避免在单核/低端设备上无谓开线程。 */
+    unsigned int pool_size = 4;
+    const char *env_threads = getenv("GATEWAY_HTTP_THREADS");
+    if (env_threads) {
+        unsigned long v = strtoul(env_threads, NULL, 10);
+        if (v >= 1 && v <= 1024)
+            pool_size = (unsigned int)v;
+    } else {
+        long nproc = 0;
+#ifdef _WIN32
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        nproc = (long)si.dwNumberOfProcessors;
+#else
+        nproc = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+        if (nproc >= 4)
+            pool_size = (nproc > 32) ? 32 : (unsigned int)nproc;
+    }
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
     gateway->daemon =
         MHD_start_daemon(MHD_USE_EPOLL_INTERNAL_THREAD | MHD_USE_TURBO, gateway->port, NULL, NULL,
                          handle_http_request, gateway, MHD_OPTION_CONNECTION_LIMIT, conn_limit,
                          MHD_OPTION_CONNECTION_TIMEOUT, conn_timeout, MHD_OPTION_THREAD_POOL_SIZE,
-                         4, MHD_OPTION_NOTIFY_COMPLETED, http_request_completed_callback, NULL,
-                         MHD_OPTION_END);
+                         pool_size, MHD_OPTION_NOTIFY_COMPLETED, http_request_completed_callback,
+                         NULL, MHD_OPTION_END);
 #pragma GCC diagnostic pop
 
     if (!gateway->daemon) {
