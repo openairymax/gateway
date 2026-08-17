@@ -311,9 +311,13 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
   *
   * SSE event envelope (TUI parses these):
   *   text:       data: <chunk>\n\n
+  *   reasoning:  data: {"__airy_evt":"reasoning","content":"..."}\n\n
   *   tool_call:  data: {"__airy_evt":"tool_call","tool":"...","args":{...}}\n\n
   *   tool_result:data: {"__airy_evt":"tool_result","tool":"...","ok":1,"summary":"..."}\n\n
   *   done:       data: [DONE]\n\n
+  *
+  * reasoning 为 thinking 模型（DeepSeek 等）的思考链，在最终文本之前
+  * 透传，前端折叠展示（F6，2026-08-17）。
   */
 #define GW_SSE_CHAT_PATH "/api/v1/chat/stream"
 #define GW_SSE_DEFAULT_MODEL "deepseek-v4-flash"
@@ -341,8 +345,10 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
   * connection so a blocking step is acceptable.
   */
 typedef enum {
-    GW_SSE_PHASE_LLM_ROUND = 0, /* waiting for / parsing a non-streaming LLM reply */
+    GW_SSE_PHASE_LLM_ROUND = 0, /* starting a complete_stream round (keep fd) */
+    GW_SSE_PHASE_LLM_STREAM,    /* consuming llm_d streaming output incrementally */
     GW_SSE_PHASE_EXEC_TOOLS,    /* executing pending tool_calls one by one */
+    GW_SSE_PHASE_REASONING,     /* emitting the model's reasoning_content (思考链) */
     GW_SSE_PHASE_FINAL_TEXT,    /* chunking the final reply text */
     GW_SSE_PHASE_DONE           /* [DONE] emitted */
 } gw_sse_phase_t;
@@ -364,10 +370,23 @@ typedef struct {
     int tc_idx;
     int exec_done;    /* 1 = current tool already executed (result stashed) */
     char *stash_result; /* tool result text for the pending tool_result event */
+    /* reasoning (思考链) from the model, emitted before the final text */
+    char *reasoning;
+    /* 流中增量 reasoning（RS 'R' 帧逐个到达）：每块立即转发为
+     * `__airy_evt:reasoning` 事件（实时思考链），同时累积到 reasoning */
+    char *reasoning_delta;
+    int reasoning_streamed; /* 思考链是否已随流式增量实时转发 */
     /* final text streaming */
     char *final_text;
     size_t final_len;
     size_t final_pos;
+    /* llm_d complete_stream 增量缓冲：原始字节累积，逐步解析
+     * （文本增量直接转发；RS 帧 'T' 解析 tool_calls、'R' 解析 reasoning） */
+    char *stream_buf;
+    size_t stream_len;
+    size_t stream_cap;
+    int stream_eof;   /* llm.sock 已读到 EOF */
+    int text_streamed; /* 正文是否已随流式增量实时转发（FINAL_TEXT 不再重复） */
     /* in-flight step result (one SSE frame), written by the current phase */
     char *step_buf;
     size_t step_len;
@@ -553,16 +572,21 @@ static char *gw_sse_rpc(const char *sock_path, const char *req_json, int timeout
 }
 
 /**
-  * @brief Build a non-streaming llm.complete JSON-RPC request (with the tool schema)
- */
-static char *gw_sse_build_llm_request(const char *model, const cJSON *messages)
+  * @brief Build a llm.complete / llm.complete_stream JSON-RPC request
+  *        (with the tool schema)
+  *
+  * `streaming` selects the method: "complete_stream" (incremental text +
+  * RS control frames over the socket) vs "complete" (single JSON response).
+  */
+static char *gw_sse_build_llm_request(const char *model, const cJSON *messages, int streaming)
 {
     cJSON *llm_req = cJSON_CreateObject();
     if (!llm_req)
         return NULL;
     cJSON_AddStringToObject(llm_req, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(llm_req, "id", 1);
-    cJSON_AddStringToObject(llm_req, "method", "complete");
+    cJSON_AddStringToObject(llm_req, "method",
+                            streaming ? "complete_stream" : "complete");
     cJSON *llm_params = cJSON_CreateObject();
     if (!llm_params) {
         cJSON_Delete(llm_req);
@@ -583,45 +607,43 @@ static char *gw_sse_build_llm_request(const char *model, const cJSON *messages)
 }
 
 /**
-  * @brief Extract tool_calls from an llm_d complete response
-  * @return 0 with *out (caller cJSON_Delete) present; non-zero without
+  * @brief Connect to llm.sock, send the request, and return the open fd
+  *        for incremental reads (complete_stream). Returns -1 on failure.
   */
-static int gw_sse_parse_tool_calls(const char *llm_resp, cJSON **out)
+static int gw_sse_stream_start(const char *sock_path, const char *req_json, int timeout_s)
 {
-    *out = NULL;
-    cJSON *root = cJSON_Parse(llm_resp);
-    if (!root)
+#ifndef _WIN32
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0)
         return -1;
-    cJSON *result = cJSON_GetObjectItem(root, "result");
-    cJSON *choices = result ? cJSON_GetObjectItem(result, "choices") : NULL;
-    cJSON *choice0 =
-        (choices && cJSON_GetArraySize(choices) > 0) ? cJSON_GetArrayItem(choices, 0) : NULL;
-    cJSON *tc = choice0 ? cJSON_GetObjectItem(choice0, "tool_calls") : NULL;
-    if (cJSON_IsArray(tc) && cJSON_GetArraySize(tc) > 0) {
-        *out = cJSON_Duplicate(tc, 1);
+    struct sockaddr_un addr;
+    AIRY_MEMSET(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        close(fd);
+        return -1;
     }
-    cJSON_Delete(root);
-    return *out ? 0 : -1;
-}
+    struct timeval tv = {timeout_s, 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-/**
-  * @brief Extract the reply text (choices[0].content) from an llm_d complete response
-  * @return AIRY_MALLOC text ("" when absent); NULL only on parse failure
- */
-static char *gw_sse_parse_content(const char *llm_resp)
-{
-    cJSON *root = cJSON_Parse(llm_resp);
-    if (!root)
-        return NULL;
-    cJSON *result = cJSON_GetObjectItem(root, "result");
-    cJSON *choices = result ? cJSON_GetObjectItem(result, "choices") : NULL;
-    cJSON *choice0 =
-        (choices && cJSON_GetArraySize(choices) > 0) ? cJSON_GetArrayItem(choices, 0) : NULL;
-    cJSON *content = choice0 ? cJSON_GetObjectItem(choice0, "content") : NULL;
-    char *text = AIRY_STRDUP(cJSON_IsString(content) && content->valuestring ? content->valuestring
-                                                                             : "");
-    cJSON_Delete(root);
-    return text;
+    size_t len = strlen(req_json);
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t n = send(fd, req_json + sent, len - sent, 0);
+        if (n <= 0) {
+            close(fd);
+            return -1;
+        }
+        sent += (size_t)n;
+    }
+    return fd;
+#else
+    (void)sock_path;
+    (void)req_json;
+    (void)timeout_s;
+    return -1;
+#endif
 }
 
 /**
@@ -717,6 +739,145 @@ static char *gw_sse_frame(const char *payload)
 }
 
 /**
+ * @brief Append raw bytes to the llm_d streaming buffer (auto-grow)
+ * @return 0 on success, -1 on OOM
+ */
+static int gw_sse_stream_append(gw_sse_ctx_t *sctx, const char *data, size_t len)
+{
+    if (len == 0)
+        return 0;
+    if (sctx->stream_len + len + 1 > sctx->stream_cap) {
+        size_t new_cap = sctx->stream_cap ? sctx->stream_cap : 8192;
+        while (new_cap < sctx->stream_len + len + 1)
+            new_cap *= 2;
+        if (new_cap > 64 * 1024 * 1024)
+            return -1;
+        char *np = (char *)AIRY_REALLOC(sctx->stream_buf, new_cap);
+        if (!np)
+            return -1;
+        sctx->stream_buf = np;
+        sctx->stream_cap = new_cap;
+    }
+    AIRY_MEMCPY(sctx->stream_buf + sctx->stream_len, data, len);
+    sctx->stream_len += len;
+    sctx->stream_buf[sctx->stream_len] = '\0';
+    return 0;
+}
+
+/* llm_d complete_stream 控制帧分隔符（与 llm_d providers 对齐）：
+ * 文本增量直接裸传；RS 帧仅两个：RS 'T' <tool_calls_json> RS 与
+ * RS 'R' <reasoning> RS。RS (0x1E) 不出现在 JSON 与 LLM 文本中。 */
+#define GW_SSE_STREAM_RS 0x1e
+#define GW_SSE_STREAM_TAG_TOOL 'T'
+#define GW_SSE_STREAM_TAG_REASON 'R'
+
+/**
+ * @brief Parse one complete RS control frame out of the streaming buffer
+ *
+ * Extracts tool_calls ('T') or reasoning ('R') payload into the ctx.
+ * @return 1 when a frame was consumed (buffer advanced); 0 when no complete
+ *         frame is available yet (need more data)
+ */
+static int gw_sse_stream_consume_frames(gw_sse_ctx_t *sctx)
+{
+    int consumed = 0;
+    for (;;) {
+        char *rs = sctx->stream_buf ? (char *)memchr(sctx->stream_buf, GW_SSE_STREAM_RS,
+                                                     sctx->stream_len) : NULL;
+        if (!rs)
+            return consumed; /* no frame boundary */
+        size_t head = (size_t)(rs - sctx->stream_buf);
+        if (head + 2 > sctx->stream_len)
+            return consumed; /* need tag byte */
+        char tag = rs[1];
+        if (tag != GW_SSE_STREAM_TAG_TOOL && tag != GW_SSE_STREAM_TAG_REASON) {
+            /* Unknown frame: skip this RS byte and continue scanning. */
+            sctx->stream_len -= head + 1;
+            AIRY_MEMMOVE(sctx->stream_buf, rs + 1, sctx->stream_len);
+            sctx->stream_buf[sctx->stream_len] = '\0';
+            consumed = 1;
+            continue;
+        }
+        /* Find the closing RS (payload runs from rs+2 .. end). */
+        char *end = (char *)memchr(rs + 2, GW_SSE_STREAM_RS,
+                                   sctx->stream_len - (head + 2));
+        if (!end)
+            return consumed; /* incomplete frame, wait for more data */
+        size_t plen = (size_t)(end - (rs + 2));
+        char *payload = (char *)AIRY_MALLOC(plen + 1);
+        if (!payload)
+            return consumed;
+        AIRY_MEMCPY(payload, rs + 2, plen);
+        payload[plen] = '\0';
+
+        if (tag == GW_SSE_STREAM_TAG_TOOL) {
+            cJSON *tc = cJSON_Parse(payload);
+            if (tc && cJSON_IsArray(tc) && cJSON_GetArraySize(tc) > 0) {
+                if (sctx->tool_calls)
+                    cJSON_Delete(sctx->tool_calls);
+                sctx->tool_calls = tc;
+            } else if (tc) {
+                cJSON_Delete(tc);
+            }
+        } else { /* GW_SSE_STREAM_TAG_REASON */
+            /* 增量 reasoning 帧：每块立即转发（实时思考链），同时累积 */
+            AIRY_FREE(sctx->reasoning_delta);
+            sctx->reasoning_delta = payload;
+            payload = NULL;
+            /* 累积完整 reasoning（供 tool 续轮 assistant 消息回传） */
+            size_t old = sctx->reasoning ? strlen(sctx->reasoning) : 0;
+            size_t add = strlen(sctx->reasoning_delta);
+            char *np = (char *)AIRY_REALLOC(sctx->reasoning, old + add + 1);
+            if (np) {
+                sctx->reasoning = np;
+                AIRY_MEMCPY(sctx->reasoning + old, sctx->reasoning_delta, add);
+                sctx->reasoning[old + add] = '\0';
+            }
+            sctx->reasoning_streamed = 1;
+        }
+        AIRY_FREE(payload);
+
+        size_t total = (size_t)(end - sctx->stream_buf) + 1;
+        sctx->stream_len -= total;
+        AIRY_MEMMOVE(sctx->stream_buf, end + 1, sctx->stream_len);
+        sctx->stream_buf[sctx->stream_len] = '\0';
+        consumed = 1;
+    }
+}
+
+/**
+ * @brief Extract a text chunk before the first RS frame (real streaming)
+ *
+ * The bytes before the first RS boundary are plain LLM text; forward them
+ * verbatim as an SSE "data: <text>\n\n" event so the client sees output
+ * arrive incrementally instead of after the whole round completes.
+ * @return 1 when a text event was built into step_buf; 0 when nothing
+ *         (buffer empty or starts with an RS frame)
+ */
+static int gw_sse_stream_extract_text(gw_sse_ctx_t *sctx)
+{
+    if (!sctx->stream_buf || sctx->stream_len == 0)
+        return 0;
+    char *rs = (char *)memchr(sctx->stream_buf, GW_SSE_STREAM_RS, sctx->stream_len);
+    size_t take = rs ? (size_t)(rs - sctx->stream_buf) : sctx->stream_len;
+    if (take == 0)
+        return 0; /* buffer starts with a control frame */
+    sctx->step_buf = (char *)AIRY_MALLOC(take + 9);
+    if (!sctx->step_buf)
+        return 0;
+    AIRY_MEMCPY(sctx->step_buf, "data: ", 6);
+    AIRY_MEMCPY(sctx->step_buf + 6, sctx->stream_buf, take);
+    sctx->step_buf[6 + take] = '\n';
+    sctx->step_buf[6 + take + 1] = '\n';
+    sctx->step_buf[6 + take + 2] = '\0';
+    sctx->step_len = 6 + take + 2;
+    sctx->stream_len -= take;
+    AIRY_MEMMOVE(sctx->stream_buf, sctx->stream_buf + take, sctx->stream_len);
+    sctx->stream_buf[sctx->stream_len] = '\0';
+    return 1;
+}
+
+/**
   * @brief Append a tool result message to the conversation history
   */
 static void gw_sse_append_tool_result(cJSON *messages, const char *tool_call_id,
@@ -778,9 +939,12 @@ static char *gw_sse_feedback(const char *text)
   * to buf; MHD_CONTENT_READER_END_OF_STREAM (-1) marks the stream end.
   * Each invocation produces exactly one SSE frame (the step_buf produced by
   * the current phase); phases are advanced step by step:
-  *   LLM_ROUND   -> non-streaming llm.complete, parse tool_calls; if the
-  *                  model calls tools, emit the first tool_call event and
-  *                  switch to EXEC_TOOLS; otherwise chunk the reply text.
+  *   LLM_ROUND   -> start llm.complete_stream (keep the socket open), then
+  *                  LLM_STREAM consumes the incremental output: text chunks
+  *                  are forwarded immediately (real streaming), RS frames
+  *                  carry tool_calls ('T') and reasoning ('R'); on EOF, if
+  *                  tools were requested switch to EXEC_TOOLS, else emit the
+  *                  reasoning event then [DONE].
   *   EXEC_TOOLS  -> emit tool_call event (first invocation per tool), then
   *                  execute via tool.sock, feed back and emit tool_result;
   *                  loop through all pending calls, then back to LLM_ROUND.
@@ -822,50 +986,170 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                 sctx->phase = GW_SSE_PHASE_FINAL_TEXT;
                 continue;
             }
-            char *req_str = gw_sse_build_llm_request(sctx->model, sctx->messages);
+            /* 真流式：发起 llm.complete_stream 并保持 fd 打开，增量读取。
+             * 文本增量实时转发（打字机动效），RS 控制帧解析
+             * tool_calls（'T'）与 reasoning（'R'）。 */
+            char *req_str = gw_sse_build_llm_request(sctx->model, sctx->messages, 1);
             if (!req_str) {
                 sctx->done = 1;
                 AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
                 return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
             }
-            char *llm_resp = gw_sse_rpc(sctx->llm_sock, req_str, GW_SSE_RECV_TIMEOUT_S);
+            if (sctx->fd >= 0) {
+                close(sctx->fd);
+                sctx->fd = -1;
+            }
+            int sfd = gw_sse_stream_start(sctx->llm_sock, req_str, GW_SSE_RECV_TIMEOUT_S);
             AIRY_FREE(req_str);
-            if (!llm_resp) {
+            if (sfd < 0) {
                 sctx->done = 1;
                 AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
                 return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
             }
+            sctx->fd = sfd;
+            sctx->stream_len = 0;
+            sctx->stream_eof = 0;
+            sctx->text_streamed = 0;
+            sctx->phase = GW_SSE_PHASE_LLM_STREAM;
+            continue; /* fall into LLM_STREAM below */
+        }
 
-            cJSON *tool_calls = NULL;
-            gw_sse_parse_tool_calls(llm_resp, &tool_calls);
-            char *text = gw_sse_parse_content(llm_resp);
-
-            /* Preserve the assistant round in history (for the next LLM call). */
-            if (tool_calls) {
+        case GW_SSE_PHASE_LLM_STREAM: {
+            /* 增量读取 llm.sock：文本增量实时转发为 SSE 事件，RS 帧解析
+             * tool_calls / reasoning。阻塞读取（SO_RCVTIMEO 兜底），每次
+             * content_reader 调用转发一段文本或处理完一个控制帧。 */
+            for (;;) {
+                /* 1. 先消费缓冲中已有的完整 RS 控制帧（tool_calls/reasoning） */
+                gw_sse_stream_consume_frames(sctx);
+                /* 2. 增量 reasoning 帧：立即转发为思考链事件（实时可见） */
+                if (sctx->reasoning_delta) {
+                    char *delta = sctx->reasoning_delta;
+                    sctx->reasoning_delta = NULL;
+                    cJSON *revt = cJSON_CreateObject();
+                    if (revt) {
+                        cJSON_AddStringToObject(revt, "__airy_evt", "reasoning");
+                        cJSON_AddStringToObject(revt, "content", delta);
+                        char *json = cJSON_PrintUnformatted(revt);
+                        cJSON_Delete(revt);
+                        if (json) {
+                            size_t jl = strlen(json);
+                            sctx->step_buf = (char *)AIRY_MALLOC(jl + 12);
+                            if (sctx->step_buf) {
+                                AIRY_MEMCPY(sctx->step_buf, "data: ", 6);
+                                AIRY_MEMCPY(sctx->step_buf + 6, json, jl);
+                                sctx->step_buf[6 + jl] = '\n';
+                                sctx->step_buf[6 + jl + 1] = '\n';
+                                sctx->step_buf[6 + jl + 2] = '\0';
+                                sctx->step_len = 6 + jl + 2;
+                            }
+                            AIRY_FREE(json);
+                        }
+                    }
+                    AIRY_FREE(delta);
+                    if (sctx->step_buf && sctx->step_len > 0)
+                        break; /* 先返回 reasoning 事件 */
+                    continue;
+                }
+                /* 3. 提取 RS 帧之前的文本增量 → 转发（真流式动效） */
+                if (gw_sse_stream_extract_text(sctx)) {
+                    sctx->text_streamed = 1;
+                    break; /* step_buf 已填充，返回该帧 */
+                }
+                /* 4. 缓冲已空或只剩不完整帧：读更多数据 */
+                if (sctx->stream_eof) {
+                    /* 流已结束（EOF）→ 收尾 */
+                    break;
+                }
+                char tmp[4096];
+                ssize_t n = recv(sctx->fd, tmp, sizeof(tmp), 0);
+                if (n > 0) {
+                    gw_sse_stream_append(sctx, tmp, (size_t)n);
+                    continue;
+                }
+                if (n == 0) {
+                    /* EOF：llm_d complete_stream 无 JSON-RPC 包络，EOF 即结束 */
+                    sctx->stream_eof = 1;
+                    close(sctx->fd);
+                    sctx->fd = -1;
+                    continue;
+                }
+                /* n < 0 */
+                if (errno == EINTR)
+                    continue;
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    /* 超时：视为异常结束 */
+                    sctx->stream_eof = 1;
+                    close(sctx->fd);
+                    sctx->fd = -1;
+                    continue;
+                }
+                /* 其他错误：结束 */
+                sctx->stream_eof = 1;
+                close(sctx->fd);
+                sctx->fd = -1;
+                continue;
+            }
+            /* 退出循环：若 step_buf 有文本帧 → 返回它 */
+            if (sctx->step_buf && sctx->step_len > 0)
+                break;
+            /* 流结束收尾：解析剩余 RS 帧，判定结果 */
+            gw_sse_stream_consume_frames(sctx);
+            if (sctx->reasoning_delta) {
+                /* 最后一个 reasoning 增量块尚未转发 */
+                char *delta = sctx->reasoning_delta;
+                sctx->reasoning_delta = NULL;
+                cJSON *revt = cJSON_CreateObject();
+                if (revt) {
+                    cJSON_AddStringToObject(revt, "__airy_evt", "reasoning");
+                    cJSON_AddStringToObject(revt, "content", delta);
+                    char *json = cJSON_PrintUnformatted(revt);
+                    cJSON_Delete(revt);
+                    if (json) {
+                        size_t jl = strlen(json);
+                        sctx->step_buf = (char *)AIRY_MALLOC(jl + 12);
+                        if (sctx->step_buf) {
+                            AIRY_MEMCPY(sctx->step_buf, "data: ", 6);
+                            AIRY_MEMCPY(sctx->step_buf + 6, json, jl);
+                            sctx->step_buf[6 + jl] = '\n';
+                            sctx->step_buf[6 + jl + 1] = '\n';
+                            sctx->step_buf[6 + jl + 2] = '\0';
+                            sctx->step_len = 6 + jl + 2;
+                        }
+                        AIRY_FREE(json);
+                    }
+                }
+                AIRY_FREE(delta);
+                if (sctx->step_buf && sctx->step_len > 0)
+                    break;
+            }
+            if (sctx->tool_calls) {
+                /* Preserve the assistant round in history (for the next LLM call).
+                 * DeepSeek thinking mode 要求续轮回传 reasoning_content，
+                 * 否则上游 400（与 cli_chat.c 工具续轮语义一致）。 */
                 cJSON *assistant_msg = cJSON_CreateObject();
                 if (assistant_msg) {
                     cJSON_AddStringToObject(assistant_msg, "role", "assistant");
-                    cJSON_AddStringToObject(assistant_msg, "content", text ? text : "");
+                    cJSON_AddStringToObject(assistant_msg, "content", "");
+                    if (sctx->reasoning && sctx->reasoning[0])
+                        cJSON_AddStringToObject(assistant_msg, "reasoning_content",
+                                                sctx->reasoning);
                     cJSON_AddItemToObject(assistant_msg, "tool_calls",
-                                          cJSON_Duplicate(tool_calls, 1));
+                                          cJSON_Duplicate(sctx->tool_calls, 1));
                     cJSON_AddItemToArray(sctx->messages, assistant_msg);
                 }
-                sctx->tool_calls = tool_calls;
-                sctx->tc_count = cJSON_GetArraySize(tool_calls);
+                sctx->tc_count = cJSON_GetArraySize(sctx->tool_calls);
                 sctx->tc_idx = 0;
                 sctx->phase = GW_SSE_PHASE_EXEC_TOOLS;
                 sctx->tool_round++;
-                if (text)
-                    AIRY_FREE(text);
                 continue; /* fall through to EXEC_TOOLS below */
             }
-
-            /* Final answer without tools: chunk it. */
-            sctx->final_text = text ? text : AIRY_STRDUP("");
-            sctx->final_len = strlen(sctx->final_text);
+            /* 无工具：最终正文已实时转发；思考链已随流式增量实时转发
+             * （reasoning_streamed），不再走 REASONING 阶段（避免重复），
+             * 直接 FINAL_TEXT（final_text 为空 → 立即 [DONE]）。 */
+            sctx->final_text = AIRY_STRDUP("");
+            sctx->final_len = 0;
             sctx->final_pos = 0;
             sctx->phase = GW_SSE_PHASE_FINAL_TEXT;
-            AIRY_FREE(llm_resp);
             continue;
         }
 
@@ -974,6 +1258,40 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             break; /* return the tool_result frame */
         }
 
+        case GW_SSE_PHASE_REASONING: {
+            /* 思考链（reasoning_content）透传为单条 SSE 事件：
+             *   data: {"__airy_evt":"reasoning","content":"..."}\n\n
+             * 前端（TUI/CLI）折叠展示；完成后转入 FINAL_TEXT 流式正文。 */
+            if (!sctx->reasoning) {
+                sctx->phase = GW_SSE_PHASE_FINAL_TEXT;
+                continue;
+            }
+            cJSON *revt = cJSON_CreateObject();
+            if (revt) {
+                cJSON_AddStringToObject(revt, "__airy_evt", "reasoning");
+                cJSON_AddStringToObject(revt, "content", sctx->reasoning);
+                char *json = cJSON_PrintUnformatted(revt);
+                cJSON_Delete(revt);
+                if (json) {
+                    size_t jl = strlen(json);
+                    sctx->step_buf = (char *)AIRY_MALLOC(jl + 12);
+                    if (sctx->step_buf) {
+                        AIRY_MEMCPY(sctx->step_buf, "data: ", 6);
+                        AIRY_MEMCPY(sctx->step_buf + 6, json, jl);
+                        sctx->step_buf[6 + jl] = '\n';
+                        sctx->step_buf[6 + jl + 1] = '\n';
+                        sctx->step_buf[6 + jl + 2] = '\0';
+                        sctx->step_len = 6 + jl + 2;
+                    }
+                    AIRY_FREE(json);
+                }
+            }
+            AIRY_FREE(sctx->reasoning);
+            sctx->reasoning = NULL;
+            sctx->phase = GW_SSE_PHASE_FINAL_TEXT;
+            break; /* 顶部 step_buf drain 先发送 reasoning 事件 */
+        }
+
         case GW_SSE_PHASE_FINAL_TEXT: {
             if (sctx->final_pos >= sctx->final_len) {
                 /* Record the completion into the hall event flow exactly
@@ -1055,7 +1373,10 @@ static void gw_sse_content_free(void *cls)
         cJSON_Delete(sctx->tool_calls);
     if (sctx->stash_result)
         AIRY_FREE(sctx->stash_result);
+    AIRY_FREE(sctx->reasoning);
+    AIRY_FREE(sctx->reasoning_delta);
     AIRY_FREE(sctx->final_text);
+    AIRY_FREE(sctx->stream_buf);
     AIRY_FREE(sctx->step_buf);
     AIRY_FREE(sctx);
 }
@@ -1072,9 +1393,10 @@ static void gw_sse_content_free(void *cls)
   *
   * Flow: parse model/messages -> seed the tool-loop state machine (messages
   * kept in cJSON form) -> stream via MHD_create_response_from_callback.
-  * The content_reader drives non-streaming llm.complete rounds (with the full
-  * tool schema), executes tool_calls through tool.sock, feeds results back,
-  * and finally chunks the reply text as SSE events terminated by [DONE].
+  * The content_reader drives llm.complete_stream rounds (with the full
+  * tool schema): text chunks are forwarded immediately as SSE events (real
+  * streaming), tool_calls are executed through tool.sock with results fed
+  * back, and the reply is terminated by [DONE].
   */
 int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
                            http_request_context_t *context)
