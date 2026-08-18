@@ -1021,7 +1021,10 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             for (;;) {
                 /* 1. 先消费缓冲中已有的完整 RS 控制帧（tool_calls/reasoning） */
                 gw_sse_stream_consume_frames(sctx);
-                /* 2. 增量 reasoning 帧：立即转发为思考链事件（实时可见） */
+                /* 2. 增量 reasoning 帧：立即转发为思考链事件（实时可见）。
+                 * 事件携带 model 字段：前端（TUI/CLI）据此区分双思考轨道
+                 * （t2→[Dual Slow Think] / t1-f→[Dual Fast Think] /
+                 * t1-p→[Dual Prof Think]，2.3.14）。 */
                 if (sctx->reasoning_delta) {
                     char *delta = sctx->reasoning_delta;
                     sctx->reasoning_delta = NULL;
@@ -1029,6 +1032,8 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                     if (revt) {
                         cJSON_AddStringToObject(revt, "__airy_evt", "reasoning");
                         cJSON_AddStringToObject(revt, "content", delta);
+                        if (sctx->model && sctx->model[0])
+                            cJSON_AddStringToObject(revt, "model", sctx->model);
                         char *json = cJSON_PrintUnformatted(revt);
                         cJSON_Delete(revt);
                         if (json) {
@@ -1095,13 +1100,15 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             /* 流结束收尾：解析剩余 RS 帧，判定结果 */
             gw_sse_stream_consume_frames(sctx);
             if (sctx->reasoning_delta) {
-                /* 最后一个 reasoning 增量块尚未转发 */
+                /* 最后一个 reasoning 增量块尚未转发（带 model 轨道，2.3.14） */
                 char *delta = sctx->reasoning_delta;
                 sctx->reasoning_delta = NULL;
                 cJSON *revt = cJSON_CreateObject();
                 if (revt) {
                     cJSON_AddStringToObject(revt, "__airy_evt", "reasoning");
                     cJSON_AddStringToObject(revt, "content", delta);
+                    if (sctx->model && sctx->model[0])
+                        cJSON_AddStringToObject(revt, "model", sctx->model);
                     char *json = cJSON_PrintUnformatted(revt);
                     cJSON_Delete(revt);
                     if (json) {
@@ -1260,8 +1267,8 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
 
         case GW_SSE_PHASE_REASONING: {
             /* 思考链（reasoning_content）透传为单条 SSE 事件：
-             *   data: {"__airy_evt":"reasoning","content":"..."}\n\n
-             * 前端（TUI/CLI）折叠展示；完成后转入 FINAL_TEXT 流式正文。 */
+             *   data: {"__airy_evt":"reasoning","content":"...","model":"..."}\n\n
+             * model 字段供前端区分双思考轨道（2.3.14）；完成后转入 FINAL_TEXT。 */
             if (!sctx->reasoning) {
                 sctx->phase = GW_SSE_PHASE_FINAL_TEXT;
                 continue;
@@ -1270,6 +1277,8 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             if (revt) {
                 cJSON_AddStringToObject(revt, "__airy_evt", "reasoning");
                 cJSON_AddStringToObject(revt, "content", sctx->reasoning);
+                if (sctx->model && sctx->model[0])
+                    cJSON_AddStringToObject(revt, "model", sctx->model);
                 char *json = cJSON_PrintUnformatted(revt);
                 cJSON_Delete(revt);
                 if (json) {
