@@ -239,11 +239,14 @@ option(BUILD_BENCHMARK "Build performance benchmark tool (PERF-001~003)" ON)
 if(BUILD_TESTS)
     enable_testing()
 
-    # 主网关测试 (7个用例) - DISABLED: dual-header conflict
-    # include/gateway.h vs src/gateway/gateway.h incompatible
-    # add_executable(test_gateway tests/test_gateway.c)
-    # target_link_libraries(test_gateway gateway)
-    # add_test(NAME gateway_test COMMAND test_gateway)
+    # 主网关测试 (7个用例) - 2026-08-20 重写匹配当前公共 API
+    # （旧测试引用已移除的 gateway_create/gateway_create_interface 符号，
+    #  原 "dual-header conflict" 实为测试过时；include/gateway.h 为公共头，
+    #  src/gateway/gateway.h 为内部实现头，各自独立编译链接。）
+    add_executable(test_gateway tests/test_gateway.c)
+    target_compile_definitions(test_gateway PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_link_libraries(test_gateway gateway)
+    add_test(NAME gateway_test COMMAND test_gateway)
 
     # syscall_router 测试 (8个用例)
     add_executable(test_syscall_router tests/test_syscall_router.c)
