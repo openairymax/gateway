@@ -67,17 +67,6 @@ static const char *A2A_SIGNATURES[]
 // ============================================================================
 // ============================================================================
 
-static int __attribute__((unused)) string_contains_any(const char *str, const char **patterns)
-{
-    if (!str || !patterns)
-        return 0;
-    for (size_t i = 0; patterns[i] != NULL; i++) {
-        if (strstr(str, patterns[i]) != NULL)
-            return 1;
-    }
-    return 0;
-}
-
 static int json_field_equals(const char *json, const char *key, const char *value)
 {
     if (!json || !key || !value)
