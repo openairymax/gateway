@@ -19,6 +19,9 @@
  *   root:  $AIRY_DATA_DIR/agentrt/hall
  *   file:  {tenant}.{task}.{category}.{ts_utc}.{seq:04u}.json
  *   body:  {"file":{...},"access":{...},"content":{...}}
+ * Each event's header prev_file carries the file id of the previous event
+ * in the same (task, category) dir ("" for the first one), so the decision
+ * chain is reconstructible from the on-disk event flow alone.
  * Cross-process order is (ts_utc, seq) like the read side; gseq is a
  * per-process monotonic counter (it restarts with each process and is
  * only used for in-process audit, never for cross-process ordering).

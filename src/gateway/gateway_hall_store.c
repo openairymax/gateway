@@ -12,6 +12,13 @@
  * ({tenant}.{task}.{category}.{ts_utc}.{seq:04u}.json), same event body
  * header/access layout. The gateway is a writer process on its own: gseq
  * is per-process (audit only), cross-process order is (ts_utc, seq).
+ *
+ * prev_file linkage mirrors hall_store.c: each event records the file id of
+ * the previous event in the same (task, category) directory (the max-seq
+ * file on disk; the runtime writer uses its in-memory index, the gateway
+ * scans the directory so the link survives restarts and concurrent
+ * writers). This keeps the decision chain reconstructible from the disk
+ * event flow alone.
  */
 
 // @owner: team-B
@@ -95,11 +102,16 @@ static void gw_hall_mkdirs(const char *path)
     GW_HALL_MKDIR(tmp);
 }
 
-/* Next seq for (task, category): max existing seq + 1, so concurrent writer
- * processes (C CLI / gateway) never overwrite each other's event files. */
-static unsigned gw_hall_next_seq(const char *dir)
+/* Scan one (task, category) dir for existing events. Returns the next seq
+ * (max existing seq + 1) so concurrent writer processes (C CLI / gateway)
+ * never overwrite each other's event files. When out_prev_file is given it
+ * receives the file name of the current max-seq event, i.e. the decision-
+ * chain predecessor for this (task, category). */
+static unsigned gw_hall_dir_scan(const char *dir, char *out_prev_file, size_t prev_sz)
 {
     unsigned max_seq = 0;
+    if (out_prev_file && prev_sz > 0)
+        out_prev_file[0] = '\0';
     DIR *d = opendir(dir);
     if (!d)
         return 1;
@@ -109,26 +121,33 @@ static unsigned gw_hall_next_seq(const char *dir)
         size_t len = strlen(n);
         if (len < 5 || strcmp(n + len - 5, ".json") != 0)
             continue;
-        const char *dot = NULL;
-        for (const char *p = n; *p; p++) {
-            if (*p == '.')
-                dot = p;
-        }
-        if (!dot)
+        /* seq 是倒数第二段（tenant.task.cat.ts.seq.json），与 hall_store.c
+         * hall_parse_seq 同规则：取最后一个 '.' 前的段会拿到 "json"，
+         * 导致 seq 恒为 1、prev_file 恒空、并发写撞号覆盖。 */
+        const char *last_dot = strrchr(n, '.');
+        if (!last_dot || last_dot == n)
+            continue;
+        const char *dot2 = last_dot - 1;
+        while (dot2 > n && *dot2 != '.')
+            dot2--;
+        if (*dot2 != '.')
             continue;
         unsigned seq = 0;
         int digits = 0;
-        for (const char *p = dot + 1; p < n + len - 5; p++) {
-            if (*p < '0' || *p > '9') {
+        for (const char *q = dot2 + 1; q < last_dot; q++) {
+            if (*q < '0' || *q > '9') {
                 seq = 0;
                 digits = 0;
                 break;
             }
-            seq = seq * 10 + (unsigned)(*p - '0');
+            seq = seq * 10 + (unsigned)(*q - '0');
             digits++;
         }
-        if (digits > 0 && seq > max_seq)
+        if (digits > 0 && seq > max_seq) {
             max_seq = seq;
+            if (out_prev_file && prev_sz > 0)
+                AIRY_STRNCPY_TERM(out_prev_file, n, prev_sz);
+        }
     }
     closedir(d);
     return max_seq + 1;
@@ -153,7 +172,10 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
              GW_HALL_TENANT, task_id, category);
     gw_hall_mkdirs(dir);
 
-    unsigned seq = gw_hall_next_seq(dir);
+    /* Decision-chain predecessor: the max-seq file in this (task, category)
+     * dir ("" for the first event), mirroring hall_store.c prev_id. */
+    char prev_file[GW_HALL_FILE_ID_MAX] = {0};
+    unsigned seq = gw_hall_dir_scan(dir, prev_file, sizeof(prev_file));
 
     char file_id[GW_HALL_FILE_ID_MAX];
     snprintf(file_id, sizeof(file_id), "%s.%s.%s.%s.%04u.json", GW_HALL_TENANT, task_id, category,
@@ -171,11 +193,11 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
     snprintf(header, sizeof(header),
              "{\"file\":{\"id\":\"%s\",\"category\":\"%s\",\"schema\":\"%s\","
              "\"tenant_id\":\"%s\",\"task_id\":\"%s\",\"node_id\":\"%s\","
-             "\"ts_utc\":\"%s\",\"seq\":%u,\"gseq\":%llu,\"prev_file\":\"\"},"
+             "\"ts_utc\":\"%s\",\"seq\":%u,\"gseq\":%llu,\"prev_file\":\"%s\"},"
              "\"access\":{\"owner_role\":\"cognition\",\"write_roles\":%s,"
              "\"read_roles\":[\"cognition\"]},\"content\":",
              file_id, category, GW_HALL_SCHEMA, GW_HALL_TENANT, task_id, node_id ? node_id : "",
-             ts, seq, (unsigned long long)gseq, write_roles);
+             ts, seq, (unsigned long long)gseq, prev_file, write_roles);
 
     size_t json_len = strlen(header) + strlen(content_json) + 2;
     char *json = (char *)AIRY_MALLOC(json_len);
@@ -198,6 +220,35 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
     fclose(fp);
     AIRY_FREE(json);
     airy_mtx_unlock(&g_hall_lock);
+
+#ifndef NDEBUG
+    /* 单一真相源事件流断言（与 hall_store.c S-6 对齐，2026-08-20）：
+     * 写后必可读。任何已写入事件流的文件必须能立即重新打开并包含自身
+     * file.id，否则事件流与持久化不一致（记录丢失）。debug 构建强制
+     * 失败，杜绝"写了但读不到"的静默不一致。file.id 位于 header 开头，
+     * 读取前 1KB 足以完成校验。 */
+    {
+        FILE *rf = fopen(path, "r");
+        if (rf) {
+            char buf[1024];
+            size_t got = fread(buf, 1, sizeof(buf) - 1, rf);
+            buf[got] = '\0';
+            fclose(rf);
+            if (strstr(buf, file_id) == NULL) {
+                AIRY_LOG_ERROR("gateway_hall_store: invariant violated - write-then-read "
+                               "mismatch for %s",
+                               file_id);
+                return -1;
+            }
+        } else {
+            AIRY_LOG_ERROR("gateway_hall_store: invariant violated - event file missing after "
+                           "write (%s)",
+                           path);
+            return -1;
+        }
+    }
+#endif
+
     return 0;
 }
 
