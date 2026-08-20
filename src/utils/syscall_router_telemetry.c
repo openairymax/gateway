@@ -54,15 +54,47 @@ airy_err_t airy_sys_telemetry_metrics(char **out_metrics)
     if (!out_metrics)
         return AIRY_ERR_INVALID_PARAM;
 
-    RUNTIME_LOCK();
     cJSON *metrics = cJSON_CreateObject();
+    if (!metrics)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    /* Phase 3: task/agent counters are owned by sched_d; forward get_stats when
+      * the daemon is reachable, degrade to 0 otherwise (same as mem_d). */
+    uint64_t total_tasks = 0;
+    uint64_t agent_count = 0;
+    {
+        cJSON *params = cJSON_CreateObject();
+        char *params_str = cJSON_PrintUnformatted(params);
+        cJSON_Delete(params);
+        if (params_str) {
+            char *result_str = NULL;
+            int rc = daemon_rpc_call(AIRY_SCHED_D_SOCKET, "get_stats", params_str, &result_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS);
+            AIRY_FREE(params_str);
+            if (rc == AIRY_SUCCESS && result_str) {
+                cJSON *root = cJSON_Parse(result_str);
+                AIRY_FREE(result_str);
+                if (root) {
+                    cJSON *tt = cJSON_GetObjectItem(root, "total_tasks");
+                    cJSON *ac = cJSON_GetObjectItem(root, "agent_count");
+                    if (cJSON_IsNumber(tt))
+                        total_tasks = (uint64_t)tt->valuedouble;
+                    if (cJSON_IsNumber(ac))
+                        agent_count = (uint64_t)ac->valuedouble;
+                    cJSON_Delete(root);
+                }
+            } else {
+                AIRY_FREE(result_str);
+            }
+        }
+    }
 
     cJSON *runtime = cJSON_CreateObject();
-    cJSON_AddNumberToObject(runtime, "total_tasks", (double)g_runtime.total_tasks_submitted);
-    cJSON_AddNumberToObject(runtime, "active_tasks", (double)g_runtime.task_count);
+    cJSON_AddNumberToObject(runtime, "total_tasks", (double)total_tasks);
+    cJSON_AddNumberToObject(runtime, "active_tasks", 0.0);
     cJSON_AddNumberToObject(runtime, "memory_records", (double)g_runtime.record_count);
     cJSON_AddNumberToObject(runtime, "active_sessions", (double)g_runtime.session_count);
-    cJSON_AddNumberToObject(runtime, "registered_agents", (double)g_runtime.agent_count);
+    cJSON_AddNumberToObject(runtime, "registered_agents", (double)agent_count);
     cJSON_AddNumberToObject(runtime, "memory_writes", (double)g_runtime.total_memory_writes);
     cJSON_AddItemToObject(metrics, "runtime", runtime);
 
@@ -70,7 +102,6 @@ airy_err_t airy_sys_telemetry_metrics(char **out_metrics)
     cJSON_AddNumberToObject(metrics, "uptime_seconds", (double)time(NULL));
 
     *out_metrics = cJSON_PrintUnformatted(metrics);
-    RUNTIME_UNLOCK();
     cJSON_Delete(metrics);
     return AIRY_OK;
 }

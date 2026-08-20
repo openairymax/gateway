@@ -10,7 +10,6 @@
 #include "syscall_router.h"
 #include "syscall_router_internal.h"
 
-size_t g_max_tasks = 0;
 size_t g_max_sessions = 0;
 
 unsigned long hash_fn(const char *str)
@@ -98,42 +97,27 @@ static void __attribute__((constructor)) runtime_init(void)
 {
     airy_mtx_init(&g_runtime.mutex);
 
-    const char *env;
-    g_max_tasks = MAX_TASKS_DEFAULT;
     g_max_sessions = MAX_SESSIONS_DEFAULT;
 
-    env = getenv("AIRY_MAX_TASKS");
-    if (env) {
-        unsigned long v = strtoul(env, NULL, 10);
-        if (v > 0 && v < 65536)
-            g_max_tasks = (size_t)v;
-    }
-    env = getenv("AIRY_MAX_SESSIONS");
+    const char *env = getenv("AIRY_MAX_SESSIONS");
     if (env) {
         unsigned long v = strtoul(env, NULL, 10);
         if (v > 0 && v < 65536)
             g_max_sessions = (size_t)v;
     }
-    /* Phase 3: memory/agent capacity is managed by the mem_d/agent_d daemons;
-      * AIRY_MAX_RECORDS / AIRY_MAX_AGENTS env vars are forwarded to the daemons. */
+    /* Phase 3: memory/agent/task capacity is managed by the mem_d/agent_d/sched_d
+      * daemons; AIRY_MAX_RECORDS / AIRY_MAX_AGENTS env vars are forwarded to the
+      * daemons. */
 
-    g_runtime.tasks = (task_entry_t *)AIRY_CALLOC(g_max_tasks, sizeof(task_entry_t));
     g_runtime.sessions = (session_entry_t *)AIRY_CALLOC(g_max_sessions, sizeof(session_entry_t));
-    if (!g_runtime.tasks || !g_runtime.sessions) {
+    if (!g_runtime.sessions) {
         AIRY_LOG_ERROR("syscall_router: runtime_init calloc failed");
-        AIRY_FREE(g_runtime.tasks);
-        AIRY_FREE(g_runtime.sessions);
-        g_runtime.tasks = NULL;
         g_runtime.sessions = NULL;
         return;
     }
-    if (ht_init(&g_runtime.task_index, g_max_tasks * 2) != 0 ||
-        ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
-        ht_destroy(&g_runtime.task_index);
+    if (ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
         ht_destroy(&g_runtime.session_index);
-        AIRY_FREE(g_runtime.tasks);
         AIRY_FREE(g_runtime.sessions);
-        g_runtime.tasks = NULL;
         g_runtime.sessions = NULL;
         return;
     }
@@ -143,23 +127,14 @@ static void __attribute__((constructor)) runtime_init(void)
 static void __attribute__((destructor)) runtime_cleanup(void)
 {
 
-    for (size_t i = 0; i < g_runtime.task_count; i++) {
-        AIRY_FREE(g_runtime.tasks[i].task_id);
-        AIRY_FREE(g_runtime.tasks[i].input);
-        AIRY_FREE(g_runtime.tasks[i].result);
-    }
-
     for (size_t i = 0; i < g_runtime.session_count; i++) {
         AIRY_FREE(g_runtime.sessions[i].session_id);
         AIRY_FREE(g_runtime.sessions[i].metadata);
     }
 
     airy_mtx_destroy(&g_runtime.mutex);
-    ht_destroy(&g_runtime.task_index);
     ht_destroy(&g_runtime.session_index);
-    AIRY_FREE(g_runtime.tasks);
     AIRY_FREE(g_runtime.sessions);
-    g_runtime.tasks = NULL;
     g_runtime.sessions = NULL;
     g_runtime.initialized = false;
 }
