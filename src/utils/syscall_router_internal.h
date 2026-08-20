@@ -37,18 +37,26 @@
   * airy_sys_memory_* / airy_sys_agent_* moved to the mem_d / agent_d daemons;
   * this file only keeps the thin IPC forwarding. Socket paths match the daemons
   * (see daemons/mem_d/src/main.c and daemons/agent_d/src/main.c). */
+/* Daemon socket paths must be resolved at runtime (airy_runtime_dir_socket),
+ * NOT baked as compile-time AIRY_RUNTIME_DIR macros: daemons listen under
+ * $AIRY_HOME/run, which only the runtime resolver knows. A compile-time path
+ * (default /tmp/agentrt) makes every airy_sys_* forwarding call connect to a
+ * non-existent socket when AIRY_HOME is set (root cause of syscall domains
+ * appearing "unreachable" in deployed environments). */
 #ifndef AIRY_MEM_D_SOCKET
-#define AIRY_MEM_D_SOCKET AIRY_RUNTIME_DIR "/mem.sock"
+#define AIRY_MEM_D_SOCKET airy_runtime_dir_socket("mem.sock")
 #endif
 #ifndef AIRY_AGENT_D_SOCKET
-#define AIRY_AGENT_D_SOCKET AIRY_RUNTIME_DIR "/agent.sock"
+#define AIRY_AGENT_D_SOCKET airy_runtime_dir_socket("agent.sock")
+#endif
+#ifndef AIRY_SCHED_D_SOCKET
+#define AIRY_SCHED_D_SOCKET airy_runtime_dir_socket("sched.sock")
 #endif
 #define AIRY_DAEMON_RPC_TIMEOUT_MS 30000
 
 #define RUNTIME_LOCK() airy_mtx_lock(&g_runtime.mutex)
 #define RUNTIME_UNLOCK() airy_mtx_unlock(&g_runtime.mutex)
 
-#define MAX_TASKS_DEFAULT 256
 #define MAX_SESSIONS_DEFAULT 64
 
 #define MAX_INPUT_SIZE 4096
@@ -68,16 +76,6 @@ typedef struct {
 } hash_table_t;
 
 typedef struct {
-    char *task_id;
-    char *input;
-    size_t input_len;
-    int status;
-    char *result;
-    uint32_t timeout_ms;
-    time_t created_at;
-} task_entry_t;
-
-typedef struct {
     char *session_id;
     char *metadata;
     time_t created_at;
@@ -85,13 +83,9 @@ typedef struct {
 } session_entry_t;
 
 struct syscall_runtime_s {
-    task_entry_t *tasks;
-    size_t task_count;
-    hash_table_t task_index;
     session_entry_t *sessions;
     size_t session_count;
     hash_table_t session_index;
-    uint64_t total_tasks_submitted;
     /* Telemetry fields: real memory/agent counts are managed by mem_d/agent_d
       * (Phase 3); the gateway keeps them at 0. */
     uint64_t record_count;
@@ -102,7 +96,6 @@ struct syscall_runtime_s {
 };
 
 /* Runtime state shared across files (was static; now external linkage) **/
-extern size_t g_max_tasks;
 extern size_t g_max_sessions;
 extern struct syscall_runtime_s g_runtime;
 
