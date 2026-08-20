@@ -60,7 +60,6 @@ set(GATEWAY_SOURCES
     src/utils/gateway_rpc_handler.c
     src/utils/gateway_rate_limiter.c
     src/utils/gateway_protocol_handler.c
-    src/utils/mcp_server.c
 )
 
 # ========== 头文件 ==========
@@ -75,7 +74,6 @@ set(GATEWAY_HEADERS
     src/utils/syscall_router.h
     src/utils/gateway_utils.h
     src/utils/gateway_protocol_handler.h
-    src/utils/mcp_server.h
     src/utils/gateway_rate_limiter.h
 )
 
