@@ -56,6 +56,43 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
  */
 void gw_hall_task_id_now(char *out, size_t out_sz);
 
+/**
+ * @brief Hall event watch cursor (read side, for SSE push).
+ *
+ * The gateway has no in-process hall handle (unlike the CLI/TUI which link
+ * airy_coreloopthree); it reads the on-disk event flow. This cursor tracks
+ * the last pushed event position so a long-lived SSE subscription can poll
+ * the hall root and emit only newly recorded events, in global
+ * (ts_utc, seq) order.
+ */
+typedef struct {
+    char root[1024];   /* hall root (airy_data_dir()/agentrt/hall) */
+    char last_ts[24];  /* last pushed ts_utc (fixed width, lexical) */
+    unsigned long last_seq;
+    int initialized;
+} gw_hall_watch_t;
+
+/**
+ * @brief Initialize a hall watch cursor (resolves the hall root).
+ */
+void gw_hall_watch_init(gw_hall_watch_t *w);
+
+/**
+ * @brief Fetch the next unseen event in global (ts_utc, seq) order.
+ *
+ * Scans the hall root recursively, sorts candidate events, and returns the
+ * first event whose (ts_utc, seq) is strictly greater than the cursor.
+ * On success the cursor is advanced past the returned event.
+ *
+ * @param w       watch cursor
+ * @param out     caller buffer receiving the compact event JSON (no
+ *                trailing newline)
+ * @param out_sz  buffer size
+ * @return 1 when an event was emitted (out filled), 0 when no new events
+ *         exist, -1 on error
+ */
+int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz);
+
 #ifdef __cplusplus
 }
 #endif
