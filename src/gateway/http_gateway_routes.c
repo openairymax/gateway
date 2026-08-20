@@ -36,15 +36,6 @@
 /* Gateway-side hall event recording (write side of the SSoT event flow) */
 #include "gateway_hall_store.h"
 
-/* MHD header iterator callback (same as http_gateway.c) */
-static int parse_headers(void *cls __attribute__((unused)),
-                         enum MHD_ValueKind kind __attribute__((unused)),
-                         const char *key __attribute__((unused)),
-                         const char *value __attribute__((unused)))
-{
-    return MHD_YES;
-}
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
@@ -1826,9 +1817,6 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         context->url = url;
         context->start_time_ns = gateway_time_ns();
         *con_cls = context;
-
-        MHD_get_connection_values(connection, MHD_HEADER_KIND, (MHD_KeyValueIterator)parse_headers,
-                                  context);
 
         return MHD_YES;
     }
