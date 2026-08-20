@@ -35,6 +35,9 @@
 #include <string.h>
 #include <time.h>
 
+/* stat/S_ISDIR for the hall watch read-side directory walk */
+#include <sys/stat.h>
+
 #define GW_HALL_TENANT "default"
 #define GW_HALL_SCHEMA "task-file-v1"
 #define GW_HALL_ROOT_REL "agentrt/hall"
@@ -259,4 +262,161 @@ void gw_hall_task_id_now(char *out, size_t out_sz)
     char ts[GW_HALL_TS_LEN];
     gw_hall_ts_utc(ts, sizeof(ts));
     snprintf(out, out_sz, "gw-%s", ts);
+}
+
+/* ── hall watch (read side, SSE push) ─────────────────────────────── */
+
+typedef struct {
+    char ts_utc[GW_HALL_TS_LEN];
+    unsigned long seq;
+    char path[GW_HALL_PATH_MAX];
+} gw_hall_cand_t;
+
+static int gw_hall_cand_cmp(const void *a, const void *b)
+{
+    const gw_hall_cand_t *ca = (const gw_hall_cand_t *)a;
+    const gw_hall_cand_t *cb = (const gw_hall_cand_t *)b;
+    int c = strcmp(ca->ts_utc, cb->ts_utc);
+    if (c != 0)
+        return c;
+    return (ca->seq > cb->seq) - (ca->seq < cb->seq);
+}
+
+static void gw_hall_walk_collect(const char *dir, const char *n, gw_hall_cand_t *cands,
+                                 size_t *count, size_t cap)
+{
+    size_t len = strlen(n);
+    if (len < 5 || strcmp(n + len - 5, ".json") != 0)
+        return;
+    /* filename layout: {tenant}.{task}.{category}.{ts_utc}.{seq}.json
+     * (5 dots). tenant/task/category never contain '.', ts_utc is fixed
+     * width and seq is digits-only. Parse from the end so variable-length
+     * task/category segments don't shift the ts_utc position. */
+    const char *last_dot = strrchr(n, '.');
+    if (!last_dot || last_dot == n)
+        return;
+    const char *dot2 = last_dot - 1;
+    while (dot2 > n && *dot2 != '.')
+        dot2--;
+    if (*dot2 != '.')
+        return;
+    /* seq = segment between dot2 and last_dot */
+    unsigned long seq = 0;
+    int digits = 0;
+    for (const char *q = dot2 + 1; q < last_dot; q++) {
+        if (*q < '0' || *q > '9') {
+            seq = 0;
+            digits = 0;
+            break;
+        }
+        seq = seq * 10 + (unsigned long)(*q - '0');
+        digits++;
+    }
+    if (digits == 0)
+        return;
+    /* ts_utc = segment before dot2 (variable length up to 24) */
+    const char *ts_end = dot2;
+    const char *ts_start = ts_end - 1;
+    while (ts_start > n && *ts_start != '.')
+        ts_start--;
+    if (*ts_start != '.')
+        return;
+    ts_start++;
+    size_t tlen = (size_t)(ts_end - ts_start);
+    if (tlen == 0 || tlen >= GW_HALL_TS_LEN)
+        return;
+    char ts[GW_HALL_TS_LEN];
+    AIRY_MEMCPY(ts, ts_start, tlen);
+    ts[tlen] = '\0';
+    if (*count < cap) {
+        gw_hall_cand_t *c = &cands[*count];
+        AIRY_STRNCPY_TERM(c->ts_utc, ts, sizeof(c->ts_utc));
+        c->seq = seq;
+        snprintf(c->path, sizeof(c->path), "%s/%s", dir, n);
+        (*count)++;
+    }
+}
+
+/* Recursively scan hall root (tenant/task/category/events.json layout). */
+static void gw_hall_watch_walk(const char *dir, gw_hall_cand_t *cands, size_t *count, size_t cap)
+{
+    DIR *d = opendir(dir);
+    if (!d)
+        return;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.')
+            continue;
+        char sub[GW_HALL_PATH_MAX];
+        snprintf(sub, sizeof(sub), "%s/%s", dir, ent->d_name);
+        struct stat st;
+        if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode))
+            gw_hall_watch_walk(sub, cands, count, cap);
+        else
+            gw_hall_walk_collect(dir, ent->d_name, cands, count, cap);
+    }
+    closedir(d);
+}
+
+void gw_hall_watch_init(gw_hall_watch_t *w)
+{
+    if (!w)
+        return;
+    AIRY_MEMSET(w, 0, sizeof(*w));
+    snprintf(w->root, sizeof(w->root), "%s/%s", airy_data_dir(), GW_HALL_ROOT_REL);
+    w->initialized = 1;
+}
+
+int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
+{
+    if (!w || !out || out_sz == 0)
+        return -1;
+    if (!w->initialized)
+        gw_hall_watch_init(w);
+
+    gw_hall_cand_t cands[4096];
+    size_t count = 0;
+    gw_hall_watch_walk(w->root, cands, &count, 4096);
+    if (count == 0)
+        return 0;
+
+    qsort(cands, count, sizeof(cands[0]), gw_hall_cand_cmp);
+
+    for (size_t i = 0; i < count; i++) {
+        int gt_ts = strcmp(cands[i].ts_utc, w->last_ts);
+        if (gt_ts < 0 || (gt_ts == 0 && cands[i].seq <= w->last_seq))
+            continue;
+        FILE *fp = fopen(cands[i].path, "r");
+        if (!fp)
+            continue;
+        char *raw = NULL;
+        size_t raw_len = 0;
+        char chunk[4096];
+        size_t got;
+        while ((got = fread(chunk, 1, sizeof(chunk), fp)) > 0) {
+            char *nr = (char *)AIRY_REALLOC(raw, raw_len + got + 1);
+            if (!nr) {
+                AIRY_FREE(raw);
+                raw = NULL;
+                raw_len = 0;
+                break;
+            }
+            raw = nr;
+            AIRY_MEMCPY(raw + raw_len, chunk, got);
+            raw_len += got;
+        }
+        fclose(fp);
+        if (!raw)
+            continue;
+        raw[raw_len] = '\0';
+        if (raw_len + 1 < out_sz) {
+            AIRY_MEMCPY(out, raw, raw_len + 1);
+            AIRY_FREE(raw);
+            AIRY_STRNCPY_TERM(w->last_ts, cands[i].ts_utc, sizeof(w->last_ts));
+            w->last_seq = cands[i].seq;
+            return 1;
+        }
+        AIRY_FREE(raw);
+    }
+    return 0;
 }

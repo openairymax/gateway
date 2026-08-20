@@ -35,6 +35,7 @@ endforeach()
 if(AIRY_HAS_CJSON)
 set(GATEWAY_SOURCES
     src/gateway/gateway_api.c
+    src/gateway/gateway_hall_store.c
     src/gateway/http_gateway.c
     src/gateway/http_gateway_routes.c
     src/gateway/http2_gateway.c
@@ -65,6 +66,7 @@ set(GATEWAY_SOURCES
 # ========== 头文件 ==========
 set(GATEWAY_HEADERS
     src/gateway/gateway.h
+    src/gateway/gateway_hall_store.h
     src/gateway/http_gateway.h
     src/gateway/http2_gateway.h
     src/gateway/ws_gateway.h

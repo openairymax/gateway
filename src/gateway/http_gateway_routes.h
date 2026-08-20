@@ -60,13 +60,23 @@ int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connec
 
 /**
   * @brief Handle POST /api/v1/chat/stream (SSE streaming chat)
- *
+  *
   * The gateway proxies llm_d complete_stream: parses OpenAI messages /
   * simplified JSON-RPC agent.run bodies, pulls chunks from llm_d and forwards
   * them as SSE events (data: <chunk>\n\n, then data: [DONE] at EOF).
  */
 int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
                            http_request_context_t *context);
+
+/**
+  * @brief Handle GET /api/v1/hall/watch (SSE hall event push)
+  *
+  * Long-lived SSE subscription over the hall event flow: every newly
+  * recorded hall event from any writer process is pushed in global
+  * (ts_utc, seq) order. Real-time push counterpart of hall.stream (pull).
+ */
+int handle_hall_watch_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
+                          http_request_context_t *context);
 
 /**
   * @brief Handle 404 Not Found
