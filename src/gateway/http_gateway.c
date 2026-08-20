@@ -187,17 +187,6 @@ struct MHD_Response *create_http_response(int status_code, const char *content, 
 }
 
 /**
-  * @brief Parse HTTP request headers
- */
-static int __attribute__((unused)) parse_headers(void *cls __attribute__((unused)),
-                                                 enum MHD_ValueKind kind __attribute__((unused)),
-                                                 const char *key __attribute__((unused)),
-                                                 const char *value __attribute__((unused)))
-{
-    return MHD_YES;
-}
-
-/**
   * @brief Parse a JSON request body
  * @param gateway Gateway instance
   * @param context Request context

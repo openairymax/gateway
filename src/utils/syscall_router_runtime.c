@@ -92,40 +92,6 @@ ssize_t ht_lookup(hash_table_t *ht, const char *key)
     return AIRY_ERR_UNKNOWN;
 }
 
-static void __attribute__((unused)) ht_remove(hash_table_t *ht, const char *key)
-{
-    if (!ht->entries || ht->count == 0)
-        return;
-    unsigned long h = hash_fn(key) % ht->capacity;
-    for (size_t i = 0; i < ht->capacity; i++) {
-        size_t pos = (h + i) % ht->capacity;
-        if (!ht->entries[pos].occupied) {
-            if (ht->entries[pos].deleted)
-                continue;
-            return;
-        }
-        if (strcmp(ht->entries[pos].key, key) == 0) {
-            AIRY_FREE(ht->entries[pos].key);
-            ht->entries[pos].key = NULL;
-            ht->entries[pos].occupied = false;
-            ht->entries[pos].index = 0;
-            /* P0: mark deletions with tombstones to keep the probe chain contiguous;
-              * otherwise ht_lookup stops at the empty slot and misses elements */
-            ht->entries[pos].deleted = true;
-            ht->count--;
-            return;
-        }
-    }
-}
-
-static void __attribute__((unused)) ht_update(hash_table_t *ht, const char *key, size_t new_index)
-{
-    ssize_t idx = ht_lookup(ht, key);
-    if (idx >= 0) {
-        ht->entries[(size_t)idx].index = new_index;
-    }
-}
-
 struct syscall_runtime_s g_runtime = {0};
 
 static void __attribute__((constructor)) runtime_init(void)
