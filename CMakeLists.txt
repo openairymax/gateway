@@ -112,19 +112,21 @@ endif()
 # nghttp2 头文件内部使用 malloc/free/memcpy/memset 等函数，
 # 在 AIRY_COMPLIANCE_STRICT 模式下会被 banned_functions.h 毒化，
 # 需通过 AIRY_COMPLIANCE_IMPL 豁免（与 ws_gateway.c 同策略）。
-if(AIRY_HAS_HTTP2)
-    set_source_files_properties(
-        src/gateway/http2_gateway.c
-        src/gateway/http2_gateway_event.c
-        src/gateway/http2_gateway_frame.c
-        src/gateway/http2_gateway_headers.c
-        src/gateway/http2_gateway_response.c
-        src/gateway/http2_gateway_route.c
-        src/gateway/http2_gateway_session.c
-        src/gateway/http2_gateway_stream.c
-        PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
-    )
-endif()
+# 注意：此豁免必须无条件生效——http2_gateway*.c 始终参与编译
+# （无 nghttp2 库时空 TU，实现代码由 #ifdef AIRY_HAS_HTTP2 守卫），
+# 而其 #include <nghttp2/nghttp2.h> 位于守卫之前，若豁免依赖
+# AIRY_HAS_HTTP2，则缺库平台会因 poisoned "malloc" 编译失败。
+set_source_files_properties(
+    src/gateway/http2_gateway.c
+    src/gateway/http2_gateway_event.c
+    src/gateway/http2_gateway_frame.c
+    src/gateway/http2_gateway_headers.c
+    src/gateway/http2_gateway_response.c
+    src/gateway/http2_gateway_route.c
+    src/gateway/http2_gateway_session.c
+    src/gateway/http2_gateway_stream.c
+    PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
+)
 
 target_include_directories(gateway
     PUBLIC
