@@ -61,6 +61,30 @@ typedef struct http_request_context {
     uint64_t start_time_ns;
 } http_request_context_t;
 
+/**
+ * @brief Raw HTTP request context passed to the internal handler for
+ *        non-JSON-RPC bodies (OpenAI/MCP/A2A detection needs the path).
+ *
+ * The HTTP transport must preserve the HTTP method/path; protocol detection
+ * in gateway_d (gw_proto_detect) then routes /v1 endpoints and /openai
+ * endpoints correctly.
+ * Without it, an embeddings body {"input":[...],"model":...} (no "messages")
+ * could not be classified as OpenAI and fell through to JSON-RPC -32600.
+ *
+ * @note body is a NUL-terminated copy of the MHD upload buffer (MHD does not
+ *       guarantee NUL termination), owned by the transport; the handler must
+ *       not retain the pointer after returning.
+ */
+#define GATEWAY_HTTP_REQUEST_MAGIC 0x48545431 /* "HTT1" */
+
+typedef struct {
+    uint32_t magic;
+    const char *method;
+    const char *path;
+    const char *body;
+    size_t body_len;
+} gateway_http_request_t;
+
 typedef struct {
     char *method;
     char *path;

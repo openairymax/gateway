@@ -315,15 +315,35 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
         result = gateway_rpc_handle_request(context->json_request, internal_handler_public_wrapper,
                                             &adapter);
     } else if (context->upload_data && context->upload_data_size > 0 && gateway->handler) {
-        /* Raw non-JSON-RPC body (OpenAI/MCP/A2A): pass straight to the protocol entry handler
-          * for detection and routing (translated uniformly by gateway_d, D2) */
-        char *resp = gateway->handler((void *)context->upload_data, gateway->handler_data);
-        AIRY_MEMSET(&result, 0, sizeof(result));
-        if (resp) {
-            result.response_json = resp;
-        } else {
+        /* Raw non-JSON-RPC body (OpenAI/MCP/A2A): pass the HTTP context
+         * (method/path + NUL-terminated body copy) to the protocol entry
+         * handler for detection and routing (translated uniformly by
+         * gateway_d, D2). MHD upload_data is not NUL-terminated, so a
+         * terminated copy is required before any strstr/cJSON parsing. */
+        char *body_copy = (char *)AIRY_MALLOC(context->upload_data_size + 1);
+        if (!body_copy) {
             result.error_code = -32603;
-            result.error_message = AIRY_STRDUP("Protocol handler failed");
+            result.error_message = AIRY_STRDUP("Out of memory");
+        } else {
+            AIRY_MEMCPY(body_copy, context->upload_data, context->upload_data_size);
+            body_copy[context->upload_data_size] = '\0';
+
+            gateway_http_request_t http_req = {0};
+            http_req.magic = GATEWAY_HTTP_REQUEST_MAGIC;
+            http_req.method = context->method ? context->method : "POST";
+            http_req.path = context->url;
+            http_req.body = body_copy;
+            http_req.body_len = context->upload_data_size;
+
+            char *resp = gateway->handler(&http_req, gateway->handler_data);
+            AIRY_MEMSET(&result, 0, sizeof(result));
+            if (resp) {
+                result.response_json = resp;
+            } else {
+                result.error_code = -32603;
+                result.error_message = AIRY_STRDUP("Protocol handler failed");
+            }
+            AIRY_FREE(body_copy);
         }
     } else {
 
