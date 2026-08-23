@@ -173,7 +173,7 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
 {
 
     const char *health_json =
-        "{\"status\":\"healthy\",\"service\":\"gateway\",\"version\":\"0.1.2\"}";
+        "{\"status\":\"healthy\",\"service\":\"gateway\",\"version\":\"" GATEWAY_VERSION "\"}";
     struct MHD_Response *response =
         create_http_response_ex(gateway, connection, 200, health_json, strlen(health_json));
 
