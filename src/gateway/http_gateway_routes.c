@@ -385,6 +385,15 @@ typedef struct {
      * (generated when no client session_id is provided) + dedup flags */
     char task_id[64];
     int recorded_result;
+    /* token usage from llm_d RS 'U' frame (2.1.1.5): parsed from the
+     * stream trailer, forwarded as a `__airy_evt:usage` SSE event before
+     * [DONE] so chat/stream clients see真实计费数据 */
+    unsigned long long prompt_tokens;
+    unsigned long long completion_tokens;
+    unsigned long long total_tokens;
+    double cost_usd;
+    int usage_received; /* RS 'U' 帧已解析 */
+    int usage_emitted;  /* usage SSE 事件已发送 */
 } gw_sse_ctx_t;
 
 /**
@@ -756,11 +765,13 @@ static int gw_sse_stream_append(gw_sse_ctx_t *sctx, const char *data, size_t len
 }
 
 /* llm_d complete_stream 控制帧分隔符（与 llm_d providers 对齐）：
- * 文本增量直接裸传；RS 帧仅两个：RS 'T' <tool_calls_json> RS 与
- * RS 'R' <reasoning> RS。RS (0x1E) 不出现在 JSON 与 LLM 文本中。 */
+ * 文本增量直接裸传；RS 帧仅三个：RS 'T' <tool_calls_json> RS、
+ * RS 'R' <reasoning> RS 与 RS 'U' <usage_json> RS。RS (0x1E) 不出现
+ * 在 JSON 与 LLM 文本中。 */
 #define GW_SSE_STREAM_RS 0x1e
 #define GW_SSE_STREAM_TAG_TOOL 'T'
 #define GW_SSE_STREAM_TAG_REASON 'R'
+#define GW_SSE_STREAM_TAG_USAGE 'U'
 
 /**
  * @brief Parse one complete RS control frame out of the streaming buffer
@@ -781,7 +792,8 @@ static int gw_sse_stream_consume_frames(gw_sse_ctx_t *sctx)
         if (head + 2 > sctx->stream_len)
             return consumed; /* need tag byte */
         char tag = rs[1];
-        if (tag != GW_SSE_STREAM_TAG_TOOL && tag != GW_SSE_STREAM_TAG_REASON) {
+        if (tag != GW_SSE_STREAM_TAG_TOOL && tag != GW_SSE_STREAM_TAG_REASON &&
+            tag != GW_SSE_STREAM_TAG_USAGE) {
             /* Unknown frame: skip this RS byte and continue scanning. */
             sctx->stream_len -= head + 1;
             AIRY_MEMMOVE(sctx->stream_buf, rs + 1, sctx->stream_len);
@@ -810,6 +822,31 @@ static int gw_sse_stream_consume_frames(gw_sse_ctx_t *sctx)
             } else if (tc) {
                 cJSON_Delete(tc);
             }
+        } else if (tag == GW_SSE_STREAM_TAG_USAGE) {
+            /* 2.1.1.5 修复：llm_d 流式尾帧 RS 'U' 携带真实 token 消耗，
+             * 解析并缓存在 ctx，FINAL_TEXT 结束时作为 usage SSE 事件透传
+             * 给 chat/stream 客户端（此前该帧被当作未知帧丢弃，流式计费
+             * 恒为 0）。cost_usd 由 llm_d 计费侧填充（缺失时保持 0）。 */
+            cJSON *u = cJSON_Parse(payload);
+            if (u && cJSON_IsObject(u)) {
+                cJSON *pt = cJSON_GetObjectItem(u, "prompt_tokens");
+                cJSON *ct = cJSON_GetObjectItem(u, "completion_tokens");
+                cJSON *tt = cJSON_GetObjectItem(u, "total_tokens");
+                cJSON *cu = cJSON_GetObjectItem(u, "cost_usd");
+                if (cJSON_IsNumber(pt))
+                    sctx->prompt_tokens = (unsigned long long)pt->valuedouble;
+                if (cJSON_IsNumber(ct))
+                    sctx->completion_tokens = (unsigned long long)ct->valuedouble;
+                if (cJSON_IsNumber(tt))
+                    sctx->total_tokens = (unsigned long long)tt->valuedouble;
+                else if (sctx->prompt_tokens || sctx->completion_tokens)
+                    sctx->total_tokens = sctx->prompt_tokens + sctx->completion_tokens;
+                if (cJSON_IsNumber(cu))
+                    sctx->cost_usd = cu->valuedouble;
+                sctx->usage_received = 1;
+            }
+            if (u)
+                cJSON_Delete(u);
         } else { /* GW_SSE_STREAM_TAG_REASON */
             /* 增量 reasoning 帧：每块立即转发（实时思考链），同时累积 */
             AIRY_FREE(sctx->reasoning_delta);
@@ -1309,6 +1346,39 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                         gw_sse_record_event(sctx, "result", revt);
                         cJSON_Delete(revt);
                     }
+                }
+                /* 2.1.1.5：先透传 usage SSE 事件（若 llm_d 流式尾帧已携带），
+                 * 下一次回调再发 [DONE]，保证客户端在流结束时拿到真实
+                 * token 消耗与计费数据。 */
+                if (sctx->usage_received && !sctx->usage_emitted) {
+                    sctx->usage_emitted = 1;
+                    cJSON *uevt = cJSON_CreateObject();
+                    if (uevt) {
+                        cJSON_AddStringToObject(uevt, "__airy_evt", "usage");
+                        cJSON_AddNumberToObject(uevt, "prompt_tokens",
+                                                (double)sctx->prompt_tokens);
+                        cJSON_AddNumberToObject(uevt, "completion_tokens",
+                                                (double)sctx->completion_tokens);
+                        cJSON_AddNumberToObject(uevt, "total_tokens",
+                                                (double)sctx->total_tokens);
+                        cJSON_AddNumberToObject(uevt, "cost_usd", sctx->cost_usd);
+                        char *json = cJSON_PrintUnformatted(uevt);
+                        cJSON_Delete(uevt);
+                        if (json) {
+                            size_t jl = strlen(json);
+                            sctx->step_buf = (char *)AIRY_MALLOC(jl + 12);
+                            if (sctx->step_buf) {
+                                AIRY_MEMCPY(sctx->step_buf, "data: ", 6);
+                                AIRY_MEMCPY(sctx->step_buf + 6, json, jl);
+                                sctx->step_buf[6 + jl] = '\n';
+                                sctx->step_buf[6 + jl + 1] = '\n';
+                                sctx->step_buf[6 + jl + 2] = '\0';
+                                sctx->step_len = 6 + jl + 2;
+                            }
+                            AIRY_FREE(json);
+                        }
+                    }
+                    break; /* 本次回调返回 usage 帧 */
                 }
                 sctx->done = 1;
                 AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
