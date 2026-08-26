@@ -12,7 +12,7 @@
 
 /* 版本 SSoT：网关仓对外报告版本，与 agentrt 全系统版本（CMakeLists
  * project() / gateway_d AIRYRT_VERSION）保持一致，禁止散落硬编码版本串。 */
-#define GATEWAY_VERSION "0.1.3"
+#define GATEWAY_VERSION "0.1.4"
 
 #ifdef __cplusplus
 extern "C" {
