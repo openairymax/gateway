@@ -167,7 +167,7 @@ char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
 char *http2_handle_health(void)
 {
     return AIRY_STRDUP(
-        "{\"status\":\"healthy\",\"service\":\"gateway\",\"protocol\":\"h2\",\"version\":\"0.1.2\"}");
+        "{\"status\":\"healthy\",\"service\":\"gateway\",\"protocol\":\"h2\",\"version\":\"" GATEWAY_VERSION "\"}");
 }
 
 /**

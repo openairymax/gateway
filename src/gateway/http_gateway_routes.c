@@ -313,7 +313,10 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
 #define GW_SSE_RECV_TIMEOUT_S 90
 #define GW_SSE_BLOCK_SIZE 1024
 #define GW_SSE_DONE_EVENT "data: [DONE]\n\n"
+/* 工具循环轮数上限（默认 8，可用环境变量 AIRY_GW_SSE_MAX_TOOL_LOOPS 覆盖）：
+ * 超出后不再调用 LLM，把已收集内容作为最终回复发出，避免无限空转。 */
 #define GW_SSE_MAX_TOOL_LOOPS 8
+#define GW_SSE_TOOL_LIMIT_MSG "任务步骤较多，已达执行轮数上限，请分步提问或精简要求后重试"
 #define GW_SSE_TEXT_CHUNK 512
 #define GW_SSE_SUMMARY_MAX 256
 /* Cap for tool results fed back to the LLM: web_fetch returns raw HTML that
@@ -424,6 +427,71 @@ static void gw_sse_resolve_llm_sock(char *out, size_t out_size)
     } else {
         AIRY_STRNCPY_TERM(out, "llm.sock", out_size);
     }
+}
+
+/**
+  * @brief 工具循环轮数上限（AIRY_GW_SSE_MAX_TOOL_LOOPS 环境变量可覆盖）。
+  */
+static int gw_sse_max_tool_loops(void)
+{
+    const char *env = getenv("AIRY_GW_SSE_MAX_TOOL_LOOPS");
+    if (env && *env) {
+        long v = strtol(env, NULL, 10);
+        if (v > 0 && v <= 128)
+            return (int)v;
+    }
+    return GW_SSE_MAX_TOOL_LOOPS;
+}
+
+/**
+  * @brief 将无效 UTF-8 字节序列替换为 U+FFFD，返回 AIRY_MALLOC 新字符串。
+  *
+  * 输入可含任意字节（不做编码假设）；JSON 结构字符（引号/花括号等）均为
+  * ASCII，清洗后 JSON 语法不受影响。调用方负责 AIRY_FREE。
+  */
+static char *gw_sse_utf8_sanitize(const char *s, size_t len)
+{
+    if (!s)
+        return NULL;
+    char *out = (char *)AIRY_MALLOC(len * 3 + 1); /* 最坏：每字节 → EF BF BD */
+    if (!out)
+        return NULL;
+    size_t o = 0;
+    size_t i = 0;
+    while (i < len) {
+        unsigned char c = (unsigned char)s[i];
+        size_t need = 0;
+        if (c < 0x80) {
+            out[o++] = (char)c;
+            i += 1;
+            continue;
+        } else if ((c & 0xE0) == 0xC0) {
+            need = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            need = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            need = 4;
+        }
+        int valid = 1;
+        for (size_t k = 1; need && k < need; ++k) {
+            if (i + k >= len || ((unsigned char)s[i + k] & 0xC0) != 0x80) {
+                valid = 0;
+                break;
+            }
+        }
+        if (need && valid) {
+            for (size_t k = 0; k < need; ++k)
+                out[o++] = s[i + k];
+            i += need;
+        } else {
+            out[o++] = (char)0xEF;
+            out[o++] = (char)0xBF;
+            out[o++] = (char)0xBD;
+            i += 1;
+        }
+    }
+    out[o] = '\0';
+    return out;
 }
 
 /**
@@ -606,7 +674,16 @@ static char *gw_sse_build_llm_request(const char *model, const cJSON *messages, 
     if (tools) {
         cJSON_AddItemToObject(llm_params, "tools", tools);
     }
-    cJSON_AddNumberToObject(llm_params, "max_tokens", 2048);
+    /* 工具密集任务中 2048 输出上限可能截断 tool_calls/文本收尾，导致循环
+     * 空转；默认 4096，可用 AIRY_GW_SSE_MAX_TOKENS 覆盖。 */
+    long max_tokens = 4096;
+    const char *env_mt = getenv("AIRY_GW_SSE_MAX_TOKENS");
+    if (env_mt && *env_mt) {
+        long v = strtol(env_mt, NULL, 10);
+        if (v >= 256 && v <= 32768)
+            max_tokens = v;
+    }
+    cJSON_AddNumberToObject(llm_params, "max_tokens", max_tokens);
     cJSON_AddNumberToObject(llm_params, "temperature", 0.7);
     cJSON_AddItemToObject(llm_req, "params", llm_params);
     char *req_str = cJSON_PrintUnformatted(llm_req);
@@ -1041,9 +1118,10 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
     for (;;) {
         switch (sctx->phase) {
         case GW_SSE_PHASE_LLM_ROUND: {
-            if (sctx->tool_round >= GW_SSE_MAX_TOOL_LOOPS) {
-                /* Too many rounds: emit what we have as the final answer. */
-                sctx->final_text = AIRY_STRDUP("(tool loop limit reached)");
+            if (sctx->tool_round >= gw_sse_max_tool_loops()) {
+                /* 超过工具轮数上限：不再继续调用 LLM，把已收集的内容作为
+                 * 最终回复发出（可读中文提示，替代原英文占位符）。 */
+                sctx->final_text = AIRY_STRDUP(GW_SSE_TOOL_LIMIT_MSG);
                 if (!sctx->final_text) {
                     sctx->done = 1;
                     AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
@@ -1544,12 +1622,16 @@ static void gw_sse_mem_inject(cJSON *history, const char *prompt)
         AIRY_FREE(data);
     }
     if (off > 0 && off < sizeof(mem_acc)) {
+        /* 记忆原文可能含历史会话带入的非法 UTF-8 字节，先清洗再注入，
+         * 避免最终 llm 请求触发提供方 "invalid unicode" 400。 */
+        char *clean = gw_sse_utf8_sanitize(mem_acc, off);
         cJSON *sys = cJSON_CreateObject();
         if (sys) {
             cJSON_AddStringToObject(sys, "role", "system");
-            cJSON_AddStringToObject(sys, "content", mem_acc);
+            cJSON_AddStringToObject(sys, "content", clean ? clean : mem_acc);
             cJSON_InsertItemInArray(history, 0, sys);
         }
+        AIRY_FREE(clean);
     }
 
 inject_done:
@@ -1720,6 +1802,18 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     }
     AIRY_MEMCPY(body_copy, body, body_len);
     body_copy[body_len] = '\0';
+
+    /* 1.2.6 修复：请求体可能携带非法 UTF-8（粘贴/记忆召回中的脏字节），
+     * DeepSeek 等提供方会直接 400 "invalid unicode code point" 导致前端
+     * 无回复。解析前清洗整份 JSON 文本（无效字节 → U+FFFD）；JSON 结构
+     * 字符均为 ASCII，清洗不影响语法。 */
+    {
+        char *clean = gw_sse_utf8_sanitize(body, body_len);
+        if (clean) {
+            AIRY_FREE(body_copy);
+            body_copy = clean;
+        }
+    }
 
     cJSON *root = cJSON_Parse(body_copy);
     AIRY_FREE(body_copy);
