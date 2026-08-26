@@ -57,6 +57,14 @@ typedef struct http_request_context {
     const char *upload_data;
     size_t upload_data_size;
 
+    /* Accumulated POST body (P1 fix): MHD delivers uploads larger than its
+     * internal buffer in multiple chunks, reusing the same upload_data buffer
+     * for each chunk. Storing the pointer of the last chunk only would truncate
+     * the body. Owned by this context, freed in the completed callback. */
+    char *body_buf;
+    size_t body_len;
+    size_t body_cap;
+
     cJSON *json_request;
     uint64_t start_time_ns;
 } http_request_context_t;

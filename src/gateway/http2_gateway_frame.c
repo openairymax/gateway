@@ -34,7 +34,14 @@ int http2_on_begin_headers(nghttp2_session *session, const nghttp2_frame *frame,
         return NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
     }
 
-    (void)user_data;
+    /* Track the stream on the session's active list so a session teardown can
+     * free contexts whose on_stream_close never fired. */
+    http2_gateway_session_t *sess = (http2_gateway_session_t *)user_data;
+    if (sess) {
+        ctx->next_active = sess->active_streams;
+        sess->active_streams = ctx;
+    }
+
     return 0;
 }
 
@@ -86,7 +93,8 @@ int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t st
 {
     (void)flags;
 
-    http2_gateway_t *gw = (http2_gateway_t *)user_data;
+    http2_gateway_session_t *sess = (http2_gateway_session_t *)user_data;
+    http2_gateway_t *gw = sess ? sess->gateway : NULL;
     http2_stream_context_t *ctx =
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
     if (!ctx)
@@ -95,11 +103,15 @@ int http2_on_data_chunk_recv(nghttp2_session *session, uint8_t flags, int32_t st
     /* P0: without a body limit, an oversized body would only be rejected by
      * max_request_size after being fully received, enabling memory-exhaustion DoS.
      * Throttle by gw->base.max_request_size before accumulating memory and
-     * immediately RST_STREAM the stream when the limit is exceeded. */
+     * immediately RST_STREAM the stream when the limit is exceeded.
+     * response_sent_flag is set so that a racing END_STREAM (on_frame_recv)
+     * does not run http2_process_request() on the truncated body: the RST is
+     * only queued at this point, and on_frame_recv may still fire. */
     if (gw && ctx->request_body_len + len > gw->base.max_request_size) {
         AIRY_LOG_WARN("request body exceeds limit: %zu + %zu > %zu (stream_id=%d)",
                  ctx->request_body_len, len, gw->base.max_request_size, stream_id);
         ctx->response_status = 413;
+        ctx->response_sent_flag = true;
         nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, stream_id, NGHTTP2_CANCEL);
         return 0;
     }
@@ -139,7 +151,7 @@ int http2_on_frame_recv(nghttp2_session *session, const nghttp2_frame *frame, vo
 int http2_on_stream_close(nghttp2_session *session, int32_t stream_id, uint32_t error_code,
                           void *user_data)
 {
-    (void)user_data;
+    http2_gateway_session_t *sess = (http2_gateway_session_t *)user_data;
 
     http2_stream_context_t *ctx =
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
@@ -149,6 +161,18 @@ int http2_on_stream_close(nghttp2_session *session, int32_t stream_id, uint32_t 
                      error_code, nghttp2_http2_strerror(error_code));
         } else {
             AIRY_LOG_DEBUG("stream closed normally: stream_id=%d", stream_id);
+        }
+
+        /* Detach from the session's active list before freeing. */
+        if (sess) {
+            http2_stream_context_t **pp = &sess->active_streams;
+            while (*pp) {
+                if (*pp == ctx) {
+                    *pp = ctx->next_active;
+                    break;
+                }
+                pp = &(*pp)->next_active;
+            }
         }
         http2_stream_destroy(ctx);
         nghttp2_session_set_stream_user_data(session, stream_id, NULL);

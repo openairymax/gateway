@@ -68,8 +68,9 @@ airy_err_t airy_sys_telemetry_metrics(char **out_metrics)
         cJSON_Delete(params);
         if (params_str) {
             char *result_str = NULL;
-            int rc = daemon_rpc_call(AIRY_SCHED_D_SOCKET, "get_stats", params_str, &result_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS);
+            /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.get_stats） */
+            int rc = syscall_svc_call_unwrap("sched", "get_stats", params_str,
+                                             AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
             AIRY_FREE(params_str);
             if (rc == AIRY_SUCCESS && result_str) {
                 cJSON *root = cJSON_Parse(result_str);
@@ -90,16 +91,26 @@ airy_err_t airy_sys_telemetry_metrics(char **out_metrics)
     }
 
     cJSON *runtime = cJSON_CreateObject();
+    uint64_t rec_count = 0, sess_count = 0, mem_writes = 0;
+    time_t start = time(NULL);
+    RUNTIME_LOCK();
+    rec_count = g_runtime.record_count;
+    sess_count = g_runtime.session_count;
+    mem_writes = g_runtime.total_memory_writes;
+    start = g_runtime.start_time;
+    RUNTIME_UNLOCK();
     cJSON_AddNumberToObject(runtime, "total_tasks", (double)total_tasks);
     cJSON_AddNumberToObject(runtime, "active_tasks", 0.0);
-    cJSON_AddNumberToObject(runtime, "memory_records", (double)g_runtime.record_count);
-    cJSON_AddNumberToObject(runtime, "active_sessions", (double)g_runtime.session_count);
+    cJSON_AddNumberToObject(runtime, "memory_records", (double)rec_count);
+    cJSON_AddNumberToObject(runtime, "active_sessions", (double)sess_count);
     cJSON_AddNumberToObject(runtime, "registered_agents", (double)agent_count);
-    cJSON_AddNumberToObject(runtime, "memory_writes", (double)g_runtime.total_memory_writes);
+    cJSON_AddNumberToObject(runtime, "memory_writes", (double)mem_writes);
     cJSON_AddItemToObject(metrics, "runtime", runtime);
 
     cJSON_AddStringToObject(metrics, "status", "operational");
-    cJSON_AddNumberToObject(metrics, "uptime_seconds", (double)time(NULL));
+    /* uptime = 当前时间 − 启动时间；修复原先直接返回 epoch 秒的语义错误 */
+    cJSON_AddNumberToObject(metrics, "uptime_seconds",
+                            (double)(start > 0 ? time(NULL) - start : 0));
 
     *out_metrics = cJSON_PrintUnformatted(metrics);
     cJSON_Delete(metrics);
@@ -111,16 +122,13 @@ airy_err_t airy_sys_telemetry_traces(const char *trace_id, char **out_traces)
     if (!out_traces)
         return AIRY_ERR_INVALID_PARAM;
 
+    /* 诚实语义：gateway 进程内无 trace 存储后端（trace 落库由 daemon 侧
+     * heapstore 负责，观察端点应经 daemon 转发），不再伪造 "completed"
+     * 假 trace。返回空数组，避免对外提供不存在的观测数据。 */
+    (void)trace_id;
     cJSON *traces = cJSON_CreateArray();
-    if (trace_id && strlen(trace_id) > 0) {
-        cJSON *trace = cJSON_CreateObject();
-        cJSON_AddStringToObject(trace, "trace_id", trace_id);
-        cJSON_AddStringToObject(trace, "service", "syscall_router");
-        cJSON_AddStringToObject(trace, "status", "completed");
-        cJSON_AddNumberToObject(trace, "duration_ms", 1.5);
-        cJSON_AddItemToArray(traces, trace);
-    }
-    /* tracing array finalized */
+    if (!traces)
+        return AIRY_ERR_OUT_OF_MEMORY;
 
     *out_traces = cJSON_PrintUnformatted(traces);
     cJSON_Delete(traces);

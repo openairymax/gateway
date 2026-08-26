@@ -9,6 +9,7 @@
 
 #include "gateway_protocol_bridge.h"
 
+#include "airy_protocol_interface.h"
 #include "airy_memory.h"
 #include "protocol_extension_framework.h"
 #include "protocol_registry.h"
@@ -451,6 +452,20 @@ char *gw_protocol_bridge_diagnose(gw_protocol_bridge_handle_t bridge)
     gw_protocol_bridge_get_stats(bridge, &stats);
 
     int registry_count = 0;
+    int adapter_count = 0;
+    char *registry_json = NULL;
+    if (proto_interface_list_all(&registry_json) == 0 && registry_json) {
+        const char *p = strstr(registry_json, "\"count\":");
+        if (p) {
+            registry_count = atoi(p + strlen("\"count\":"));
+        }
+        AIRY_FREE(registry_json);
+    }
+    for (int i = 0; i < GW_PROTO_COUNT; i++) {
+        if (b->handlers[i]) {
+            adapter_count++;
+        }
+    }
 
     char *diag = AIRY_MALLOC(3072);
     if (!diag)
@@ -497,7 +512,7 @@ char *gw_protocol_bridge_diagnose(gw_protocol_bridge_handle_t bridge)
                       (b->handlers[2] ? 1 : 0) + (b->handlers[3] ? 1 : 0) +
                       (b->handlers[4] ? 1 : 0) + (b->handlers[5] ? 1 : 0) +
                       (b->handlers[6] ? 1 : 0)),
-             registry_count, (size_t)0);
+             registry_count, (size_t)adapter_count);
 
     return diag;
 }
@@ -513,6 +528,12 @@ int gw_protocol_bridge_list_registry_protocols(gw_protocol_bridge_handle_t bridg
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                          "gw_protocol_bridge_list_registry_protocols: failed");
         return AIRY_ERR_UNKNOWN;
+    }
+    struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
+
+    /* 委托全局协议注册表：返回真实已注册协议列表（而非空桩）。 */
+    if (proto_interface_list_all(protocols_json) == 0) {
+        return 0;
     }
     *protocols_json = AIRY_STRDUP("{\"registered_protocols\":[],\"total\":0}");
     return 0;

@@ -35,6 +35,12 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+
 /* stat/S_ISDIR for the hall watch read-side directory walk */
 #include <sys/stat.h>
 
@@ -87,6 +93,47 @@ static void gw_hall_ts_utc(char *buf, size_t sz)
     long ms = ts.tv_nsec / 1000000;
     snprintf(buf, sz, "%04d%02d%02dT%02d%02d%02d%03ld", tmv.tm_year + 1900, tmv.tm_mon + 1,
              tmv.tm_mday, tmv.tm_hour, tmv.tm_min, tmv.tm_sec, ms);
+}
+
+/* P1-5：原子写（同目录 tmp + fsync + rename）。gateway 不链接
+ * commons/utils/io，本地实现与 airy_io_write_file 相同范式。 */
+static int gw_hall_atomic_write(const char *path, const void *data, size_t len)
+{
+    char tmppath[GW_HALL_PATH_MAX + 8];
+    if (snprintf(tmppath, sizeof(tmppath), "%s.tmp", path) >= (int)sizeof(tmppath))
+        return -1;
+    FILE *f = fopen(tmppath, "wb");
+    if (!f)
+        return -1;
+    int failed = 0;
+    if (fwrite(data, 1, len, f) != len)
+        failed = 1;
+    if (!failed && fflush(f) != 0)
+        failed = 1;
+#ifdef _WIN32
+    if (!failed) {
+        int fd = _fileno(f);
+        if (fd < 0 || _commit(fd) != 0)
+            failed = 1;
+    }
+#else
+    if (!failed) {
+        int fd = fileno(f);
+        if (fd < 0 || fsync(fd) != 0)
+            failed = 1;
+    }
+#endif
+    if (fclose(f) != 0)
+        failed = 1;
+    if (failed) {
+        remove(tmppath);
+        return -1;
+    }
+    if (rename(tmppath, path) != 0) {
+        remove(tmppath);
+        return -1;
+    }
+    return 0;
 }
 
 static void gw_hall_mkdirs(const char *path)
@@ -156,11 +203,43 @@ static unsigned gw_hall_dir_scan(const char *dir, char *out_prev_file, size_t pr
     return max_seq + 1;
 }
 
+/** 校验 hall 事件分量（task_id/category/node_id）不含路径穿越与危险字符。 */
+static int gw_hall_component_valid(const char *s)
+{
+    if (!s || !s[0]) {
+        return 0;
+    }
+    for (const char *p = s; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c == '/' || c == '\\' || c == ':' || c == '\0' || c == '.' || c == ' ' ||
+            c < 0x20) {
+            if (c == '.' && p[1] != '\0') {
+                /* 允许内部点号（如 UUID 片段），但禁止 ".." 与首字符为点 */
+                if (p == s || (p[1] == '.')) {
+                    return 0;
+                }
+                continue;
+            }
+            if (c == '.' && p[1] == '\0') {
+                continue; /* 末尾单点允许（与既有文件名兼容） */
+            }
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int gw_hall_store_event(const char *task_id, const char *category, const char *node_id,
                         const char *content_json)
 {
     if (!task_id || !task_id[0] || !category || !category[0] || !content_json || !content_json[0])
         return -1;
+    /* P2：路径穿越防护——task_id/category 直接拼入目录名，
+     * 拒绝 ".."、路径分隔符、控制字符等，防写越界出 hall 根目录。 */
+    if (!gw_hall_component_valid(task_id) || !gw_hall_component_valid(category)) {
+        AIRY_LOG_WARN("gateway_hall_store: invalid task_id/category (path traversal blocked)");
+        return -1;
+    }
 
     gw_hall_ensure_init();
     airy_mtx_lock(&g_hall_lock);
@@ -212,15 +291,14 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
 
     char path[GW_HALL_PATH_MAX];
     snprintf(path, sizeof(path), "%s/%s", dir, file_id);
-    FILE *fp = fopen(path, "w");
-    if (!fp) {
+    /* P1-5：原子写（同目录 tmp + fsync + rename），崩溃/断电不会在
+     * 事件流根目录留下半写 JSON 文件（事件流是单一真相源）。 */
+    if (gw_hall_atomic_write(path, json, strlen(json)) != 0) {
         AIRY_FREE(json);
         airy_mtx_unlock(&g_hall_lock);
         AIRY_LOG_WARN("gateway_hall_store: write failed (path=%s)", path);
         return -1;
     }
-    fputs(json, fp);
-    fclose(fp);
     AIRY_FREE(json);
     airy_mtx_unlock(&g_hall_lock);
 
@@ -374,14 +452,21 @@ int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
     if (!w->initialized)
         gw_hall_watch_init(w);
 
-    gw_hall_cand_t cands[4096];
+    /* cands 在堆上分配：每个条目约 1KB，4096 条约 4MB，不能放线程栈。 */
+    const size_t cand_cap = 4096;
+    gw_hall_cand_t *cands = (gw_hall_cand_t *)AIRY_CALLOC(cand_cap, sizeof(gw_hall_cand_t));
+    if (!cands)
+        return -1;
     size_t count = 0;
-    gw_hall_watch_walk(w->root, cands, &count, 4096);
-    if (count == 0)
+    gw_hall_watch_walk(w->root, cands, &count, cand_cap);
+    if (count == 0) {
+        AIRY_FREE(cands);
         return 0;
+    }
 
     qsort(cands, count, sizeof(cands[0]), gw_hall_cand_cmp);
 
+    int result = 0;
     for (size_t i = 0; i < count; i++) {
         int gt_ts = strcmp(cands[i].ts_utc, w->last_ts);
         if (gt_ts < 0 || (gt_ts == 0 && cands[i].seq <= w->last_seq))
@@ -414,9 +499,11 @@ int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
             AIRY_FREE(raw);
             AIRY_STRNCPY_TERM(w->last_ts, cands[i].ts_utc, sizeof(w->last_ts));
             w->last_seq = cands[i].seq;
-            return 1;
+            result = 1;
+            break;
         }
         AIRY_FREE(raw);
     }
-    return 0;
+    AIRY_FREE(cands);
+    return result;
 }

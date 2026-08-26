@@ -18,10 +18,13 @@
 // @owner: team-B
 #include "ws_gateway.h"
 
+#include "../utils/gateway_rate_limiter.h"
 #include "../utils/gateway_rpc_handler.h"
 #include "../utils/gateway_utils.h"
 #include "../utils/jsonrpc.h"
 #include "../utils/syscall_router.h"
+
+#include "logging.h"
 
 #ifdef GATEWAY_HAS_WS
 
@@ -91,6 +94,8 @@ struct ws_gateway {
     struct lws_context *context;
     uint16_t port;
     char *host;
+
+    gateway_rate_limiter_t *rate_limiter;
 
     void *handler_adapter;
     gateway_internal_handler_t handler;
@@ -239,8 +244,27 @@ static int ws_send_message(struct lws *wsi, ws_message_t *msg)
     }
 
     size_t out_len = strlen(json_str);
-    int result = lws_write(wsi, (unsigned char *)json_str, out_len, LWS_WRITE_TEXT);
 
+    /* P0: lws_write() requires LWS_SEND_BUFFER_PRE_PADDING bytes of valid
+     * writable storage BEFORE the payload and LWS_SEND_BUFFER_POST_PADDING
+     * bytes AFTER it, so the protocol header/trailer can be written in-situ.
+     * cJSON_PrintUnformatted() returns a bare malloc() buffer; passing it
+     * directly lets lws overwrite memory before the pointer (heap underrun),
+     * which crashes under Release/LTO while Debug happens to survive.
+     * Copy the payload into a padded buffer instead. */
+    unsigned char *send_buf = AIRY_MALLOC(LWS_SEND_BUFFER_PRE_PADDING + out_len +
+                                          LWS_SEND_BUFFER_POST_PADDING);
+    if (!send_buf) {
+        AIRY_FREE(json_str);
+        airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
+                         "ws_send_message: allocation failed");
+        return AIRY_ERR_OUT_OF_MEMORY;
+    }
+    memcpy(send_buf + LWS_SEND_BUFFER_PRE_PADDING, json_str, out_len);
+
+    int result = lws_write(wsi, send_buf + LWS_SEND_BUFFER_PRE_PADDING, out_len, LWS_WRITE_TEXT);
+
+    AIRY_FREE(send_buf);
     AIRY_FREE(json_str);
     return result;
 }
@@ -417,9 +441,16 @@ static int handle_ws_unknown_message(struct lws *wsi, const char *unknown_type)
   * @brief Handle connection close
  * @param gateway Gateway instance
   * @param context_ptr Connection context pointer
+  * @param user lws per-session data slot (cleared to NULL on close)
   * @return 0 on success
+ *
+ * P0: libwebsockets may fire two close callbacks for a single connection
+ * (e.g. LWS_CALLBACK_WS_PEER_INITIATED_CLOSE followed by LWS_CALLBACK_CLOSED).
+ * Without clearing the per-session data slot, the second callback dereferences
+ * a dangling pointer and double-frees the context.
  */
-static int handle_ws_closed(ws_gateway_t *gateway, ws_connection_context_t **context_ptr)
+static int handle_ws_closed(ws_gateway_t *gateway, ws_connection_context_t **context_ptr,
+                            void *user)
 {
     ws_connection_context_t *context = *context_ptr;
     if (!context)
@@ -434,6 +465,8 @@ static int handle_ws_closed(ws_gateway_t *gateway, ws_connection_context_t **con
     AIRY_FREE(context);
 
     *context_ptr = NULL;
+    if (user)
+        *(void **)user = NULL;
 
     return 0;
 }
@@ -457,6 +490,16 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
     ws_gateway_t *gateway = (ws_gateway_t *)lws_context_user(lws_get_context(wsi));
     ws_connection_context_t *context = NULL;
 
+    /* P0.19 (Debug-only crash): the RPC request JSON is parsed only inside the
+      * LWS_CALLBACK_RECEIVE branch below, but GCC -O0 widens the CJSON_AUTO_FREE
+      * cleanup attribute to the function epilogue, so the cleanup handler also
+      * runs on paths that never enter that branch (e.g. PROTOCOL_INIT / WSI_CREATE
+      * fired during lws_create_context). Declaring the pointer at function scope
+      * with an unconditional NULL initializer guarantees the epilogue cleanup is
+      * a no-op whenever the variable was never assigned; Release builds happened
+      * to eliminate the dead cleanup call, which masked the bug. */
+    CJSON_AUTO_FREE cJSON *json = NULL;
+
     /* Callbacks before connection setup (e.g. LWS_CALLBACK_PROTOCOL_INIT/DESTROY,
       * fired during lws_create_context) have user == NULL; dereferencing would segfault;
       * resolve per_session_data only for established-connection callbacks. */
@@ -465,6 +508,38 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
     switch (reason) {
     case LWS_CALLBACK_ESTABLISHED:
+        if (gateway->rate_limiter) {
+            char client_ip[64];
+            client_ip[0] = '\0';
+            /* Use lws_get_peer_simple() instead of lws_get_peer_addresses():
+             * the latter dereferences wsi->a.vhost and segfaults on
+             * libwebsockets 4.3.3 (upstream issue #2433). */
+            lws_get_peer_simple(wsi, client_ip, sizeof(client_ip));
+            if (client_ip[0] == '\0') {
+                snprintf(client_ip, sizeof(client_ip), "_unresolved");
+            }
+            if (!gateway_rate_limiter_allow(gateway->rate_limiter, client_ip)) {
+                AIRY_LOG_WARN("WebSocket rate limit exceeded for %s, closing connection",
+                         client_ip);
+                char *error_json =
+                    jsonrpc_create_error_response(NULL, -32004, "Rate limit exceeded", NULL);
+                if (error_json) {
+                    /* cJSON_Parse result is deep-copied by ws_message_create;
+                     * release both the parsed tree and the JSON string. */
+                    cJSON *err_parsed = cJSON_Parse(error_json);
+                    ws_message_t *error_msg = err_parsed ?
+                        ws_message_create(WS_MSG_TYPE_ERROR, NULL, err_parsed) : NULL;
+                    if (error_msg) {
+                        ws_send_message(wsi, error_msg);
+                        ws_message_destroy(error_msg);
+                    }
+                    if (err_parsed)
+                        cJSON_Delete(err_parsed);
+                    AIRY_FREE(error_json);
+                }
+                return -1;
+            }
+        }
         return handle_ws_established(gateway, &context, &user);
 
     case LWS_CALLBACK_RECEIVE:
@@ -498,8 +573,9 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
         atomic_fetch_add(&gateway->bytes_received, len);
 
         /* P0: lws's in buffer is not '\0'-terminated; cJSON_Parse would overrun;
-          * parse by len with cJSON_ParseWithLength (CJSON_AUTO_FREE kept) */
-        CJSON_AUTO_FREE cJSON *json = cJSON_ParseWithLength((const char *)in, len);
+          * parse by len with cJSON_ParseWithLength (json is a function-scope
+          * CJSON_AUTO_FREE pointer, declared NULL-initialized above). */
+        json = cJSON_ParseWithLength((const char *)in, len);
         if (!json) {
 
             char *error_json = jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
@@ -540,7 +616,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
     case LWS_CALLBACK_CLOSED:
     case LWS_CALLBACK_WS_PEER_INITIATED_CLOSE:
     case LWS_CALLBACK_CLOSED_HTTP:
-        return handle_ws_closed(gateway, &context);
+        return handle_ws_closed(gateway, &context, user);
 
     default:
         break;
@@ -655,6 +731,11 @@ static void ws_gateway_destroy(void *gateway_impl)
         AIRY_FREE(gateway->host);
     }
 
+    if (gateway->rate_limiter) {
+        gateway_rate_limiter_destroy(gateway->rate_limiter);
+        gateway->rate_limiter = NULL;
+    }
+
     AIRY_FREE(gateway);
 }
 
@@ -752,7 +833,32 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
     gateway->handler = NULL;
     gateway->handler_data = NULL;
 
+    /* Rate limiting is opt-in, driven by the same env vars as the HTTP/2
+     * gateway (GATEWAY_RATE_LIMIT_ENABLED=true [+ GATEWAY_RATE_LIMIT_RPS]). */
+    gateway->rate_limiter = NULL;
+    const char *rate_limit_enabled = getenv("GATEWAY_RATE_LIMIT_ENABLED");
+    if (rate_limit_enabled && strcmp(rate_limit_enabled, "true") == 0) {
+        gateway_rate_limit_config_t rl_config;
+        gateway_rate_limiter_get_default_config(&rl_config);
+        rl_config.enabled = true;
+        const char *rps = getenv("GATEWAY_RATE_LIMIT_RPS");
+        if (rps) {
+            long v = strtol(rps, NULL, 10);
+            if (v > 0 && v <= 100000) {
+                rl_config.requests_per_second = (uint32_t)v;
+            } else {
+                AIRY_LOG_WARN("ignoring invalid GATEWAY_RATE_LIMIT_RPS: %s", rps);
+            }
+        }
+        gateway->rate_limiter = gateway_rate_limiter_create(&rl_config);
+        AIRY_LOG_INFO("WebSocket rate limiting enabled (rps=%u)",
+                 rl_config.requests_per_second);
+    }
+
     if (!gateway->host) {
+        if (gateway->rate_limiter) {
+            gateway_rate_limiter_destroy(gateway->rate_limiter);
+        }
         AIRY_FREE(gateway);
         return NULL;
     }
@@ -767,6 +873,9 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
     gateway->max_request_size = 10 * 1024 * 1024; /* 10MB */
     gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
+        if (gateway->rate_limiter) {
+            gateway_rate_limiter_destroy(gateway->rate_limiter);
+        }
         AIRY_FREE(gateway->host);
         AIRY_FREE(gateway);
         return NULL;

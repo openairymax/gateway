@@ -131,7 +131,7 @@ airy_err_t airy_sys_session_get(const char *session_id, char **out_info)
         return AIRY_OK;
     }
     RUNTIME_UNLOCK();
-    *out_info = AIRY_STRDUP("{}");
+    *out_info = NULL;
     return AIRY_ERR_NOT_FOUND;
 }
 

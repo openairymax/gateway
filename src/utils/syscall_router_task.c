@@ -144,8 +144,9 @@ static int task_daemon_get_status(const char *task_id, int *status)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_SCHED_D_SOCKET, "get_task", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.get_task） */
+    int rc = syscall_svc_call_unwrap("sched", "get_task", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -185,8 +186,9 @@ airy_err_t airy_sys_task_submit(const char *input, size_t len, uint32_t timeout_
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_SCHED_D_SOCKET, "schedule_task", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.schedule_task） */
+    int rc = syscall_svc_call_unwrap("sched", "schedule_task", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -234,8 +236,9 @@ airy_err_t airy_sys_task_wait(const char *task_id, uint32_t timeout_ms, char **o
                 return AIRY_ERR_OUT_OF_MEMORY;
 
             char *result_str = NULL;
-            rc = daemon_rpc_call(AIRY_SCHED_D_SOCKET, "get_task", params_str, &result_str,
-                                 AIRY_DAEMON_RPC_TIMEOUT_MS);
+            /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.get_task） */
+            rc = syscall_svc_call_unwrap("sched", "get_task", params_str,
+                                         AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
             AIRY_FREE(params_str);
             if (rc != AIRY_SUCCESS)
                 return rc;
@@ -268,8 +271,9 @@ airy_err_t airy_sys_task_cancel(const char *task_id)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_SCHED_D_SOCKET, "cancel", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.cancel） */
+    int rc = syscall_svc_call_unwrap("sched", "cancel", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     AIRY_FREE(result_str);
     return rc;

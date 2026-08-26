@@ -31,13 +31,35 @@ http2_gateway_session_t *http2_session_create(http2_gateway_t *gw, int fd)
     sess->last_activity_ns = sess->connect_time_ns;
     sess->closing = false;
 
+    /* Resolve the peer IP for rate limiting and audit. The nghttp2 session
+     * user_data is set to sess (below) so callbacks can reach it. */
+    sess->client_ip[0] = '\0';
+#ifndef _WIN32
+    struct sockaddr_storage ss;
+    socklen_t slen = sizeof(ss);
+    if (getpeername(fd, (struct sockaddr *)&ss, &slen) == 0) {
+        if (ss.ss_family == AF_INET) {
+            inet_ntop(AF_INET, &((struct sockaddr_in *)&ss)->sin_addr, sess->client_ip,
+                      sizeof(sess->client_ip));
+        } else if (ss.ss_family == AF_INET6) {
+            inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&ss)->sin6_addr, sess->client_ip,
+                      sizeof(sess->client_ip));
+        }
+    }
+#endif
+    if (sess->client_ip[0] == '\0') {
+        snprintf(sess->client_ip, sizeof(sess->client_ip), "_unresolved");
+    }
+
     nghttp2_session_callbacks *callbacks = NULL;
     if (http2_create_callbacks(&callbacks) != 0) {
         AIRY_FREE(sess);
         return NULL;
     }
 
-    int ret = nghttp2_session_server_new(&sess->session, callbacks, gw);
+    /* Pass sess (not gw) as the nghttp2 user_data: callbacks then have access
+     * to both the gateway (sess->gateway) and the peer IP (sess->client_ip). */
+    int ret = nghttp2_session_server_new(&sess->session, callbacks, sess);
     nghttp2_session_callbacks_del(callbacks);
 
     if (ret != 0) {
@@ -89,6 +111,17 @@ void http2_session_destroy(http2_gateway_session_t *sess)
         nghttp2_session_del(sess->session);
         sess->session = NULL;
     }
+
+    /* nghttp2 does not fire on_stream_close for streams still open at session
+     * teardown; free any remaining contexts to avoid a per-connection leak. */
+    http2_stream_context_t *ctx = sess->active_streams;
+    while (ctx) {
+        http2_stream_context_t *next = ctx->next_active;
+        AIRY_LOG_DEBUG("session teardown: freeing orphaned stream %d", ctx->stream_id);
+        http2_stream_destroy(ctx);
+        ctx = next;
+    }
+    sess->active_streams = NULL;
 
     if (sess->fd >= 0) {
         close(sess->fd);

@@ -25,6 +25,12 @@
 
 #include "atomic_compat.h"
 
+#ifndef _WIN32
+#include <netinet/in.h>
+#else
+#include <ws2tcpip.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -52,6 +58,12 @@ typedef struct http2_stream_context {
     bool headers_complete;
     bool body_complete;
     bool response_sent_flag;
+
+    /* Active-stream list linkage (owned by http2_gateway_session_t).
+     * nghttp2 does NOT invoke on_stream_close for streams still alive when
+     * the session is destroyed, so the session keeps its own list to free
+     * any leaked stream contexts on teardown. */
+    struct http2_stream_context *next_active;
 } http2_stream_context_t;
 
 /**
@@ -63,9 +75,14 @@ typedef struct http2_gateway_session {
     int fd; /**< TCP socket fd */
     nghttp2_session *session;
     struct http2_gateway *gateway;
+    char client_ip[INET6_ADDRSTRLEN]; /**< peer IP string (rate limiting / audit) */
     uint64_t connect_time_ns;
     uint64_t last_activity_ns;
     bool closing;
+
+    /* Active streams on this session; freed on session teardown (P1: streams
+     * still open when the connection dies would otherwise leak). */
+    http2_stream_context_t *active_streams;
 
     /* P0 fix: partial-write buffer. nghttp2_session_mem_send() considers the
      * data consumed once returned, but write() may write only part of it;
