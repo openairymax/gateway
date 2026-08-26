@@ -302,38 +302,39 @@ static int internal_handler_public_wrapper(const char *request_json, char **resp
 char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *context)
 {
     rpc_result_t result;
+    AIRY_MEMSET(&result, 0, sizeof(result)); /* 防止 OOM 分支读取未初始化 response_json */
 
-    if (gateway->protocol_handler && context->upload_data && context->upload_data_size > 0) {
+    if (gateway->protocol_handler && context->body_buf && context->body_len > 0) {
         internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler,
                                                 .internal_data = gateway->handler_data};
-        result = gateway_protocol_handle_request(gateway->protocol_handler, context->upload_data,
-                                                 context->upload_data_size, AIRY_PROTOCOL_COUNT,
+        result = gateway_protocol_handle_request(gateway->protocol_handler, context->body_buf,
+                                                 context->body_len, AIRY_PROTOCOL_COUNT,
                                                  internal_handler_public_wrapper, &adapter);
     } else if (context->json_request) {
         internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler,
                                                 .internal_data = gateway->handler_data};
         result = gateway_rpc_handle_request(context->json_request, internal_handler_public_wrapper,
                                             &adapter);
-    } else if (context->upload_data && context->upload_data_size > 0 && gateway->handler) {
+    } else if (context->body_buf && context->body_len > 0 && gateway->handler) {
         /* Raw non-JSON-RPC body (OpenAI/MCP/A2A): pass the HTTP context
          * (method/path + NUL-terminated body copy) to the protocol entry
          * handler for detection and routing (translated uniformly by
-         * gateway_d, D2). MHD upload_data is not NUL-terminated, so a
+         * gateway_d, D2). MHD body chunks are not NUL-terminated, so a
          * terminated copy is required before any strstr/cJSON parsing. */
-        char *body_copy = (char *)AIRY_MALLOC(context->upload_data_size + 1);
+        char *body_copy = (char *)AIRY_MALLOC(context->body_len + 1);
         if (!body_copy) {
             result.error_code = -32603;
-            result.error_message = AIRY_STRDUP("Out of memory");
+            result.error_message = "Out of memory";
         } else {
-            AIRY_MEMCPY(body_copy, context->upload_data, context->upload_data_size);
-            body_copy[context->upload_data_size] = '\0';
+            AIRY_MEMCPY(body_copy, context->body_buf, context->body_len);
+            body_copy[context->body_len] = '\0';
 
             gateway_http_request_t http_req = {0};
             http_req.magic = GATEWAY_HTTP_REQUEST_MAGIC;
             http_req.method = context->method ? context->method : "POST";
             http_req.path = context->url;
             http_req.body = body_copy;
-            http_req.body_len = context->upload_data_size;
+            http_req.body_len = context->body_len;
 
             char *resp = gateway->handler(&http_req, gateway->handler_data);
             AIRY_MEMSET(&result, 0, sizeof(result));
@@ -341,7 +342,7 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
                 result.response_json = resp;
             } else {
                 result.error_code = -32603;
-                result.error_message = AIRY_STRDUP("Protocol handler failed");
+                result.error_message = "Protocol handler failed";
             }
             AIRY_FREE(body_copy);
         }
@@ -378,6 +379,10 @@ static void http_request_completed_callback(
         if (ctx->json_request) {
             cJSON_Delete(ctx->json_request);
             ctx->json_request = NULL;
+        }
+        if (ctx->body_buf) {
+            AIRY_FREE(ctx->body_buf);
+            ctx->body_buf = NULL;
         }
         AIRY_FREE(ctx);
         *con_cls = NULL;

@@ -172,10 +172,15 @@ target_include_directories(gateway
 
 # P0.18.1: svc_common 提供 jsonrpc_get_error_message（jsonrpc_helpers.c），
 # gateway/src/utils/jsonrpc.c:167 调用此符号，故 gateway 依赖 svc_common。
+# 架构约束 2026-08-25 "必须走 syscall": gateway 的 airy_sys_* 方法面经
+# airy_sys_svc_call()（SYS_SVC_CALL）派发，故 gateway 依赖 atoms/syscall
+# （airy_syscall 归档；仅 svc_dispatch.o 被拉取，其余 airy_sys_* 由本库
+# syscall_router_*.c 提供，避免重复符号）。
 # PUBLIC 传播至测试目标（test_jsonrpc/test_syscall_router/test_rpc_handler）
 target_link_libraries(gateway
     PUBLIC
         svc_common
+        airy_syscall
     PRIVATE
         airy_protocols
         airy_common
@@ -191,6 +196,10 @@ if(AIRY_HAS_CJSON)
 endif()
 
 if(AIRY_HAS_MICROHTTPD)
+    # http_gateway.c 的实现包在 #ifdef GATEWAY_HAS_HTTP 内；缺此宏时
+    # http_gateway_register_endpoint 等符号无定义，gateway_api.c 引用导致
+    # test_gateway/gateway_d 链接失败（libgateway.a 按需拉取，需与定义同步）
+    target_compile_definitions(gateway PRIVATE GATEWAY_HAS_HTTP=1)
     if(libmicrohttpd_FOUND)
         target_link_libraries(gateway PRIVATE microhttpd)
     elseif(MICROHTTPD_FOUND)

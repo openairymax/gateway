@@ -131,7 +131,9 @@ static rpc_result_t create_error_result(int code, const char *message, const cha
     rpc_result_t result;
     AIRY_MEMSET(&result, 0, sizeof(result));
     result.error_code = code;
-    result.error_message = AIRY_STRDUP(message ? message : "Unknown error");
+    /* error_message 只作诊断，不持有所有权（gateway_rpc_free 仅置 NULL），
+     * 避免 strdup 泄漏且与 gateway_rpc_create_error 的字面量语义统一。 */
+    result.error_message = message ? message : "Unknown error";
 
     cJSON *error_resp = cJSON_CreateObject();
     cJSON_AddStringToObject(error_resp, "jsonrpc", "2.0");

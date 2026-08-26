@@ -21,7 +21,12 @@
  */
 void http2_process_request(nghttp2_session *session, int32_t stream_id, void *user_data)
 {
-    http2_gateway_t *gw = (http2_gateway_t *)user_data;
+    http2_gateway_session_t *sess = (http2_gateway_session_t *)user_data;
+    if (!sess || !sess->gateway) {
+        AIRY_LOG_ERROR("process_request: invalid session (stream_id=%d)", stream_id);
+        return;
+    }
+    http2_gateway_t *gw = sess->gateway;
     http2_stream_context_t *ctx =
         (http2_stream_context_t *)nghttp2_session_get_stream_user_data(session, stream_id);
 
@@ -37,7 +42,12 @@ void http2_process_request(nghttp2_session *session, int32_t stream_id, void *us
              ctx->method ? ctx->method : "(null)", ctx->path ? ctx->path : "(null)",
              ctx->request_body_len);
 
-    if (ctx->method && strcmp(ctx->method, "POST") == 0) {
+    if (gw->base.rate_limiter && sess->client_ip[0] &&
+        !gateway_rate_limiter_allow(gw->base.rate_limiter, sess->client_ip)) {
+        AIRY_LOG_WARN("rate limit exceeded for %s (stream_id=%d)", sess->client_ip, ctx->stream_id);
+        ctx->response_status = 429;
+        response_json = jsonrpc_create_error_response(NULL, -32004, "Rate limit exceeded", NULL);
+    } else if (ctx->method && strcmp(ctx->method, "POST") == 0) {
         /* POST / → JSON-RPC */
         if (ctx->request_body_len > gw->base.max_request_size) {
             AIRY_LOG_WARN("request too large: %zu > %zu (stream_id=%d)", ctx->request_body_len,

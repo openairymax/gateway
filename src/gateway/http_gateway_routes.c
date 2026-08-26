@@ -21,6 +21,7 @@
 #include "airy_memory.h"
 #include "platform.h"
 #include "syscall_router.h"
+#include "syscall_router_internal.h"
 #include "syscalls.h"
 
 #include <microhttpd.h>
@@ -72,11 +73,8 @@ int handle_post_jsonrpc(http_gateway_t *gateway, struct MHD_Connection *connecti
     struct MHD_Response *response =
         create_http_response_ex(gateway, connection, 200, json_response, strlen(json_response));
 
-    uint64_t response_time_ns = gateway_time_ns() - context->start_time_ns;
-    AIRY_LOG_DEBUG("请求处理耗时: %lu ns", response_time_ns);
-
     atomic_fetch_add(&gateway->requests_total, 1);
-    atomic_fetch_add(&gateway->bytes_received, context->upload_data_size);
+    atomic_fetch_add(&gateway->bytes_received, context->body_len);
     atomic_fetch_add(&gateway->bytes_sent, strlen(json_response));
 
     int ret = MHD_queue_response(connection, 200, response);
@@ -394,7 +392,17 @@ typedef struct {
     double cost_usd;
     int usage_received; /* RS 'U' 帧已解析 */
     int usage_emitted;  /* usage SSE 事件已发送 */
+    /* 长时记忆（memoryrovol，2.2.4 对话路径与 CLI 对齐）：
+     * user_prompt = 本轮首个用户输入（记忆查询/写回的键）；
+     * mem_recorded 保证会话只写回一次。 */
+    char *user_prompt;
+    int mem_recorded;
 } gw_sse_ctx_t;
+
+/* 长时记忆辅助函数前向声明（定义在文件下部，SSE 收尾路径在结构体
+ * 之后即调用，须先声明避免 implicit declaration 与 static 冲突）。 */
+static void gw_sse_mem_inject(cJSON *history, const char *prompt);
+static void gw_sse_mem_record(gw_sse_ctx_t *sctx);
 
 /**
   * @brief Resolve the llm_d socket path: env AIRY_LLM_SOCK -> airy_runtime_dir()/llm.sock
@@ -874,6 +882,31 @@ static int gw_sse_stream_consume_frames(gw_sse_ctx_t *sctx)
 }
 
 /**
+ * @brief Accumulate a text chunk into final_text (reply record for memory).
+ *
+ * 记忆写回证据：无工具路径的正文只经 SSE 实时转发（step_buf），从不落
+ * final_text——此前 final_text 恒为空串，gw_sse_mem_record 的 <8 字符守卫
+ * 永远跳过，长时记忆（L1）只字不写。此处把每个流式文本增量同时累积到
+ * final_text，供收尾写回 "用户:/AgentRT:" 记录（与 CLI 共享召回）。
+ * 多轮工具调用时累积全部轮次文本，记忆取最终完整回复，符合语义。
+ */
+static void gw_sse_text_accumulate(gw_sse_ctx_t *sctx, const char *text, size_t len)
+{
+    if (!sctx || !text || len == 0)
+        return;
+    size_t old = sctx->final_text ? strlen(sctx->final_text) : 0;
+    char *nb = (char *)AIRY_MALLOC(old + len + 1);
+    if (!nb)
+        return;
+    if (old > 0)
+        AIRY_MEMCPY(nb, sctx->final_text, old);
+    AIRY_MEMCPY(nb + old, text, len);
+    nb[old + len] = '\0';
+    AIRY_FREE(sctx->final_text);
+    sctx->final_text = nb;
+}
+
+/**
  * @brief Extract a text chunk before the first RS frame (real streaming)
  *
  * The bytes before the first RS boundary are plain LLM text; forward them
@@ -890,6 +923,8 @@ static int gw_sse_stream_extract_text(gw_sse_ctx_t *sctx)
     size_t take = rs ? (size_t)(rs - sctx->stream_buf) : sctx->stream_len;
     if (take == 0)
         return 0; /* buffer starts with a control frame */
+    /* 记忆写回证据：正文增量同步累积（无工具路径 final_text 不再为空） */
+    gw_sse_text_accumulate(sctx, sctx->stream_buf, take);
     sctx->step_buf = (char *)AIRY_MALLOC(take + 9);
     if (!sctx->step_buf)
         return 0;
@@ -1009,6 +1044,11 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             if (sctx->tool_round >= GW_SSE_MAX_TOOL_LOOPS) {
                 /* Too many rounds: emit what we have as the final answer. */
                 sctx->final_text = AIRY_STRDUP("(tool loop limit reached)");
+                if (!sctx->final_text) {
+                    sctx->done = 1;
+                    AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
+                    return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
+                }
                 sctx->final_len = strlen(sctx->final_text);
                 sctx->final_pos = 0;
                 sctx->phase = GW_SSE_PHASE_FINAL_TEXT;
@@ -1096,7 +1136,17 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                 char tmp[4096];
                 ssize_t n = recv(sctx->fd, tmp, sizeof(tmp), 0);
                 if (n > 0) {
-                    gw_sse_stream_append(sctx, tmp, (size_t)n);
+                    /* P1: on append failure (buffer over 64MB / OOM) terminate
+                     * the stream instead of silently dropping the chunk and
+                     * spinning until the recv timeout hangs the SSE response. */
+                    if (gw_sse_stream_append(sctx, tmp, (size_t)n) != 0) {
+                        AIRY_LOG_WARN("SSE stream buffer append failed, terminating stream");
+                        sctx->stream_eof = 1;
+                        sctx->done = 1;
+                        close(sctx->fd);
+                        sctx->fd = -1;
+                        break;
+                    }
                     continue;
                 }
                 if (n == 0) {
@@ -1180,8 +1230,16 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             }
             /* 无工具：最终正文已实时转发；思考链已随流式增量实时转发
              * （reasoning_streamed），不再走 REASONING 阶段（避免重复），
-             * 直接 FINAL_TEXT（final_text 为空 → 立即 [DONE]）。 */
-            sctx->final_text = AIRY_STRDUP("");
+             * 直接 FINAL_TEXT（final_text 已由流式增量累积 → 立即 [DONE]）。
+             * 注意：不得覆盖已累积的回复正文——gw_sse_mem_record 依赖它
+             * 写回长时记忆（final_text 曾恒为空串导致记忆不落库）。 */
+            if (!sctx->final_text)
+                sctx->final_text = AIRY_STRDUP("");
+            if (!sctx->final_text) {
+                sctx->done = 1;
+                AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
+                return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
+            }
             sctx->final_len = 0;
             sctx->final_pos = 0;
             sctx->phase = GW_SSE_PHASE_FINAL_TEXT;
@@ -1346,6 +1404,9 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                         gw_sse_record_event(sctx, "result", revt);
                         cJSON_Delete(revt);
                     }
+                    /* 2.2.4 长时记忆写回：会话结束后写入 mem_d（与 CLI
+                     * 相同的 "用户:/AgentRT:" 记录格式，两侧共享召回）。 */
+                    gw_sse_mem_record(sctx);
                 }
                 /* 2.1.1.5：先透传 usage SSE 事件（若 llm_d 流式尾帧已携带），
                  * 下一次回调再发 [DONE]，保证客户端在流结束时拿到真实
@@ -1394,7 +1455,8 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                 return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
             }
             AIRY_MEMCPY(sctx->step_buf, "data: ", 6);
-            AIRY_MEMCPY(sctx->step_buf + 6, sctx->final_text + sctx->final_pos, n);
+            AIRY_MEMCPY(sctx->step_buf + 6,
+                        sctx->final_text ? sctx->final_text + sctx->final_pos : "", n);
             sctx->step_buf[6 + n] = '\n';
             sctx->step_buf[6 + n + 1] = '\n';
             sctx->step_buf[6 + n + 2] = '\0';
@@ -1426,9 +1488,181 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
     }
 }
 
+/* ── SSE 会话长时记忆（2.2.4 对话路径，与 CLI 对齐）────────────── */
+
+/* 防自我回灌：跳过与当前输入几乎相同的记忆记录（CLI 把整轮写为
+ * "用户: <input>\nAgentRT: <reply>"，查询常命中上一条自身）。 */
+static int gw_sse_mem_is_self_feedback(const char *record_data, const char *prompt)
+{
+    if (!record_data || !prompt || !prompt[0])
+        return 0;
+    /* "用户: " 在 UTF-8 下为 9 字节（"用户"=6 字节 + 空格冒号空格=3） */
+    if (strncmp(record_data, "用户: ", 9) != 0)
+        return 0;
+    size_t plen = strlen(prompt);
+    if (strncmp(record_data + 9, prompt, plen) == 0)
+        return 1;
+    return 0;
+}
+
+/* 记忆注入：用本轮用户输入经 mem_d 语义检索，把相关历史记忆作为
+ * system 前缀消息插到 history 首位（与 CLI cli_chat_mem_inject_system
+ * 相同的语义；mem_d 不可用时静默跳过，不阻塞对话）。 */
+static void gw_sse_mem_inject(cJSON *history, const char *prompt)
+{
+    if (!history || !prompt || !prompt[0])
+        return;
+
+    char **record_ids = NULL;
+    float *scores = NULL;
+    size_t count = 0;
+    if (airy_sys_memory_search(prompt, 3, &record_ids, &scores, &count) != AIRY_OK ||
+        count == 0) {
+        goto inject_done;
+    }
+
+    char mem_acc[768];
+    size_t off = 0;
+    if (sizeof(mem_acc) > 0) {
+        int w0 = snprintf(mem_acc + off, sizeof(mem_acc) - off, "\n\n[相关历史记忆]");
+        if (w0 > 0)
+            off += ((size_t)w0 < sizeof(mem_acc) - off) ? (size_t)w0 : (sizeof(mem_acc) - off - 1);
+    }
+    for (size_t i = 0; i < count && off < sizeof(mem_acc) - 1; i++) {
+        void *data = NULL;
+        size_t dlen = 0;
+        if (airy_sys_memory_get(record_ids[i], &data, &dlen) != AIRY_OK || !data)
+            continue;
+        const char *rec = (const char *)data;
+        if (!gw_sse_mem_is_self_feedback(rec, prompt)) {
+            size_t n = dlen < 200 ? dlen : 200;
+            int w1 = snprintf(mem_acc + off, sizeof(mem_acc) - off, "\n- %.*s", (int)n, rec);
+            if (w1 > 0)
+                off += ((size_t)w1 < sizeof(mem_acc) - off) ? (size_t)w1
+                                                            : (sizeof(mem_acc) - off - 1);
+        }
+        AIRY_FREE(data);
+    }
+    if (off > 0 && off < sizeof(mem_acc)) {
+        cJSON *sys = cJSON_CreateObject();
+        if (sys) {
+            cJSON_AddStringToObject(sys, "role", "system");
+            cJSON_AddStringToObject(sys, "content", mem_acc);
+            cJSON_InsertItemInArray(history, 0, sys);
+        }
+    }
+
+inject_done:
+    if (record_ids) {
+        for (size_t i = 0; i < count; i++)
+            AIRY_FREE(record_ids[i]);
+        AIRY_FREE(record_ids);
+    }
+    if (scores)
+        AIRY_FREE(scores);
+}
+
+/* JSON 字符串转义（写入元数据：reasoning 含引号/换行时需转义）。
+ * 输出追加到 dst（调用方保证空间足够），返回追加长度。 */
+static size_t gw_json_escape_append(char *dst, size_t cap, const char *src, size_t len)
+{
+    if (!dst || !src || cap == 0)
+        return 0;
+    size_t o = 0;
+    for (size_t i = 0; i < len && o + 6 < cap; i++) {
+        unsigned char c = (unsigned char)src[i];
+        switch (c) {
+        case '"':
+            dst[o++] = '\\';
+            dst[o++] = '"';
+            break;
+        case '\\':
+            dst[o++] = '\\';
+            dst[o++] = '\\';
+            break;
+        case '\n':
+            dst[o++] = '\\';
+            dst[o++] = 'n';
+            break;
+        case '\r':
+            dst[o++] = '\\';
+            dst[o++] = 'r';
+            break;
+        case '\t':
+            dst[o++] = '\\';
+            dst[o++] = 't';
+            break;
+        default:
+            if (c < 0x20) {
+                o += (size_t)snprintf(dst + o, cap - o, "\\u%04x", c);
+            } else {
+                dst[o++] = (char)c;
+            }
+            break;
+        }
+    }
+    dst[o] = '\0';
+    return o;
+}
+
+/* 记忆写回：会话结束后把 "用户: <input>\nAgentRT: <reply>" 写入
+ * mem_d（与 CLI 相同的记录格式，供两侧共享召回）。回复过短或
+ * 内容为空不写（避免垃圾条目抬高检索噪声）。 */
+static void gw_sse_mem_record(gw_sse_ctx_t *sctx)
+{
+    if (!sctx || sctx->mem_recorded || !sctx->user_prompt || !sctx->user_prompt[0])
+        return;
+    sctx->mem_recorded = 1;
+    if (!sctx->final_text || strlen(sctx->final_text) < 8)
+        return;
+
+    char content[1800];
+    int n = snprintf(content, sizeof(content), "用户: %s\nAgentRT: %s", sctx->user_prompt,
+                     sctx->final_text);
+    if (n <= 0)
+        return;
+    if (n > 1600)
+        n = 1600;
+
+    /* 推理链原始证据（L1）：reasoning（思考链摘要）与 token 计量随元数据
+     * 落库，供记忆卷载 L1 层保留（思考输出 token 是推理链条的原始证据）。 */
+    char meta[1024];
+    {
+        int mn = snprintf(meta, sizeof(meta),
+                          "{\"source\":\"gateway\",\"kind\":\"chat\","
+                          "\"prompt_tokens\":%llu,\"completion_tokens\":%llu,"
+                          "\"total_tokens\":%llu,\"cost_usd\":%.6f",
+                          sctx->prompt_tokens, sctx->completion_tokens, sctx->total_tokens,
+                          sctx->cost_usd);
+        if (sctx->reasoning && sctx->reasoning[0]) {
+            /* reasoning 截断至 600 字符写入 meta（过长会撑爆元数据列） */
+            size_t rl = strlen(sctx->reasoning);
+            if (rl > 600)
+                rl = 600;
+            if (mn < (int)sizeof(meta) - 2) {
+                meta[mn++] = ',';
+                meta[mn++] = '"';
+                const char *rk = "reasoning\":\"";
+                for (const char *p = rk; *p && mn < (int)sizeof(meta) - 1; p++)
+                    meta[mn++] = *p;
+                size_t used = gw_json_escape_append(meta + mn, sizeof(meta) - (size_t)mn,
+                                                    sctx->reasoning, rl);
+                mn += (int)used;
+                if (mn < (int)sizeof(meta) - 2) {
+                    meta[mn++] = '"';
+                }
+            }
+        }
+        snprintf(meta + mn, sizeof(meta) - (size_t)mn, "}");
+    }
+    char *rid = NULL;
+    airy_sys_memory_write(content, (size_t)n, meta, &rid);
+    AIRY_FREE(rid);
+}
+
 /**
   * @brief MHD free_cb: release the SSE callback context (close fd + free memory)
- */
+  */
 static void gw_sse_content_free(void *cls)
 {
     gw_sse_ctx_t *sctx = (gw_sse_ctx_t *)cls;
@@ -1448,6 +1682,7 @@ static void gw_sse_content_free(void *cls)
     AIRY_FREE(sctx->final_text);
     AIRY_FREE(sctx->stream_buf);
     AIRY_FREE(sctx->step_buf);
+    AIRY_FREE(sctx->user_prompt);
     AIRY_FREE(sctx);
 }
 
@@ -1472,8 +1707,8 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
                            http_request_context_t *context)
 {
 #ifndef _WIN32
-    const char *body = context->upload_data;
-    size_t body_len = context->upload_data_size;
+    const char *body = context->body_buf;
+    size_t body_len = context->body_len;
     if (!body || body_len == 0) {
         return gw_sse_send_json_error(gateway, connection, 400,
                                       "Request body required (model+messages or prompt)");
@@ -1549,6 +1784,28 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     sctx->tool_round = 0;
     gw_sse_resolve_llm_sock(sctx->llm_sock, sizeof(sctx->llm_sock));
     gw_sse_resolve_tool_sock(sctx->tool_sock, sizeof(sctx->tool_sock));
+
+    /* 2.2.4 长时记忆：保存本轮首个用户输入（记忆写回键），并注入
+     * 相关历史记忆为 system 前缀（与 CLI 对话路径同语义——TUI 对话
+     * 获得长时记忆，CLI/TUI 切换后共享同一记忆库召回上一句上下文；
+     * mem_d 不可用时注入静默跳过，不影响对话）。 */
+    {
+        const cJSON *first_user = NULL;
+        cJSON *item = NULL;
+        cJSON_ArrayForEach(item, history) {
+            cJSON *role = cJSON_GetObjectItem(item, "role");
+            if (cJSON_IsString(role) && strcmp(role->valuestring, "user") == 0) {
+                first_user = item;
+                break;
+            }
+        }
+        const cJSON *fc = first_user ? cJSON_GetObjectItem(first_user, "content") : NULL;
+        const char *first_prompt = cJSON_IsString(fc) ? fc->valuestring : NULL;
+        if (first_prompt && first_prompt[0]) {
+            sctx->user_prompt = AIRY_STRDUP(first_prompt);
+            gw_sse_mem_inject(history, first_prompt);
+        }
+    }
 
     /* Record the session start into the hall event flow (SSoT write side):
      * every gateway chat session becomes visible on the board / decision
@@ -1756,8 +2013,8 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
 
     gateway_endpoint_request_t req = {.method = method,
                                       .path = url,
-                                      .body = context->upload_data,
-                                      .body_len = context->upload_data_size,
+                                      .body = context->body_buf,
+                                      .body_len = context->body_len,
                                       .user_data = matched->user_data};
 
     gateway_endpoint_response_t resp = {.status_code = 500,
@@ -1892,16 +2149,29 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
     }
 
     if (strcmp(method, "POST") == 0 && upload_data && *upload_data_size > 0) {
-        if (*upload_data_size > gateway->max_request_size) {
-            return handle_request_too_large(gateway, connection, context, *upload_data_size);
+        /* P1 fix: MHD delivers large POST bodies in multiple chunks and
+         * REUSES the upload_data buffer between chunks. Only remembering the
+         * last chunk's pointer truncates the body; accumulate into our own
+         * buffer instead. */
+        if (context->body_len + *upload_data_size > gateway->max_request_size) {
+            return handle_request_too_large(gateway, connection, context,
+                                            context->body_len + *upload_data_size);
         }
 
-        context->upload_data = upload_data;
-        context->upload_data_size = *upload_data_size;
-
-        if (parse_json_request(gateway, context, upload_data, *upload_data_size) != 0) {
-            return handle_parse_error(gateway, connection, context, *upload_data_size);
+        if (context->body_len + *upload_data_size > context->body_cap) {
+            size_t new_cap = context->body_cap == 0 ? 4096 : context->body_cap;
+            while (new_cap < context->body_len + *upload_data_size) {
+                new_cap *= 2;
+            }
+            char *nb = AIRY_REALLOC(context->body_buf, new_cap);
+            if (!nb) {
+                return MHD_NO;
+            }
+            context->body_buf = nb;
+            context->body_cap = new_cap;
         }
+        AIRY_MEMCPY(context->body_buf + context->body_len, upload_data, *upload_data_size);
+        context->body_len += *upload_data_size;
 
         *upload_data_size = 0;
         return MHD_YES;
@@ -1911,7 +2181,12 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
      * Except the SSE endpoint: its response is a continuous SSE event stream handled
      * directly by the static route (handle_chat_stream_sse), not a one-shot JSON reply. */
     if (strcmp(method, "POST") == 0 && strcmp(url, GW_SSE_CHAT_PATH) != 0 &&
-        (context->json_request || (context->upload_data && context->upload_data_size > 0))) {
+        (context->json_request || (context->body_buf && context->body_len > 0))) {
+        if (!context->json_request && context->body_buf && context->body_len > 0) {
+            if (parse_json_request(gateway, context, context->body_buf, context->body_len) != 0) {
+                return handle_parse_error(gateway, connection, context, context->body_len);
+            }
+        }
         return handle_post_jsonrpc(gateway, connection, context);
     }
 

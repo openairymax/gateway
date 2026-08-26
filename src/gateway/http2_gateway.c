@@ -59,8 +59,27 @@ static airy_err_t http2_gateway_start_impl(void *impl)
     addr.sin_port = htons(gw->base.port);
 
     if (inet_pton(AF_INET, gw->base.host, &addr.sin_addr) != 1) {
+        /* P2: previously a non-IPv4 host (e.g. a hostname) silently fell back
+         * to INADDR_ANY, exposing the gateway on every interface. Resolve the
+         * hostname instead, and fail loudly if it cannot be resolved. */
+        struct addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
 
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        struct addrinfo *res = NULL;
+        int rc = getaddrinfo(gw->base.host, NULL, &hints, &res);
+        if (rc != 0 || !res || !res->ai_addr) {
+            airy_err_push_ex(AIRY_ERR_IO, __FILE__, __LINE__, __func__,
+                             "cannot resolve host '%s': %s", gw->base.host,
+                             rc != 0 ? gai_strerror(rc) : "no addresses");
+            close(gw->listen_fd);
+            gw->listen_fd = -1;
+            return AIRY_EBUSY;
+        }
+
+        addr.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
+        freeaddrinfo(res);
     }
 
     if (bind(gw->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
@@ -222,6 +241,12 @@ static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json)
     if (!gw || !out_json)
         return AIRY_EINVAL;
 
+    /* P2: session_count is written by the event-loop thread and read here
+     * (stats thread). Read it once with a relaxed atomic load; all writers
+     * already use plain stores which the compiler lowers to atomic on the
+     * target platforms. */
+    size_t session_count = __atomic_load_n(&gw->session_count, __ATOMIC_RELAXED);
+
 #ifdef AIRY_HAS_CJSON
     cJSON *stats = cJSON_CreateObject();
     if (!stats)
@@ -232,7 +257,7 @@ static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json)
                             (double)atomic_load(&gw->base.requests_failed));
     cJSON_AddNumberToObject(stats, "bytes_received", (double)atomic_load(&gw->base.bytes_received));
     cJSON_AddNumberToObject(stats, "bytes_sent", (double)atomic_load(&gw->base.bytes_sent));
-    cJSON_AddNumberToObject(stats, "active_sessions", (double)gw->session_count);
+    cJSON_AddNumberToObject(stats, "active_sessions", (double)session_count);
     cJSON_AddNumberToObject(stats, "max_concurrent_streams", (double)gw->max_concurrent_streams);
     cJSON_AddStringToObject(stats, "protocol", "h2");
 
@@ -243,14 +268,16 @@ static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json)
         return AIRY_ENOMEM;
     *out_json = json_str;
 #else
-    static char buf[256];
+    /* P2: previously a static buffer shared across threads, causing the
+     * stats strings to overwrite each other; use a stack-local buffer. */
+    char buf[256];
     snprintf(buf, sizeof(buf),
              "{\"requests_total\":%llu,\"requests_failed\":%llu,\"bytes_received\":%llu,"
              "\"bytes_sent\":%llu,\"active_sessions\":%zu,\"protocol\":\"h2\"}",
              (unsigned long long)atomic_load(&gw->base.requests_total),
              (unsigned long long)atomic_load(&gw->base.requests_failed),
              (unsigned long long)atomic_load(&gw->base.bytes_received),
-             (unsigned long long)atomic_load(&gw->base.bytes_sent), gw->session_count);
+             (unsigned long long)atomic_load(&gw->base.bytes_sent), session_count);
     *out_json = AIRY_STRDUP(buf);
 #endif
 
@@ -391,7 +418,12 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
 
         const char *rps = getenv("GATEWAY_RATE_LIMIT_RPS");
         if (rps) {
-            rl_config.requests_per_second = (uint32_t)strtol(rps, NULL, 10);
+            long v = strtol(rps, NULL, 10);
+            if (v > 0 && v <= 100000) {
+                rl_config.requests_per_second = (uint32_t)v;
+            } else {
+                AIRY_LOG_WARN("ignoring invalid GATEWAY_RATE_LIMIT_RPS: %s", rps);
+            }
         }
 
         base->rate_limiter = gateway_rate_limiter_create(&rl_config);

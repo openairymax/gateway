@@ -91,6 +91,7 @@ struct syscall_runtime_s {
     uint64_t record_count;
     uint64_t agent_count;
     uint64_t total_memory_writes;
+    time_t start_time; /**< 进程启动时间戳（uptime 计算基准） */
     airy_mtx_t mutex;
     bool initialized;
 };
@@ -113,5 +114,19 @@ char *route_memory_methods(const char *method, cJSON *params, cJSON *request_id)
 char *route_session_methods(const char *method, cJSON *params, cJSON *request_id);
 char *route_telemetry_methods(const char *method, cJSON *params, cJSON *request_id);
 char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id);
+
+/* 统一经 syscall 派发（架构约束 2026-08-25）：airy_sys_svc_call + 解包 result */
+int syscall_svc_call_unwrap(const char *ns, const char *method, const char *params_json,
+                            int timeout_ms, char **out_result);
+
+/* Mem domain thin IPC forwarders (syscall_router_memory.c). Declared here so
+ * gateway route handlers (e.g. SSE chat memory injection) can call them with
+ * a real prototype instead of an implicit int-returning declaration. */
+airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metadata,
+                                 char **out_record_id);
+airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***record_ids,
+                                  float **scores, size_t *count);
+airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *out_len);
+airy_err_t airy_sys_memory_delete(const char *record_id);
 
 #endif /* GATEWAY_SYSCALL_ROUTER_INTERNAL_H */

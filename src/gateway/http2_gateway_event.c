@@ -193,7 +193,12 @@ void *http2_event_loop(void *arg)
                 AIRY_LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)", sess->fd, revents,
                          (revents & POLLERR) ? "ERR " : "", (revents & POLLHUP) ? "HUP " : "",
                          (revents & POLLNVAL) ? "NVAL" : "");
+                /* remove_session() swap-removes the last session into slot i;
+                 * zeroing fds[i+1].revents prevents that newly-moved session
+                 * from being processed with the removed session's stale
+                 * revents (P1: active connections were being closed randomly). */
                 http2_gateway_remove_session(gw, i);
+                fds[i + 1].revents = 0;
                 continue;
             }
 
@@ -223,6 +228,7 @@ void *http2_event_loop(void *arg)
 
             if (!session_ok) {
                 http2_gateway_remove_session(gw, i);
+                fds[i + 1].revents = 0;
             } else {
                 i++;
             }

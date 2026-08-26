@@ -96,6 +96,7 @@ struct syscall_runtime_s g_runtime = {0};
 static void __attribute__((constructor)) runtime_init(void)
 {
     airy_mtx_init(&g_runtime.mutex);
+    g_runtime.start_time = time(NULL);
 
     g_max_sessions = MAX_SESSIONS_DEFAULT;
 

@@ -34,6 +34,14 @@ ssize_t http2_data_source_read_callback(nghttp2_session *session, int32_t stream
         return 0;
     }
 
+    /* P2: guard against a NULL/zero-length body (e.g. a submission aborted by
+     * OOM) and a response_sent drifting past response_body_len, which would
+     * underflow the subtraction below and memcpy out of bounds. */
+    if (!ctx->response_body || ctx->response_sent >= ctx->response_body_len) {
+        *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+        return 0;
+    }
+
     size_t remaining = ctx->response_body_len - ctx->response_sent;
     if (remaining == 0) {
         *data_flags |= NGHTTP2_DATA_FLAG_EOF;
@@ -67,6 +75,18 @@ int http2_submit_response_impl(nghttp2_session *session, http2_stream_context_t 
 
     if (!ctx->response_body) {
         ctx->response_body = AIRY_STRDUP("{}");
+        if (!ctx->response_body) {
+            /* P2: double OOM - previously response_body_len was still set to 2
+             * while response_body stayed NULL, making the data-source callback
+             * memcpy(NULL). Submit RST and terminate the stream instead. */
+            AIRY_LOG_ERROR("OOM allocating default response body (stream_id=%d)", ctx->stream_id);
+            nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, ctx->stream_id,
+                                      NGHTTP2_INTERNAL_ERROR);
+            ctx->response_body_len = 0;
+            ctx->response_sent = 0;
+            ctx->response_sent_flag = true;
+            return NGHTTP2_ERR_NOMEM;
+        }
         ctx->response_body_len = 2;
     }
 

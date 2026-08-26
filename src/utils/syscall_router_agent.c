@@ -127,8 +127,9 @@ airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "spawn", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.spawn） */
+    int rc = syscall_svc_call_unwrap("agent", "spawn", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -163,8 +164,9 @@ airy_err_t airy_sys_agent_terminate(const char *agent_id)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "terminate", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.terminate） */
+    int rc = syscall_svc_call_unwrap("agent", "terminate", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     AIRY_FREE(result_str);
     return rc;
@@ -197,8 +199,9 @@ airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_AGENT_D_SOCKET, "invoke", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.invoke） */
+    int rc = syscall_svc_call_unwrap("agent", "invoke", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -228,8 +231,9 @@ airy_err_t airy_sys_agent_list(char ***agent_ids, size_t *count)
     *count = 0;
 
     char *result_str = NULL;
-    int rc =
-        daemon_rpc_call(AIRY_AGENT_D_SOCKET, "list", "{}", &result_str, AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.list） */
+    int rc = syscall_svc_call_unwrap("agent", "list", "{}", AIRY_DAEMON_RPC_TIMEOUT_MS,
+                                     &result_str);
     if (rc != AIRY_SUCCESS)
         return rc;
 

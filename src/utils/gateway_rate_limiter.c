@@ -53,7 +53,9 @@ struct gateway_rate_limiter {
     atomic_uint_fast32_t active_clients;
 
     atomic_bool running;
-    time_t last_cleanup_time;
+    /* P2: time_t is not atomic; concurrent readers (allow) and writers
+     * (cleanup_expired_clients) raced on last_cleanup_time. */
+    atomic_uint_fast64_t last_cleanup_time;
 
 #ifdef _WIN32
     airy_mtx_t table_lock;
@@ -231,7 +233,7 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
         }
     }
 
-    limiter->last_cleanup_time = now;
+    atomic_store(&limiter->last_cleanup_time, (uint64_t)now);
 
 #ifdef _WIN32
     airy_mtx_unlock(&limiter->table_lock);
@@ -239,7 +241,6 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
     airy_mtx_unlock(&limiter->table_lock);
 #endif
 }
-
 /**
   * @brief Precondition checks
  */
@@ -258,7 +259,8 @@ static inline bool is_rate_limiter_valid(const gateway_rate_limiter_t *limiter,
  */
 static inline void maybe_cleanup_clients(gateway_rate_limiter_t *limiter, time_t now)
 {
-    if (now - limiter->last_cleanup_time >= limiter->config.cleanup_interval_sec) {
+    uint64_t last = atomic_load(&limiter->last_cleanup_time);
+    if (last == 0 || (uint64_t)now - last >= (uint64_t)limiter->config.cleanup_interval_sec) {
         cleanup_expired_clients(limiter);
     }
 }
@@ -345,14 +347,13 @@ gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_con
     atomic_init(&limiter->total_rejected, 0);
     atomic_init(&limiter->active_clients, 0);
     atomic_init(&limiter->running, true);
+    atomic_init(&limiter->last_cleanup_time, (uint64_t)time(NULL));
 
 #ifdef _WIN32
     airy_mtx_init(&limiter->table_lock);
 #else
     airy_mtx_init(&limiter->table_lock);
 #endif
-
-    limiter->last_cleanup_time = time(NULL);
 
     return limiter;
 }

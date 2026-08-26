@@ -143,8 +143,9 @@ airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metad
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "write", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.write） */
+    int rc = syscall_svc_call_unwrap("mem", "write", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -185,8 +186,9 @@ airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***rec
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "search", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.search） */
+    int rc = syscall_svc_call_unwrap("mem", "search", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -249,8 +251,9 @@ airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *o
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "get", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.get） */
+    int rc = syscall_svc_call_unwrap("mem", "get", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS)
         return rc;
@@ -295,8 +298,9 @@ airy_err_t airy_sys_memory_delete(const char *record_id)
         return AIRY_ERR_OUT_OF_MEMORY;
 
     char *result_str = NULL;
-    int rc = daemon_rpc_call(AIRY_MEM_D_SOCKET, "delete", params_str, &result_str,
-                             AIRY_DAEMON_RPC_TIMEOUT_MS);
+    /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.delete） */
+    int rc = syscall_svc_call_unwrap("mem", "delete", params_str,
+                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
     AIRY_FREE(params_str);
     AIRY_FREE(result_str);
     return rc;
