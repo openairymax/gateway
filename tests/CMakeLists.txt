@@ -19,6 +19,7 @@ target_include_directories(test_gateway PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/utils/syscall
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gateway
 )
 

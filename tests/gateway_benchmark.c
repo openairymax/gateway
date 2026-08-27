@@ -17,7 +17,7 @@
  *
  * 使用方法:
  *   ./gateway_benchmark [options]
- *   --url <URL>          目标网关地址 (default: http://localhost:18789)
+ *   --url <URL>          目标网关地址 (default: http://localhost:8080)
  *   --concurrent <N>     并发连接数 (default: 10, max: 500)
  *   --requests <N>       总请求数 (default: 1000)
  *   --duration <S>       测试持续时间秒 (default: 30)
@@ -61,7 +61,7 @@
 #define MAX_CONCURRENT 500
 #define MAX_URL_LENGTH 2048
 #define MAX_PAYLOAD_SIZE (1024 * 1024)
-#define DEFAULT_URL "http://localhost:18789"
+#define DEFAULT_URL "http://localhost:8080"
 #define WARMUP_COUNT 100
 #define SAMPLING_INTERVAL_US 100000
 

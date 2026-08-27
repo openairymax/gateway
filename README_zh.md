@@ -62,16 +62,13 @@ gateway/
 │       ├── gateway_rpc_handler.c/.h     # HTTP/WS/Stdio 共享的 RPC 处理逻辑
 │       ├── gateway_protocol_handler.c/.h  # MCP / A2A / OpenAI 自适应检测与转换
 │       ├── gateway_rate_limiter.c/.h    # 基于令牌桶的速率限制器
-│       ├── gateway_utils.h              # 通用工具宏与内联函数
-│       ├── gateway_compat.h             # 兼容性定义
-│       └── mcp_server.c/.h              # MCP 协议服务端（工具 / 资源 / 提示词）
+│       └── gateway_utils.h              # 通用工具宏与内联函数
 ├── tests/                               # 测试与基准
 │   ├── test_gateway.c                   # 网关主测试（7 个用例）
 │   ├── test_jsonrpc.c                   # JSON-RPC 协议测试（17 个用例）
 │   ├── test_syscall_router.c            # 系统调用路由测试（8 个用例）
 │   ├── test_gateway_rpc_handler.c       # RPC 处理模块测试（14 个用例）
 │   └── gateway_benchmark.c              # 性能基准测试
-├── docker/                              # Docker 部署（Dockerfile、compose、监控）
 ├── deploy/                              # K8s 部署（namespace / configmap / deployment / service）
 └── config/                              # 静态分析配置（cppcheck.cfg）
 ```
@@ -90,7 +87,6 @@ gateway/
 | **RPC 处理器** | `gateway_rpc_handler.c` | 三种网关共享的统一 RPC 处理逻辑 |
 | **多协议处理器** | `gateway_protocol_handler.c` | MCP / A2A / OpenAI 协议自适应检测与转换 |
 | **速率限制器** | `gateway_rate_limiter.c` | 基于令牌桶算法，支持按 IP / API Key 限流 |
-| **MCP 服务器** | `mcp_server.c` | MCP 协议服务端，支持工具 / 资源 / 提示词注册 |
 
 ## 架构
 
@@ -114,7 +110,7 @@ gateway/
   ├─ HTTP REST ───→ http_gateway ──→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端
   ├─ WebSocket ──→ ws_gateway ────→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端
   ├─ Stdio ──────→ stdio_gateway ─→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端
-  └─ MCP ────────→ mcp_server ────→ JSON-RPC 2.0 ──→ syscall_router ──→ 后端
+  └─ MCP ────────→ gateway_protocol_handler → JSON-RPC 2.0 ──→ syscall_router ──→ 后端
                          │
               gateway_protocol_handler  (协议检测 / 转换 / 统一处理)
                          │
