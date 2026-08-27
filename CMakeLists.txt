@@ -38,6 +38,7 @@ set(GATEWAY_SOURCES
     src/gateway/gateway_hall_store.c
     src/gateway/http_gateway.c
     src/gateway/http_gateway_routes.c
+    src/gateway/http_gateway_sse.c
     src/gateway/http2_gateway.c
     src/gateway/http2_gateway_event.c
     src/gateway/http2_gateway_frame.c
