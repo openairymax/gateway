@@ -33,46 +33,11 @@ foreach(_dir ${COREKERN_DIR}/include ${SYSCALL_DIR}/include ${COMMONS_DIR} ${PRO
 endforeach()
 
 if(AIRY_HAS_CJSON)
-set(GATEWAY_SOURCES
-    src/gateway/gateway_api.c
-    src/gateway/gateway_hall_store.c
-    src/gateway/http_gateway.c
-    src/gateway/http_gateway_routes.c
-    src/gateway/http_gateway_sse.c
-    src/gateway/gateway_sse_stream.c
-    src/gateway/gateway_sse_tool.c
-    src/gateway/gateway_sse_memory.c
-    src/gateway/gateway_sse_hall_watch.c
-    src/gateway/http2_gateway.c
-    src/gateway/http2_gateway_event.c
-    src/gateway/http2_gateway_frame.c
-    src/gateway/http2_gateway_headers.c
-    src/gateway/http2_gateway_response.c
-    src/gateway/http2_gateway_route.c
-    src/gateway/http2_gateway_session.c
-    src/gateway/http2_gateway_stream.c
-    src/gateway/ws_gateway.c
-    # ws_gateway 按功能域拆分：生命周期/消息与请求处理/事件回调（2026-08-27）
-    src/gateway/ws_gateway_message.c
-    src/gateway/ws_gateway_callback.c
-    src/gateway/stdio_gateway.c
-    src/gateway/gateway_protocol_bridge.c
-    src/utils/jsonrpc.c
-    # 2026-08-27 目录原子化：syscall 路由家族独立子目录
-    src/utils/syscall/syscall_router.c
-    src/utils/syscall/syscall_router_agent.c
-    src/utils/syscall/syscall_router_memory.c
-    src/utils/syscall/syscall_router_runtime.c
-    src/utils/syscall/syscall_router_session.c
-    src/utils/syscall/syscall_router_task.c
-    src/utils/syscall/syscall_router_telemetry.c
-    src/utils/gateway_rpc_handler.c
-    src/utils/gateway_rate_limiter.c
-    src/utils/gateway_protocol_handler.c
-    # gateway_protocol_handler 按功能域拆分：主处理/协议转换/协议检测（2026-08-27）
-    src/utils/gateway_protocol_convert.c
-    src/utils/gateway_protocol_detect.c
-)
+# 源码清单单一权威源（SSoT）：与 daemons/gateway_d 共用
+# cmake/gateway-sources.cmake，禁止在两侧各自维护源清单。
+set(GATEWAY_SRC_BASE ${CMAKE_CURRENT_SOURCE_DIR})
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/gateway-sources.cmake)
+set(GATEWAY_SOURCES ${GATEWAY_COMMON_SOURCES})
 
 # ========== 头文件 ==========
 set(GATEWAY_HEADERS
