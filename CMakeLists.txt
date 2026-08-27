@@ -52,6 +52,9 @@ set(GATEWAY_SOURCES
     src/gateway/http2_gateway_session.c
     src/gateway/http2_gateway_stream.c
     src/gateway/ws_gateway.c
+    # ws_gateway 按功能域拆分：生命周期/消息与请求处理/事件回调（2026-08-27）
+    src/gateway/ws_gateway_message.c
+    src/gateway/ws_gateway_callback.c
     src/gateway/stdio_gateway.c
     src/gateway/gateway_protocol_bridge.c
     src/utils/jsonrpc.c
@@ -66,6 +69,9 @@ set(GATEWAY_SOURCES
     src/utils/gateway_rpc_handler.c
     src/utils/gateway_rate_limiter.c
     src/utils/gateway_protocol_handler.c
+    # gateway_protocol_handler 按功能域拆分：主处理/协议转换/协议检测（2026-08-27）
+    src/utils/gateway_protocol_convert.c
+    src/utils/gateway_protocol_detect.c
 )
 
 # ========== 头文件 ==========
@@ -111,6 +117,10 @@ target_compile_definitions(gateway PUBLIC AIRY_HAS_CJSON=1)
 if(AIRY_HAS_LIBWEBSOCKETS)
     set_source_files_properties(
         src/gateway/ws_gateway.c
+        # 2026-08-27 ws_gateway 拆分：消息/回调文件经 ws_gateway_internal.h
+        # 在 GATEWAY_HAS_WS 下包含 <libwebsockets.h>，同样需要豁免
+        src/gateway/ws_gateway_message.c
+        src/gateway/ws_gateway_callback.c
         PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
     )
 endif()
