@@ -76,13 +76,13 @@
     "\"description\":\"Apply a unified diff to the working tree (git apply [--check] -)\"," \
     "\"parameters\":{\"type\":\"object\",\"properties\":{\"patch\":{\"type\":\"string\"}," \
     "\"check_only\":{\"type\":\"boolean\"}},\"required\":[\"patch\"]}}}" \
-    ",{\"type\":\"function\",\"function\":{\"name\":\"maths.eval\"," \
+    ",{\"type\":\"function\",\"function\":{\"name\":\"maths_eval\"," \
     "\"description\":\"Evaluate a math expression precisely (arithmetic, " \
     "powers, factorial, sqrt/sin/cos/tan/ln/log10/log2/exp/abs/min/max/floor/ceil " \
     "etc.)\"," \
     "\"parameters\":{\"type\":\"object\",\"properties\":{\"expression\":" \
     "{\"type\":\"string\"}},\"required\":[\"expression\"]}}}" \
-    ",{\"type\":\"function\",\"function\":{\"name\":\"maths.stats\"," \
+    ",{\"type\":\"function\",\"function\":{\"name\":\"maths_stats\"," \
     "\"description\":\"Compute descriptive statistics of a numeric array " \
     "(sum/mean/median/min/max/variance/stddev)\"," \
     "\"parameters\":{\"type\":\"object\",\"properties\":{\"op\":{\"type\":\"string\"}," \
