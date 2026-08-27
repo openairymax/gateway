@@ -62,16 +62,13 @@ gateway/
 │       ├── gateway_rpc_handler.c/.h     # Shared RPC handling for HTTP/WS/Stdio
 │       ├── gateway_protocol_handler.c/.h  # MCP / A2A / OpenAI auto-detection & conversion
 │       ├── gateway_rate_limiter.c/.h    # Token-bucket rate limiter
-│       ├── gateway_utils.h              # Generic helper macros & inlines
-│       ├── gateway_compat.h             # Compatibility definitions
-│       └── mcp_server.c/.h              # MCP protocol server (tools / resources / prompts)
+│       └── gateway_utils.h              # Generic helper macros & inlines
 ├── tests/                               # Tests & benchmarks
 │   ├── test_gateway.c                   # Gateway main test (7 cases)
 │   ├── test_jsonrpc.c                   # JSON-RPC protocol test (17 cases)
 │   ├── test_syscall_router.c            # Syscall router test (8 cases)
 │   ├── test_gateway_rpc_handler.c       # RPC handler test (14 cases)
 │   └── gateway_benchmark.c              # Performance benchmark
-├── docker/                              # Docker deployment (Dockerfile, compose files, monitoring)
 ├── deploy/                              # K8s deployment (namespace / configmap / deployment / service)
 └── config/                              # Static-analysis config (cppcheck.cfg)
 ```
@@ -90,7 +87,6 @@ gateway/
 | **RPC handler** | `gateway_rpc_handler.c` | Shared RPC handling logic across all three gateways |
 | **Multi-protocol handler** | `gateway_protocol_handler.c` | MCP / A2A / OpenAI auto-detection and conversion |
 | **Rate limiter** | `gateway_rate_limiter.c` | Token-bucket algorithm, per-IP / per-API-Key throttling |
-| **MCP server** | `mcp_server.c` | MCP server with tool / resource / prompt registration |
 
 ## Architecture
 
@@ -114,7 +110,7 @@ External client
   ├─ HTTP REST ───→ http_gateway ──→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
   ├─ WebSocket ──→ ws_gateway ────→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
   ├─ Stdio ──────→ stdio_gateway ─→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
-  └─ MCP ────────→ mcp_server ────→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
+  └─ MCP ────────→ gateway_protocol_handler → JSON-RPC 2.0 ──→ syscall_router ──→ backend
                          │
               gateway_protocol_handler  (auto-detect / convert / unified)
                          │

@@ -22,7 +22,7 @@
 #include "../utils/gateway_rpc_handler.h"
 #include "../utils/gateway_utils.h"
 #include "../utils/jsonrpc.h"
-#include "../utils/syscall_router.h"
+#include "syscall_router.h"
 
 #include "logging.h"
 

@@ -39,6 +39,10 @@ set(GATEWAY_SOURCES
     src/gateway/http_gateway.c
     src/gateway/http_gateway_routes.c
     src/gateway/http_gateway_sse.c
+    src/gateway/gateway_sse_stream.c
+    src/gateway/gateway_sse_tool.c
+    src/gateway/gateway_sse_memory.c
+    src/gateway/gateway_sse_hall_watch.c
     src/gateway/http2_gateway.c
     src/gateway/http2_gateway_event.c
     src/gateway/http2_gateway_frame.c
@@ -51,13 +55,14 @@ set(GATEWAY_SOURCES
     src/gateway/stdio_gateway.c
     src/gateway/gateway_protocol_bridge.c
     src/utils/jsonrpc.c
-    src/utils/syscall_router.c
-    src/utils/syscall_router_agent.c
-    src/utils/syscall_router_memory.c
-    src/utils/syscall_router_runtime.c
-    src/utils/syscall_router_session.c
-    src/utils/syscall_router_task.c
-    src/utils/syscall_router_telemetry.c
+    # 2026-08-27 目录原子化：syscall 路由家族独立子目录
+    src/utils/syscall/syscall_router.c
+    src/utils/syscall/syscall_router_agent.c
+    src/utils/syscall/syscall_router_memory.c
+    src/utils/syscall/syscall_router_runtime.c
+    src/utils/syscall/syscall_router_session.c
+    src/utils/syscall/syscall_router_task.c
+    src/utils/syscall/syscall_router_telemetry.c
     src/utils/gateway_rpc_handler.c
     src/utils/gateway_rate_limiter.c
     src/utils/gateway_protocol_handler.c
@@ -72,7 +77,7 @@ set(GATEWAY_HEADERS
     src/gateway/ws_gateway.h
     src/gateway/stdio_gateway.h
     src/utils/jsonrpc.h
-    src/utils/syscall_router.h
+    src/utils/syscall/syscall_router.h
     src/utils/gateway_utils.h
     src/utils/gateway_protocol_handler.h
     src/utils/gateway_rate_limiter.h
@@ -134,6 +139,8 @@ target_include_directories(gateway
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/utils>
+        # 2026-08-27 目录原子化：syscall 路由家族子目录（裸名 include 解析）
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/utils/syscall>
         # P0.18.2: gateway_rpc_handler.h (PUBLIC 头) 引用 <cjson_helpers.h>，
         # 需向 gateway 的消费者（含测试目标）传递此 include 路径，避免找不到头文件
         $<BUILD_INTERFACE:${COMMONS_DIR}/utils/cjson/include>
@@ -241,7 +248,7 @@ install(FILES
     src/gateway/ws_gateway.h
     src/gateway/stdio_gateway.h
     src/utils/jsonrpc.h
-    src/utils/syscall_router.h
+    src/utils/syscall/syscall_router.h
     DESTINATION include/agentrt/gateway
 )
 
