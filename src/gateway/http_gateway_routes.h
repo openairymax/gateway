@@ -17,6 +17,10 @@
 #ifndef HTTP_GATEWAY_ROUTES_H
 #define HTTP_GATEWAY_ROUTES_H
 
+/* SSE chat streaming route path (shared by the route table in
+ * http_gateway_routes.c and the streaming handler in http_gateway_sse.c). */
+#define GW_SSE_CHAT_PATH "/api/v1/chat/stream"
+
 #include <stdlib.h>
 #include <string.h>
 #ifdef AIRY_HAS_CJSON
