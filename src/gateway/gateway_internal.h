@@ -10,9 +10,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/* 版本 SSoT：网关仓对外报告版本，与 agentrt 全系统版本（CMakeLists
- * project() / gateway_d AIRYRT_VERSION）保持一致，禁止散落硬编码版本串。 */
-#define GATEWAY_VERSION "0.1.5"
+/* 版本 SSoT：网关仓对外报告版本，与 agentrt 全系统版本（VERSION 文件 /
+ * CMakeLists project() / gateway_d AIRYRT_VERSION）保持一致。构建期由
+ * gateway/CMakeLists.txt 从 VERSION 文件注入；此处仅作缺省回退。 */
+#ifndef GATEWAY_VERSION
+#define GATEWAY_VERSION "0.1.5a"
+#endif
 
 #ifdef __cplusplus
 extern "C" {

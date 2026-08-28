@@ -76,6 +76,14 @@ endif()
 # ========== 库目标 ==========
 add_library(gateway STATIC ${GATEWAY_SOURCES})
 
+# 版本 SSoT：GATEWAY_VERSION 从 agentrt 根 VERSION 文件注入（支持 0.1.5a
+# 后缀），header 内 #define 仅作缺省回退（未走 CMake 的独立编译）。
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" GATEWAY_VERSION_RAW LIMIT_COUNT 1)
+string(STRIP "${GATEWAY_VERSION_RAW}" GATEWAY_VERSION_RAW)
+if(GATEWAY_VERSION_RAW)
+    target_compile_definitions(gateway PRIVATE GATEWAY_VERSION="${GATEWAY_VERSION_RAW}")
+endif()
+
 # jsonrpc.c / syscall_router.c 等源文件使用 AIRY_HAS_CJSON 守卫
 target_compile_definitions(gateway PUBLIC AIRY_HAS_CJSON=1)
 
