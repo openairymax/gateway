@@ -14,7 +14,7 @@
  * CMakeLists project() / gateway_d AIRYRT_VERSION）保持一致。构建期由
  * gateway/CMakeLists.txt 从 VERSION 文件注入；此处仅作缺省回退。 */
 #ifndef GATEWAY_VERSION
-#define GATEWAY_VERSION "0.1.6a"
+#define GATEWAY_VERSION "0.1.6b"
 #endif
 
 #ifdef __cplusplus
