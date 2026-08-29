@@ -10,8 +10,10 @@
  * with the runtime writer (atoms/coreloopthree/src/dispatch/hall_store.c):
  * same root (airy_data_dir()/agentrt/hall), same file naming
  * ({tenant}.{task}.{category}.{ts_utc}.{seq:04u}.json), same event body
- * header/access layout. The gateway is a writer process on its own: gseq
- * is per-process (audit only), cross-process order is (ts_utc, seq).
+ * header/access layout. P2-2 (0.1.6)：gseq 在首次写入时续接到磁盘最大
+ * gseq（与 coreloopthree hall_store create()/rescan() 语义对齐），
+ * 跨写者进程（runtime/gateway/CLI）事件流 gseq 不撞号，全局因果序唯一；
+ * 跨进程文件序仍以 (ts_utc, seq) 为准。
  *
  * prev_file linkage mirrors hall_store.c: each event records the file id of
  * the previous event in the same (task, category) directory (the max-seq
@@ -66,6 +68,69 @@ static atomic_int g_hall_ready = 0;
 static airy_mtx_t g_hall_lock;
 static atomic_uint_fast64_t g_hall_gseq;
 
+/* 手工解析 header 中 "gseq":N（BAN-154：sscanf 禁用，与 hall_store.c
+ * hall_header_gseq 同规则）。 */
+static uint64_t gw_hall_gseq_parse(const char *hdr)
+{
+    if (!hdr)
+        return 0;
+    const char *p = strstr(hdr, "\"gseq\":");
+    if (!p)
+        return 0;
+    p += 7;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    uint64_t v = 0;
+    if (*p < '0' || *p > '9')
+        return 0;
+    while (*p >= '0' && *p <= '9') {
+        v = v * 10 + (uint64_t)(*p - '0');
+        p++;
+    }
+    return v;
+}
+
+/* 递归扫描 hall 根目录，返回全部事件文件中的最大 gseq（无事件返回 0）。
+ * P2-2：gateway 作为独立写者进程，首次写入前把本进程 gseq 计数器续接到
+ * 磁盘最大 gseq，与 coreloopthree hall_store create()/rescan() 语义对齐，
+ * 保证跨写者进程的全局因果序不撞号。 */
+static uint64_t gw_hall_walk_max_gseq(const char *dir)
+{
+    uint64_t max_g = 0;
+    DIR *d = opendir(dir);
+    if (!d)
+        return 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.')
+            continue;
+        char sub[GW_HALL_PATH_MAX];
+        snprintf(sub, sizeof(sub), "%s/%s", dir, ent->d_name);
+        struct stat st;
+        if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode)) {
+            uint64_t g = gw_hall_walk_max_gseq(sub);
+            if (g > max_g)
+                max_g = g;
+        } else {
+            size_t l = strlen(ent->d_name);
+            if (l < 5 || strcmp(ent->d_name + l - 5, ".json") != 0)
+                continue;
+            FILE *fp = fopen(sub, "r");
+            if (!fp)
+                continue;
+            char hdr[1024] = {0};
+            size_t rd = fread(hdr, 1, sizeof(hdr) - 1, fp);
+            fclose(fp);
+            hdr[rd] = '\0';
+            uint64_t g = gw_hall_gseq_parse(hdr);
+            if (g > max_g)
+                max_g = g;
+        }
+    }
+    closedir(d);
+    return max_g;
+}
+
 static void gw_hall_ensure_init(void)
 {
     while (atomic_load_explicit(&g_hall_ready, memory_order_acquire) != 1) {
@@ -73,7 +138,11 @@ static void gw_hall_ensure_init(void)
         if (atomic_compare_exchange_strong_explicit(&g_hall_ready, &expected, 2,
                                                     memory_order_acq_rel, memory_order_acquire)) {
             airy_mtx_init(&g_hall_lock);
-            atomic_store_explicit(&g_hall_gseq, 0, memory_order_relaxed);
+            /* P2-2：gseq 续接到磁盘最大 gseq（全局因果序唯一，不撞号） */
+            char root[GW_HALL_PATH_MAX];
+            snprintf(root, sizeof(root), "%s/%s", airy_data_dir(), GW_HALL_ROOT_REL);
+            uint64_t max_g = gw_hall_walk_max_gseq(root);
+            atomic_store_explicit(&g_hall_gseq, max_g, memory_order_relaxed);
             atomic_store_explicit(&g_hall_ready, 1, memory_order_release);
             break;
         }
