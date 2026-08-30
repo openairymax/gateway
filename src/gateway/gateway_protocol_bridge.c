@@ -529,8 +529,6 @@ int gw_protocol_bridge_list_registry_protocols(gw_protocol_bridge_handle_t bridg
                          "gw_protocol_bridge_list_registry_protocols: failed");
         return AIRY_ERR_UNKNOWN;
     }
-    struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
-
     /* 委托全局协议注册表：返回真实已注册协议列表（而非空桩）。 */
     if (proto_interface_list_all(protocols_json) == 0) {
         return 0;
