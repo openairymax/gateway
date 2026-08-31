@@ -12,9 +12,15 @@
 
 /* 版本 SSoT：网关仓对外报告版本，与 agentrt 全系统版本（VERSION 文件 /
  * CMakeLists project() / gateway_d AIRYRT_VERSION）保持一致。构建期由
- * gateway/CMakeLists.txt 从 VERSION 文件注入；此处仅作缺省回退。 */
+ * gateway/CMakeLists.txt 与 daemons/gateway_d/CMakeLists.txt 从 VERSION
+ * 文件注入 -DGATEWAY_VERSION；此处仅作缺省回退——优先取 C 侧 SSoT
+ * AIRYRT_VERSION（airyrt_version.h），未定义时回退当前发布版本。 */
 #ifndef GATEWAY_VERSION
-#define GATEWAY_VERSION "0.1.6c"
+#ifdef AIRYRT_VERSION
+#define GATEWAY_VERSION AIRYRT_VERSION
+#else
+#define GATEWAY_VERSION "0.1.7"
+#endif
 #endif
 
 #ifdef __cplusplus
