@@ -394,7 +394,12 @@ static airy_err_t http_gateway_start(void *gateway_impl)
     http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
 
     unsigned int conn_limit = gateway->connection_limit > 0 ? gateway->connection_limit : 1000;
-    unsigned int conn_timeout = gateway->connection_timeout > 0 ? gateway->connection_timeout : 30;
+    /* 0.1.6h：连接空闲超时默认 300s（原 30s）。SSE content_reader 在
+     * llm 长思考间隙靠 keep-alive 帧续命（不受此限），但工具执行
+     * （gw_sse_execute_tool 阻塞 RPC，上限 GW_SSE_RECV_TIMEOUT_S=90s）
+     * 期间无帧可发，30s 会在工具未返回前掐断长对话——抬到 300s 兜底。
+     * 可用 GATEWAY_HTTP_TIMEOUT 环境变量显式覆盖。 */
+    unsigned int conn_timeout = gateway->connection_timeout > 0 ? gateway->connection_timeout : 300;
 
     const char *env_conn = getenv("GATEWAY_HTTP_CONN_LIMIT");
     const char *env_timeout = getenv("GATEWAY_HTTP_TIMEOUT");

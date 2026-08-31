@@ -69,6 +69,17 @@ static airy_err_t ws_gateway_start(void *gateway_impl)
     info.iface = gateway->host;
     info.protocols = ws_protocols;
     info.user = gateway;
+    /* 0.1.6h：WS 长连接开内核 keepalive（lws 4.3 的 CONTEXT 级字段，
+     * 对 client/server 全部 socket 生效）。原 context 无任何探活配置：
+     * 客户端崩溃/网络闪断形成的半开连接永不回收，connections_active 与
+     * fd/per-connection 内存只增不减（"daemon 掉线"期间连接数虚高）。
+     * ka_time=30s 空闲后开始探测，ka_interval=10s 重试，ka_probes=3 次
+     * 失败判死——死链 fd 由内核即时释放。 */
+    info.ka_time = 30;
+    info.ka_interval = 10;
+    info.ka_probes = 3;
+    /* 默认空闲上限 300s：与 HTTP gateway 对齐，超时才强制断开长连接。 */
+    info.timeout_secs = 300;
 
     gateway->context = lws_create_context(&info);
     if (!gateway->context) {

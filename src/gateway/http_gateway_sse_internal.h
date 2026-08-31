@@ -62,6 +62,11 @@
 #define GW_SSE_TEXT_CHUNK      512
 #define GW_SSE_SUMMARY_MAX     256
 #define GW_SSE_TOOL_FEEDBACK_MAX 12288
+/* 0.1.6h：llm socket 轮询窗口（SO_RCVTIMEO）。阻塞 recv 按此粒度分片，
+ * 空闲时向客户端发 SSE keep-alive 注释帧，防止 libmicrohttpd 30s 空闲
+ * 超时掐断长对话流（表现为"回复为空/中途掉线"）。 */
+#define GW_SSE_POLL_TIMEOUT_S  2
+#define GW_SSE_KEEPALIVE_FRAME ": keep-alive\n\n"
 
 /* llm_d complete_stream RS control-frame protocol (aligned with llm_d providers). */
 #define GW_SSE_STREAM_RS          0x1e
@@ -119,6 +124,10 @@ typedef struct {
     int usage_emitted;
     char *user_prompt;
     int mem_recorded;
+    /* 0.1.6h：llm 流空闲总预算（单调毫秒时间戳）。每轮 LLM 流开始置
+     * now + GW_SSE_RECV_TIMEOUT_S*1000；轮询窗口内无数据且未超预算则发
+     * keep-alive 续命，超预算才判 EOF——保持原 90s 总超时语义。 */
+    unsigned long long idle_deadline_ms;
 } gw_sse_ctx_t;
 
 /* ── gateway_sse_stream.c ──────────────────────────────────────────── */
