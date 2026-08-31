@@ -74,6 +74,10 @@ char *gw_sse_build_llm_request(const char *model, const cJSON *messages, int str
 
 int gw_sse_stream_start(const char *sock_path, const char *req_json, int timeout_s)
 {
+    /* timeout_s = llm 流空闲总预算（秒）；实际 recv 轮询窗口固定为
+     * GW_SSE_POLL_TIMEOUT_S，空闲时由 content_reader 发 keep-alive，
+     * 总预算由调用方经 sctx->idle_deadline_ms 监督。 */
+    (void)timeout_s;
 #ifndef _WIN32
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
@@ -86,7 +90,7 @@ int gw_sse_stream_start(const char *sock_path, const char *req_json, int timeout
         close(fd);
         return -1;
     }
-    struct timeval tv = {timeout_s, 0};
+    struct timeval tv = {GW_SSE_POLL_TIMEOUT_S, 0};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     size_t len = strlen(req_json);

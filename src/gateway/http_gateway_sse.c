@@ -28,6 +28,19 @@
 
 /* ── Hall event recording helper ───────────────────────────────────── */
 
+/* 0.1.6h：单调毫秒时钟（空闲预算 deadline 用，避免系统时间回拨干扰）。 */
+static unsigned long long gw_sse_now_ms(void)
+{
+#if defined(_WIN32)
+    return (unsigned long long)GetTickCount64();
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned long long)ts.tv_sec * 1000ULL +
+           (unsigned long long)ts.tv_nsec / 1000000ULL;
+#endif
+}
+
 static void gw_sse_record_event(gw_sse_ctx_t *sctx, const char *category, cJSON *content)
 {
     if (!sctx || !sctx->task_id[0] || !category || !content)
@@ -163,7 +176,9 @@ static int gw_sse_emit_usage(gw_sse_ctx_t *sctx)
 }
 
 /* Incremental recv from llm_d socket into the stream buffer.
- * Returns: 1 = data appended, 0 = EOF, -1 = fatal (stream terminated). */
+ * Returns: 1 = data appended, 0 = EOF/fatal (stream terminated),
+ *          2 = idle window (SO_RCVTIMEO 到期且未超总预算，流仍有效，
+ *              调用方应发 keep-alive 帧并向 MHD 让出 CPU)。 */
 static int gw_sse_recv_chunk(gw_sse_ctx_t *sctx)
 {
     char tmp[4096];
@@ -188,15 +203,36 @@ static int gw_sse_recv_chunk(gw_sse_ctx_t *sctx)
     if (errno == EINTR)
         return 1;
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        sctx->stream_eof = 1;
-        close(sctx->fd);
-        sctx->fd = -1;
-        return 0;
+        /* 0.1.6h：轮询窗口内无数据。若超过 llm 流空闲总预算才判 EOF，
+         * 否则返回 2 让调用方发 keep-alive——长思考间隙连接保持存活。 */
+        if (sctx->idle_deadline_ms &&
+            gw_sse_now_ms() >= sctx->idle_deadline_ms) {
+            AIRY_LOG_WARN("SSE llm stream idle exceeded %ds budget, closing",
+                     GW_SSE_RECV_TIMEOUT_S);
+            sctx->stream_eof = 1;
+            close(sctx->fd);
+            sctx->fd = -1;
+            return 0;
+        }
+        return 2;
     }
     sctx->stream_eof = 1;
     close(sctx->fd);
     sctx->fd = -1;
     return 0;
+}
+
+/* 0.1.6h：SSE keep-alive 注释帧（": keep-alive"），供 llm 空闲间隙续命。 */
+static void gw_sse_emit_keepalive(gw_sse_ctx_t *sctx)
+{
+    if (!sctx)
+        return;
+    sctx->step_buf = (char *)AIRY_MALLOC(sizeof(GW_SSE_KEEPALIVE_FRAME));
+    if (!sctx->step_buf)
+        return;
+    AIRY_MEMCPY(sctx->step_buf, GW_SSE_KEEPALIVE_FRAME,
+                sizeof(GW_SSE_KEEPALIVE_FRAME));
+    sctx->step_len = sizeof(GW_SSE_KEEPALIVE_FRAME) - 1; /* 不含 NUL */
 }
 
 /* Build a tool_call SSE event frame into step_buf. */
@@ -312,6 +348,9 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             sctx->stream_len = 0;
             sctx->stream_eof = 0;
             sctx->text_streamed = 0;
+            /* 0.1.6h：本轮流空闲总预算（90s），窗口内无数据时发 keep-alive */
+            sctx->idle_deadline_ms =
+                gw_sse_now_ms() + (unsigned long long)GW_SSE_RECV_TIMEOUT_S * 1000ULL;
             sctx->phase = GW_SSE_PHASE_LLM_STREAM;
             continue;
         }
@@ -337,6 +376,12 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                 int rc = gw_sse_recv_chunk(sctx);
                 if (rc < 0)
                     break;
+                if (rc == 2) {
+                    /* 0.1.6h：空闲窗口——发 keep-alive 续命并让出 MHD
+                     * worker，避免 30s 连接空闲超时掐断长思考流 */
+                    gw_sse_emit_keepalive(sctx);
+                    break;
+                }
                 if (rc > 0)
                     continue;
                 continue;
