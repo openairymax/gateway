@@ -14,7 +14,7 @@
 #include "http_gateway_sse_internal.h"
 
 /* OpenAI tools schema shared with gateway_d (SSoT, one-to-one with tool_d) */
-#include "gateway_tools_schema.h"
+#include "airy_tool_schema.h"
 
 /* ── Socket resolution ─────────────────────────────────────────────── */
 
@@ -51,7 +51,7 @@ char *gw_sse_build_llm_request(const char *model, const cJSON *messages, int str
     }
     cJSON_AddStringToObject(llm_params, "model", model);
     cJSON_AddItemToObject(llm_params, "messages", cJSON_Duplicate(messages, 1));
-    cJSON *tools = cJSON_Parse(GW_TOOLS_JSON_SOURCE);
+    cJSON *tools = cJSON_Parse(AIRY_TOOLS_JSON_SOURCE);
     if (tools) {
         cJSON_AddItemToObject(llm_params, "tools", tools);
     }

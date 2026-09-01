@@ -32,7 +32,7 @@
 #include <string.h>
 
 /* OpenAI tools schema shared with gateway_d (SSoT, one-to-one with tool_d) */
-#include "gateway_tools_schema.h"
+#include "airy_tool_schema.h"
 
 /* Gateway-side hall event recording (write side of the SSoT event flow) */
 #include "gateway_hall_store.h"
