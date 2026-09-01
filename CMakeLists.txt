@@ -329,4 +329,9 @@ if(CPPCHECK)
         COMMENT "Running cppcheck static analysis"
     )
 endif()
+
+# ========== M1-1b 链接白名单 ==========
+# "认知引擎只对 think_d 暴露服务面"（0.1.9 §2.2）：gateway 库禁链
+# coreloopthree/cognition。实际链接经 airy_depgraph --links 校验。
+airy_linkgate_collect(gateway "${CMAKE_CURRENT_SOURCE_DIR}/../link-whitelist.txt")
 endif()
