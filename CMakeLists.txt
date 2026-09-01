@@ -126,24 +126,24 @@ target_include_directories(gateway
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/utils/syscall>
         # P0.18.2: gateway_rpc_handler.h (PUBLIC 头) 引用 <cjson_helpers.h>，
         # 需向 gateway 的消费者（含测试目标）传递此 include 路径，避免找不到头文件
-        $<BUILD_INTERFACE:${COMMONS_DIR}/utils/cjson/include>
+        $<BUILD_INTERFACE:${COMMONS_DIR}/utils/cjson>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${COREKERN_DIR}/include
         ${SYSCALL_DIR}/include
         ${COMMONS_DIR}
         ${COMMONS_DIR}/utils/include
-        ${COMMONS_DIR}/utils/types/include
-        ${COMMONS_DIR}/utils/compat/include
+        ${COMMONS_DIR}/utils/types
+        ${COMMONS_DIR}/utils/compat
         ${COMMONS_DIR}/platform/include
-        ${COMMONS_DIR}/utils/error/include
-        ${COMMONS_DIR}/utils/logging/include
+        ${COMMONS_DIR}/utils/error
+        ${COMMONS_DIR}/utils/logging
         # S-2 收敛 (2026-08-14): AIRY_LOG_* 权威宏源
-        # commons/utils/observability/include/logger.h（logging.h 统一入口已引用）
-        ${COMMONS_DIR}/utils/observability/include
-        ${COMMONS_DIR}/utils/memory/include
-        ${COMMONS_DIR}/utils/sync/include
-        ${COMMONS_DIR}/utils/compat/include
+        # commons/utils/observability/logger.h（logging.h 统一入口已引用）
+        ${COMMONS_DIR}/utils/observability
+        ${COMMONS_DIR}/utils/memory
+        ${COMMONS_DIR}/utils/sync
+        ${COMMONS_DIR}/utils/compat
         ${COMMONS_DIR}/utils/include
         ${PROTOCOLS_DIR}/core/router/include
         ${PROTOCOLS_DIR}/core/registry/include
@@ -259,6 +259,13 @@ if(BUILD_TESTS)
     target_link_libraries(test_syscall_router gateway)
     add_test(NAME syscall_router_test COMMAND test_syscall_router)
 
+    # SSE 流式子系统测试（0.1.8：llm_d 错误信封检测；仅依赖内部头，
+    # 与公共 include/gateway.h 独立编译，规避枚举重复定义冲突）
+    add_executable(test_sse_stream tests/test_sse_stream.c)
+    target_compile_definitions(test_sse_stream PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_link_libraries(test_sse_stream gateway)
+    add_test(NAME sse_stream_test COMMAND test_sse_stream)
+
     # jsonrpc 协议测试 (17个用例)
     add_executable(test_jsonrpc tests/test_jsonrpc.c)
     target_compile_definitions(test_jsonrpc PRIVATE AIRY_COMPLIANCE_IMPL)
@@ -277,10 +284,10 @@ if(BUILD_TESTS)
         target_compile_definitions(gateway_benchmark PRIVATE AIRY_COMPLIANCE_IMPL)
         target_include_directories(gateway_benchmark PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../commons/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/logging/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/error/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/memory/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/types/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/logging
+            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/error
+            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/memory
+            ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/types
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR}/include
         )
