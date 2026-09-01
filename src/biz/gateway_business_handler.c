@@ -301,9 +301,10 @@ char *gateway_business_handle(void *request, void *user_data)
             return resp;
         }
         /* SSoT 权限校验（0.1.6 P1-4）：高敏能力需显式 ACL 授权（fail-closed，
-         * 未注册规则即拒绝）；未声明权限的能力默认放行（核心链路不变量）。 */
+         * 未注册规则即拒绝）；未声明权限的能力默认放行（核心链路不变量）。
+         * M2-S5：裁定经 PEP 缓存（epoch 失效键），PDP 不可达降级本地 ACL。 */
         const char *perm = gw_cap_perm_for(cap->cap_key);
-        if (perm && daemon_check_tool_permission(GW_EXTERNAL_AGENT_ID, perm, "execute") != 0) {
+        if (perm && gw_pep_check(ctx, GW_EXTERNAL_AGENT_ID, perm, "execute") != 0) {
             gw_cap_emit(cap->cap_key, "deny", "permission denied");
             AIRY_LOG_WARN("gateway cap DENY: cap=%s perm=%s (fail-closed)",
                      cap->cap_key, perm);

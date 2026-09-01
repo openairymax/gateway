@@ -101,12 +101,15 @@ int gw_biz_mcp_register_tools(gw_mcp_server_t *mcp, void *user_data);
 char *jsonrpc_error(int code, const char *msg, const cJSON *id);
 char *gw_svc_call(const char *sock_path, const char *method, const char *params_json,
                   int timeout_ms);
-int gw_acl_check_tool(const char *tool_name);
+int gw_acl_check_tool(const gateway_business_ctx_t *ctx, const char *tool_name);
 char *handle_ns_forward(cJSON *root, const gw_ns_forward_rule_t *rule);
 char *handle_mem_call(cJSON *root);
 char *handle_llm_list_models(cJSON *root, const gateway_business_ctx_t *ctx);
 char *handle_tool_approval_call(cJSON *root, const gateway_business_ctx_t *ctx,
                                 const char *tool_method);
+
+/* ---- gateway_pep_cache.c (M2-S5 PEP 裁定缓存：epoch 失效键) ---- */
+#include "gateway_pep_cache.h"
 
 /* ---- gateway_biz_svcdispatch.c (微核心服务统一派发钩子, 2026-08-25) ---- */
 int gw_sys_svc_dispatch_init(gateway_business_ctx_t *ctx);

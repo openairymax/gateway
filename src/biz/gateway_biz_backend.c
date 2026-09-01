@@ -45,7 +45,7 @@ int gw_biz_tool_exec(const char *tool_name, const char *arguments_json, char **r
         return -1;
     }
 
-    if (gw_acl_check_tool(tool_name) != 0) {
+    if (gw_acl_check_tool(ctx, tool_name) != 0) {
         *result_json = AIRY_STRDUP("\"Permission denied: tool not authorized\"");
         return -1;
     }

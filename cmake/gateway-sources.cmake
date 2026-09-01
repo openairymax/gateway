@@ -87,4 +87,6 @@ set(GATEWAY_BIZ_SOURCES
     ${GATEWAY_SRC_BASE}/src/biz/gateway_business_handler.c
     ${GATEWAY_SRC_BASE}/src/biz/gateway_cap_registry.c
     ${GATEWAY_SRC_BASE}/src/biz/gateway_svc_adapter.c
+    # M2-S5 (0.1.9 §3.2 PEP)：裁定缓存（epoch 失效键），gateway 热路径
+    ${GATEWAY_SRC_BASE}/src/biz/gateway_pep_cache.c
 )
