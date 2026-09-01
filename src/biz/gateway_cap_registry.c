@@ -65,6 +65,10 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"think.orchestrate", "think", "orchestrate", GW_CAP_KIND_FWD},
     {"think.health_check", "think", "health_check", GW_CAP_KIND_FWD},
     {"think.get_stats", "think", "get_stats", GW_CAP_KIND_FWD},
+    /* M1-1c：推理语言网关服务面（CLI 经 gateway 消费，禁直连内核） */
+    {"think.lang_process", "think", "lang_process", GW_CAP_KIND_FWD},
+    {"think.lang_postprocess", "think", "lang_postprocess", GW_CAP_KIND_FWD},
+    {"think.lang_stats", "think", "lang_stats", GW_CAP_KIND_FWD},
 
     /* ── agent（编排特殊 + 转发） ───────────────────────────────── */
     {"agent.run", "agent", "run", GW_CAP_KIND_AGENT_RUN},
