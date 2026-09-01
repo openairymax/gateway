@@ -33,6 +33,7 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_tool.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_memory.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_hall_watch.c
+    ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_run_stream.c
     # http2 家族：无条件编译（缺库为空 TU，实现由 AIRY_HAS_HTTP2 守卫）
     ${GATEWAY_SRC_BASE}/src/gateway/http2_gateway.c
     ${GATEWAY_SRC_BASE}/src/gateway/http2_gateway_event.c

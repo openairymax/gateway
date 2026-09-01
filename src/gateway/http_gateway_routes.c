@@ -291,13 +291,33 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
   * 2. 2. Match the path ("*" wildcard supported)
   * 3. 3. Fall back to the default route (handle_not_found)
  */
-static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc},
-                                           {"POST", "/api/v1/chat/stream", handle_chat_stream_sse},
-                                           {"GET", "/api/v1/hall/watch", handle_hall_watch_sse},
-                                           {"OPTIONS", "*", handle_options_preflight},
-                                           {"GET", "/health", handle_health_check},
-                                           {"GET", "/metrics", handle_metrics_export},
-                                           {NULL, NULL, handle_not_found}};
+static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc, 0},
+                                           {"POST", GW_SSE_CHAT_PATH, handle_chat_stream_sse, 1},
+                                           {"POST", GW_SSE_RUN_STREAM_PATH, handle_run_stream_sse, 1},
+                                           {"GET", "/api/v1/hall/watch", handle_hall_watch_sse, 0},
+                                           {"OPTIONS", "*", handle_options_preflight, 0},
+                                           {"GET", "/health", handle_health_check, 0},
+                                           {"GET", "/metrics", handle_metrics_export, 0},
+                                           {NULL, NULL, handle_not_found, 0}};
+
+/**
+  * @brief Whether the URL matches a streaming (SSE long-lived) route
+  *
+  * Streaming endpoints respond with a continuous event stream instead of a
+  * one-shot JSON-RPC reply, so they must bypass the aggregation dispatch.
+  * The streaming set is expressed by the route table itself (SSoT), not by
+  * hard-coded paths in the dispatcher.
+ */
+static int is_streaming_route(const char *method, const char *url)
+{
+    for (const http_route_t *route = http_routes; route->method != NULL; route++) {
+        if (route->streaming && strcmp(method, route->method) == 0 &&
+            (strcmp(route->path, "*") == 0 || strcmp(url, route->path) == 0)) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /**
   * @brief Find the matching route handler (CC=2)
@@ -516,9 +536,9 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
     }
 
     /* Stage 3: dispatch the complete request - both JSON-RPC and raw non-JSON-RPC bodies.
-     * Except the SSE endpoint: its response is a continuous SSE event stream handled
-     * directly by the static route (handle_chat_stream_sse), not a one-shot JSON reply. */
-    if (strcmp(method, "POST") == 0 && strcmp(url, GW_SSE_CHAT_PATH) != 0 &&
+     * Streaming (SSE) endpoints are excluded: their response is a continuous event stream
+     * handled directly by the route handler, not a one-shot JSON reply (SSoT via route table). */
+    if (strcmp(method, "POST") == 0 && !is_streaming_route(method, url) &&
         (context->json_request || (context->body_buf && context->body_len > 0))) {
         if (!context->json_request && context->body_buf && context->body_len > 0) {
             if (parse_json_request(gateway, context, context->body_buf, context->body_len) != 0) {

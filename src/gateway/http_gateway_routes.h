@@ -20,6 +20,8 @@
 /* SSE chat streaming route path (shared by the route table in
  * http_gateway_routes.c and the streaming handler in http_gateway_sse.c). */
 #define GW_SSE_CHAT_PATH "/api/v1/chat/stream"
+/* M1-1d：agent.run_stream SSE 纯翻译端点（§2.4 v1 事件帧协议） */
+#define GW_SSE_RUN_STREAM_PATH "/api/v1/agent/run/stream"
 
 #include <stdlib.h>
 #include <string.h>
@@ -83,6 +85,16 @@ int handle_hall_watch_sse(http_gateway_t *gateway, struct MHD_Connection *connec
                           http_request_context_t *context);
 
 /**
+  * @brief Handle POST /api/v1/agent/run/stream (SSE run_stream translation)
+  *
+  * Pure translation (K-1): connects to agent.sock, issues agent.run_stream,
+  * wraps each engine event frame as an SSE "data: <json>\n\n" frame. No
+  * business logic in the gateway (M1-1d §2.4.5).
+ */
+int handle_run_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
+                          http_request_context_t *context);
+
+/**
   * @brief Handle 404 Not Found
  */
 int handle_not_found(http_gateway_t *gateway, struct MHD_Connection *connection,
@@ -108,6 +120,9 @@ typedef struct {
     const char *method;
     const char *path;
     int (*handler)(http_gateway_t *, struct MHD_Connection *, http_request_context_t *);
+    /* streaming=1：SSE 长连接端点，绕过 JSON-RPC 聚合分发直接走路由（SSoT：
+     * 分发逻辑不再硬编码流式路径，由路由表自身表达） */
+    int streaming;
 } http_route_t;
 
 typedef int (*http_route_handler_t)(http_gateway_t *, struct MHD_Connection *,

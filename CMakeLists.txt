@@ -132,6 +132,7 @@ target_include_directories(gateway
         ${COREKERN_DIR}/include
         ${SYSCALL_DIR}/include
         ${COMMONS_DIR}
+        ${COMMONS_DIR}/include
         ${COMMONS_DIR}/utils/include
         ${COMMONS_DIR}/utils/types
         ${COMMONS_DIR}/utils/compat
