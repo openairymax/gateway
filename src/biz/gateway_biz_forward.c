@@ -284,19 +284,19 @@ char *gw_svc_call(const char *sock_path, const char *method, const char *params_
 /**
  * @brief ACL check for tool execution from external protocols
  *
- * Fail-closed: daemon_check_tool_permission DENYs any rule not registered for
- * (agent_id, tool_name). Default rules are registered at startup in main.c
- * (fs_read/fs_write/fs_list allow; shell_run follows the
- * AIRY_GATEWAY_ACL_ALLOW_SHELL env var, deny by default).
+ * M2-S5（0.1.9 §3.2 PEP）：经 gateway PEP 裁定缓存判定——命中缓存
+ * 零 RPC，miss 时向 PDP（cupolas_d）请求裁定并以响应 epoch 对齐失效；
+ * PDP 不可达降级本地 ACL（daemon_check_tool_permission，fail-closed）。
  *
+ * @param ctx Gateway business ctx（含 cupolas_d socket 端点）
  * @param tool_name Tool name
  * @return 0 allowed, non-zero denied
  */
-int gw_acl_check_tool(const char *tool_name)
+int gw_acl_check_tool(const gateway_business_ctx_t *ctx, const char *tool_name)
 {
     if (!tool_name)
         return -1;
-    int rc = daemon_check_tool_permission(GW_EXTERNAL_AGENT_ID, tool_name, "execute");
+    int rc = gw_pep_check(ctx, GW_EXTERNAL_AGENT_ID, tool_name, "execute");
     if (rc != 0) {
         AIRY_LOG_WARN("gateway ACL DENY: agent=%s tool=%s (fail-closed)", GW_EXTERNAL_AGENT_ID,
                  tool_name);
