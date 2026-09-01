@@ -175,6 +175,28 @@ static int gw_sse_emit_usage(gw_sse_ctx_t *sctx)
     return 1;
 }
 
+/* Build an error SSE event frame into step_buf (0.1.8：llm_d 错误信封 /
+ * LLM 连接失败转为客户端可读的 __airy_evt:error 事件，杜绝原始 JSON-RPC
+ * 错误对象被当正文 data: 帧上屏）。 */
+static int gw_sse_emit_error(gw_sse_ctx_t *sctx, const char *message)
+{
+    cJSON *evt = cJSON_CreateObject();
+    if (!evt)
+        return 0;
+    cJSON_AddStringToObject(evt, "__airy_evt", "error");
+    cJSON_AddStringToObject(evt, "message", message ? message : "LLM service error");
+    char *json = cJSON_PrintUnformatted(evt);
+    cJSON_Delete(evt);
+    if (!json)
+        return 0;
+    sctx->step_buf = gw_sse_frame(json);
+    AIRY_FREE(json);
+    if (!sctx->step_buf)
+        return 0;
+    sctx->step_len = strlen(sctx->step_buf);
+    return 1;
+}
+
 /* Incremental recv from llm_d socket into the stream buffer.
  * Returns: 1 = data appended, 0 = EOF/fatal (stream terminated),
  *          2 = idle window (SO_RCVTIMEO 到期且未超总预算，流仍有效，
@@ -313,6 +335,13 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
     }
 
     for (;;) {
+        /* 0.1.8：错误帧已发出（llm_d 信封 / 连接失败）且缓冲排空 →
+         * 直接 [DONE] 收尾，防止重入 LLM_ROUND 再次连接/再次检测死循环。 */
+        if (sctx->llm_error && (!sctx->step_buf || sctx->step_len == 0)) {
+            sctx->done = 1;
+            AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
+            return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
+        }
         switch (sctx->phase) {
         case GW_SSE_PHASE_LLM_ROUND: {
             if (sctx->tool_round >= gw_sse_max_tool_loops()) {
@@ -340,9 +369,12 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
             int sfd = gw_sse_stream_start(sctx->llm_sock, req_str, GW_SSE_RECV_TIMEOUT_S);
             AIRY_FREE(req_str);
             if (sfd < 0) {
-                sctx->done = 1;
-                AIRY_MEMCPY(buf, GW_SSE_DONE_EVENT, sizeof(GW_SSE_DONE_EVENT) - 1);
-                return (ssize_t)(sizeof(GW_SSE_DONE_EVENT) - 1);
+                /* 0.1.8：llm_d 不可达时此前直接 [DONE]，TUI 显示"未产生
+                 * 回复"误导用户。改发可读错误帧（daemon 未运行/socket 缺失）。 */
+                gw_sse_emit_error(sctx,
+                                  "LLM service unreachable (llm_d not running? run: airymaxrt start)");
+                sctx->llm_error = 1;
+                break;
             }
             sctx->fd = sfd;
             sctx->stream_len = 0;
@@ -366,6 +398,35 @@ static ssize_t gw_sse_content_reader(void *cls, uint64_t pos, char *buf, size_t 
                     if (emitted)
                         break;
                     continue;
+                }
+                /* 0.1.8：文本转发前检测 llm_d 错误信封（流式失败时整个
+                 * JSON-RPC error 对象裸写 socket，无 RS 帧）。env=1 → 转成
+                 * __airy_evt:error 事件帧并终止本轮；env=2 → 信封未收全，
+                 * 暂缓文本转发继续 recv；env=0 → 正常文本，放行。仅在本轮
+                 * 尚无文本上屏时检测（信封恒在流头部）。 */
+                if (!sctx->text_streamed) {
+                    char emsg[256];
+                    int env = gw_sse_llm_error_envelope(sctx, emsg, sizeof(emsg));
+                    if (env == 1) {
+                        gw_sse_emit_error(sctx, emsg[0] ? emsg : "LLM service error");
+                        sctx->llm_error = 1;
+                        /* 信封已从流缓冲消费：清空，避免重入再检测 */
+                        if (sctx->stream_buf) {
+                            sctx->stream_len = 0;
+                            sctx->stream_buf[0] = '\0';
+                        }
+                        break;
+                    }
+                    if (env == 2) {
+                        int rc2 = gw_sse_recv_chunk(sctx);
+                        if (rc2 < 0)
+                            break;
+                        if (rc2 == 2) {
+                            gw_sse_emit_keepalive(sctx);
+                            break;
+                        }
+                        continue;
+                    }
                 }
                 if (gw_sse_stream_extract_text(sctx)) {
                     sctx->text_streamed = 1;

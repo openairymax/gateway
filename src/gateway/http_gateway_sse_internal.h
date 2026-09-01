@@ -128,6 +128,10 @@ typedef struct {
      * now + GW_SSE_RECV_TIMEOUT_S*1000；轮询窗口内无数据且未超预算则发
      * keep-alive 续命，超预算才判 EOF——保持原 90s 总超时语义。 */
     unsigned long long idle_deadline_ms;
+    /* 0.1.8：llm_d 错误信封已转为 __airy_evt:error 帧发出（或 LLM 连接
+     * 失败已发错误帧）。置位后状态机排空 step_buf 即发 [DONE] 收尾，
+     * 不再进入工具循环/最终文本阶段。 */
+    int llm_error;
 } gw_sse_ctx_t;
 
 /* ── gateway_sse_stream.c ──────────────────────────────────────────── */
@@ -139,6 +143,11 @@ int  gw_sse_stream_append(gw_sse_ctx_t *sctx, const char *data, size_t len);
 int  gw_sse_stream_consume_frames(gw_sse_ctx_t *sctx);
 int  gw_sse_stream_extract_text(gw_sse_ctx_t *sctx);
 void gw_sse_text_accumulate(gw_sse_ctx_t *sctx, const char *text, size_t len);
+/* 0.1.8：检测 stream_buf 头部是否为 llm_d 的 JSON-RPC 错误信封（流式失败
+ * 时 llm_d 把整个 error 对象裸写 socket，无 RS 控制帧）。返回 0=非信封，
+ * 1=确认信封（message 提取到 out_msg），2=疑似信封但未完整（暂缓文本转发，
+ * 等收全再判定，防把半截 JSON 当正文上屏）。 */
+int  gw_sse_llm_error_envelope(gw_sse_ctx_t *sctx, char *out_msg, size_t out_len);
 
 /* ── gateway_sse_tool.c ────────────────────────────────────────────── */
 

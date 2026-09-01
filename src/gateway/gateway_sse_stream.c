@@ -241,6 +241,49 @@ void gw_sse_text_accumulate(gw_sse_ctx_t *sctx, const char *text, size_t len)
     sctx->final_text = nb;
 }
 
+/* ── llm_d error-envelope detection (0.1.8) ────────────────────────── */
+
+/* llm_d 流式失败时把整个 JSON-RPC 错误对象（{"jsonrpc":..,"error":{..}}）
+ * 裸写 socket 后关闭连接——无 RS 控制帧。此前网关把这段字节当正文
+ * data: 帧透传，TUI 原样上屏（社区反馈：[Super Agent] 显示
+ * {"jsonrpc":"2.0","id":1,"error":{"code":-32603,...}} 而非可读错误）。
+ * 本函数在文本转发前检测信封：确认则提取 error.message 供上层转成
+ * __airy_evt:error 事件帧。 */
+int gw_sse_llm_error_envelope(gw_sse_ctx_t *sctx, char *out_msg, size_t out_len)
+{
+    if (out_len > 0)
+        out_msg[0] = '\0';
+    if (!sctx->stream_buf || sctx->stream_len == 0)
+        return 0;
+    if (sctx->stream_buf[0] != '{')
+        return 0;
+    /* 强签名：llm_d jsonrpc_build_error 的键序固定为插入序，输出必以
+     * {"jsonrpc": 开头；正常文本块几乎不会以该前缀开始 → 直接放行。 */
+    static const char sig[] = "{\"jsonrpc\":";
+    size_t sig_len = sizeof(sig) - 1;
+    if (sctx->stream_len < sig_len)
+        return sctx->stream_eof ? 0 : 2; /* 签名未收全：暂缓，等 recv 补齐 */
+    if (memcmp(sctx->stream_buf, sig, sig_len) != 0)
+        return 0;
+#ifdef AIRY_HAS_CJSON
+    cJSON *root = cJSON_Parse(sctx->stream_buf);
+    if (!root)
+        return sctx->stream_eof ? 0 : 2; /* 流已结束仍畸形 → 按正文处理 */
+    cJSON *err = cJSON_GetObjectItem(root, "error");
+    int is_err = cJSON_IsObject(err);
+    if (is_err) {
+        cJSON *msg = cJSON_GetObjectItem(err, "message");
+        if (cJSON_IsString(msg) && msg->valuestring && out_len > 0)
+            AIRY_STRNCPY_TERM(out_msg, msg->valuestring, out_len);
+    }
+    cJSON_Delete(root);
+    return is_err ? 1 : 0;
+#else
+    /* 无 cJSON 时按签名保守判定（消息置空，上层给通用文案） */
+    return 1;
+#endif
+}
+
 /* ── Incremental text extraction ───────────────────────────────────── */
 
 int gw_sse_stream_extract_text(gw_sse_ctx_t *sctx)

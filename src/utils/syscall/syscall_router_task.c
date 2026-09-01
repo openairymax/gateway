@@ -18,7 +18,7 @@
 
 #include "daemon_rpc_client.h"
 
-/* TASK_STATUS_* macros are shared from commons/utils/types/include/types.h.
+/* TASK_STATUS_* macros are shared from commons/utils/types/types.h.
  * sched_d reports "completed" which maps to TASK_STATUS_SUCCEEDED. */
 
 #define TASK_WAIT_POLL_INTERVAL_MS 100

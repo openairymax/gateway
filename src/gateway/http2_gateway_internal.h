@@ -11,7 +11,7 @@
 
 #include "http2_gateway.h"
 
-#include "../../../commons/utils/error/include/error.h"
+#include "../../../commons/utils/error/error.h"
 #include "../utils/gateway_protocol_handler.h"
 #include "../utils/gateway_rate_limiter.h"
 #include "../utils/gateway_rpc_handler.h"
