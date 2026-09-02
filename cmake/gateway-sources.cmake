@@ -29,6 +29,7 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_routes.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_sse.c
+    ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_frame.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_stream.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_tool.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_memory.c
