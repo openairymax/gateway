@@ -253,6 +253,15 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"cupolas.entitlements_load", "cupolas", "entitlements_load", GW_CAP_KIND_FWD},
     {"cupolas.entitlements_check", "cupolas", "entitlements_check", GW_CAP_KIND_FWD},
 
+    /* ── policy（0.1.9 M2-S3：PDP 策略演化统一 RPC 面——cupolas_d 唯一
+     *    策略持有者；cap_key 用外部 namespace "policy"，转发目标为
+     *    cupolas（GW_NS_OWNER policy→cupolas），wire 方法为 daemon 侧
+     *    policy_* 裸名，与 cupolas_d 注册一致） ──────────────────── */
+    {"policy.load", "cupolas", "policy_load", GW_CAP_KIND_FWD},
+    {"policy.activate", "cupolas", "policy_activate", GW_CAP_KIND_FWD},
+    {"policy.rollback", "cupolas", "policy_rollback", GW_CAP_KIND_FWD},
+    {"policy.status", "cupolas", "policy_status", GW_CAP_KIND_FWD},
+
     /* ── hall（网关内实现） ─────────────────────────────────────── */
     {"hall.board", "hall", "board", GW_CAP_KIND_HALL},
     {"hall.tasks", "hall", "tasks", GW_CAP_KIND_HALL},
@@ -287,7 +296,7 @@ static const struct {
     {"channel", "channel"},
     {"a2a", "a2a"},
     {"cupolas", "cupolas"},
-    {"policy", "cupolas"}, /* M2 收权策略域（预留 namespace） */
+    {"policy", "cupolas"}, /* M2-S3：PDP 策略演化域——policy.* 已登记转发 cupolas_d */
     {"maths", "maths"},
     {"hook", "hook"},
     {"hall", "gateway"}, /* 网关内实现域（任务看板/事件流/决策链） */
@@ -390,6 +399,10 @@ static const struct {
     {"cupolas.vault_delete", "cap:cupolas.admin"},
     {"cupolas.vault_rotate", "cap:cupolas.admin"},
     {"cupolas.net_add_rule", "cap:cupolas.admin"},
+    /* M2-S3：策略演化写操作同为管理员级（读方法 policy.status 不设限） */
+    {"policy.load", "cap:cupolas.admin"},
+    {"policy.activate", "cap:cupolas.admin"},
+    {"policy.rollback", "cap:cupolas.admin"},
 };
 
 const gw_cap_t *gw_cap_find(const char *cap_key)
