@@ -186,6 +186,10 @@ gateway_business_ctx_t *gateway_business_ctx_create(void)
      * 完成（见 gateway_biz_svcdispatch.c）。 */
     gw_sys_svc_dispatch_init(ctx);
 
+    /* M2-S4（0.1.9 §3.3.1）：PEP 订阅 airy.cupolas.epoch → 策略热更新
+     * 主动失效缓存（<1s 生效）。fail-open：notify_d 不在线仅重连。 */
+    gw_pep_epoch_observe(ctx);
+
     return ctx;
 }
 

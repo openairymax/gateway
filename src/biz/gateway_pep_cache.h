@@ -33,6 +33,15 @@ int gw_pep_check(const gateway_business_ctx_t *ctx, const char *agent, const cha
 /* 当前已对齐的权威 epoch（0 = 尚未对齐） */
 uint64_t gw_pep_epoch(void);
 
+/* M2-S4（0.1.9 §3.3.1）：订阅 notify_d topic=airy.cupolas.epoch 主动失效
+ * 缓存（SSE 长连接 + 自动重连）。进程级单次启动；fail-open——notify_d
+ * 不可达仅告警重试，不影响懒对齐路径（miss RPC 携带权威 epoch 兜底）。 */
+void gw_pep_epoch_observe(const gateway_business_ctx_t *ctx);
+
+/* 从 notify SSE data 帧解析权威 epoch；非 airy.cupolas.epoch 帧返回 0。
+ * 公开供单元测试验证帧解析（消息内层 JSON 未转义，按键值容错解析）。 */
+uint64_t gw_pep_epoch_parse(const char *data);
+
 #ifdef __cplusplus
 }
 #endif
