@@ -67,9 +67,7 @@ struct gateway_business_ctx_s {
     char sched_sock_path[256];
     char think_sock_path[256];
     char a2a_sock_path[256];
-    char info_sock_path[256];
     char notify_sock_path[256];
-    char observe_sock_path[256];
     char market_sock_path[256];
     char hook_sock_path[256];
     char monit_sock_path[256];
