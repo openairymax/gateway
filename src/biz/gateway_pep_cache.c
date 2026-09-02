@@ -23,7 +23,16 @@
 
 #include <cjson/cJSON.h>
 
+#include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
+#include <poll.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 
 #define GW_PEP_MAX 256
 #define GW_PEP_RPC_TIMEOUT_MS 5000
@@ -241,4 +250,179 @@ int gw_pep_check(const gateway_business_ctx_t *ctx, const char *agent, const cha
     store_locked(h, agent, tool, action, verdict);
     unlock_pep();
     return verdict;
+}
+
+/* ── M2-S4 epoch 主动失效（0.1.9 §3.2/§3.3.1） ────────────────────
+ * gateway 订阅 notify_d topic=airy.cupolas.epoch：策略热更新（activate/
+ * rollback，epoch+1 + 广播）到达时主动整体失效缓存，无需等下次 miss
+ * RPC 才对齐——保证全 runtime 生效 < 1s（订阅面 fail-open：notify_d
+ * 不在线仅告警重连，不影响既有懒对齐路径）。 */
+
+/* 从 notify_d SSE data 帧解析权威 epoch。
+ * notify_d 广播帧形如 {"event":"epoch_change","topic":"airy.cupolas.epoch",
+ * "message":"{"epoch":N}"}——message 内层 JSON 未经转义，整帧并非严格
+ * 合法 JSON，故按 topic 前缀 + "epoch":N 键值解析（容错），
+ * 非本 topic 的帧返回 0。 */
+uint64_t gw_pep_epoch_parse(const char *data)
+{
+    if (!data || !strstr(data, "airy.cupolas.epoch"))
+        return 0;
+    const char *key = strstr(data, "\"epoch\":");
+    if (!key)
+        return 0;
+    key += strlen("\"epoch\":");
+    while (*key == ' ' || *key == '\t')
+        key++;
+    if (*key < '0' || *key > '9')
+        return 0;
+    return strtoull(key, NULL, 10);
+}
+
+/* 采用订阅面下发的权威 epoch：单调推进才整体失效（幂等，旧值忽略） */
+static void adopt_epoch(uint64_t epoch)
+{
+    if (epoch == 0)
+        return;
+    lock_pep();
+    if (epoch > s_epoch) {
+        __builtin_memset(s_pep, 0, sizeof(s_pep));
+        s_epoch = epoch;
+    }
+    unlock_pep();
+}
+
+#ifndef _WIN32
+typedef struct {
+    char path[256];
+} epoch_watch_arg_t;
+
+/* notify_d SSE 长连接订阅线程（detached）：读帧 → 解析 → 主动失效。
+ * 断线/无活动超时自动重连（尽力而为，fail-open）。 */
+static void *epoch_watch_main(void *arg)
+{
+    epoch_watch_arg_t *a = (epoch_watch_arg_t *)arg;
+    if (!a) {
+        AIRY_LOG_WARN("gateway PEP: epoch watch arg lost, observer stopped");
+        return NULL;
+    }
+
+    for (;;) {
+        int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (fd < 0) {
+            AIRY_LOG_WARN("gateway PEP: epoch watch socket() failed, retry in 2s");
+            sleep(2);
+            continue;
+        }
+        struct sockaddr_un addr;
+        __builtin_memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", a->path);
+        if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+            AIRY_LOG_WARN("gateway PEP: notify_d unreachable (%s), retry in 2s", a->path);
+            close(fd);
+            sleep(2);
+            continue;
+        }
+
+        /* SSE 握手：notify_d 将本连接注册为长连接订阅客户端 */
+        char hdr[512];
+        int hl = snprintf(hdr, sizeof(hdr),
+                          "GET /events HTTP/1.1\r\n"
+                          "Accept: text/event-stream\r\n"
+                          "Cache-Control: no-cache\r\n"
+                          "Connection: keep-alive\r\n"
+                          "X-Client-Id: gateway-pep\r\n"
+                          "\r\n");
+        if (hl <= 0 || hl >= (int)sizeof(hdr) ||
+            send(fd, hdr, (size_t)hl, 0) <= 0) {
+            close(fd);
+            sleep(2);
+            continue;
+        }
+
+        AIRY_LOG_INFO("gateway PEP: epoch watch subscribed via %s", a->path);
+
+        char buf[2048];
+        size_t used = 0;
+        int idle = 0;
+        for (;;) {
+            struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
+            int pr = poll(&pfd, 1, 5000);
+            if (pr < 0)
+                break;
+            if (pr == 0) {
+                /* 5s 无事件：计数保活，超时重连清除半死连接 */
+                if (++idle >= 12)
+                    break;
+                continue;
+            }
+            if (!(pfd.revents & POLLIN))
+                continue;
+            ssize_t n = recv(fd, buf + used, sizeof(buf) - used - 1, 0);
+            if (n <= 0)
+                break;
+            used += (size_t)n;
+            buf[used] = '\0';
+            idle = 0;
+
+            /* 逐帧消费（SSE 帧分隔：\n\n；取最后 "data:" 行） */
+            size_t start = 0;
+            for (;;) {
+                char *end = strstr(buf + start, "\n\n");
+                if (!end)
+                    break;
+                const char *dl = strstr(buf + start, "data:");
+                if (dl && dl < end) {
+                    const char *ds = dl + strlen("data:");
+                    while (*ds == ' ')
+                        ds++;
+                    size_t dl_len = (size_t)(end - ds);
+                    if (dl_len >= sizeof(buf))
+                        dl_len = sizeof(buf) - 1;
+                    char line[2048];
+                    __builtin_memcpy(line, ds, dl_len);
+                    line[dl_len] = '\0';
+                    uint64_t ep = gw_pep_epoch_parse(line);
+                    if (ep)
+                        adopt_epoch(ep);
+                }
+                start = (size_t)((end + 2) - buf);
+            }
+            if (start > 0) {
+                __builtin_memmove(buf, buf + start, used - start);
+                used -= start;
+                buf[used] = '\0';
+            }
+        }
+        close(fd);
+        AIRY_LOG_WARN("gateway PEP: epoch watch disconnected, reconnecting");
+        sleep(2);
+    }
+    return NULL;
+}
+#endif
+
+/* 启动 epoch 订阅观察线程（进程级单次；调用点：gateway business ctx 初始化后）。
+ * fail-open：notify_d 未上线/订阅失败仅重连重试，不影响懒对齐路径。 */
+void gw_pep_epoch_observe(const gateway_business_ctx_t *ctx)
+{
+    if (!ctx || !ctx->notify_sock_path[0])
+        return;
+#ifndef _WIN32
+    static volatile int s_started;
+    if (s_started)
+        return;
+    epoch_watch_arg_t *a = AIRY_CALLOC(1, sizeof(*a));
+    if (!a)
+        return;
+    AIRY_STRNCPY_TERM(a->path, ctx->notify_sock_path, sizeof(a->path));
+    pthread_t th;
+    if (pthread_create(&th, NULL, epoch_watch_main, a) != 0) {
+        AIRY_FREE(a);
+        return;
+    }
+    s_started = 1;
+    pthread_detach(th);
+    AIRY_LOG_INFO("gateway PEP: epoch observer started (notify=%s)", a->path);
+#endif
 }
