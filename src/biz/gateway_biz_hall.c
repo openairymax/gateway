@@ -249,7 +249,7 @@ static int gw_hall_collect_file(const char *path, const char *name, gw_hall_evt_
     for (size_t i = 0; i < parts.seq_len; i++)
         seq = seq * 10 + (unsigned long)(parts.seq[i] - '0');
 
-    char *json = gw_hall_event_flatten(path);
+    char *json = hall_event_flatten(path);
     if (!json)
         return -1;
     gw_hall_evt_push(out, ts_utc, seq, json);
