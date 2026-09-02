@@ -36,9 +36,7 @@ static const struct {
     {"tool", GW_TOOL_TIMEOUT_MS},
     {"a2a", GW_LLM_DEFAULT_TIMEOUT_MS},
     {"plugin", GW_TOOL_TIMEOUT_MS},
-    {"info", GW_TOOL_TIMEOUT_MS},
     {"notify", GW_TOOL_TIMEOUT_MS},
-    {"observe", GW_TOOL_TIMEOUT_MS},
     {"market", GW_TOOL_TIMEOUT_MS},
     {"hook", GW_TOOL_TIMEOUT_MS},
     {"sched", GW_TOOL_TIMEOUT_MS},
@@ -140,12 +138,14 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"plugin.uninstall", "tool", "plugin_uninstall", GW_CAP_KIND_FWD},
     {"plugin.health_check", "tool", "plugin_health_check", GW_CAP_KIND_FWD},
 
-    /* ── info ───────────────────────────────────────────────────── */
-    {"info.system", "info", "system", GW_CAP_KIND_FWD},
-    {"info.history", "info", "history", GW_CAP_KIND_FWD},
-    {"info.health", "info", "health", GW_CAP_KIND_FWD},
-    {"info.health_check", "info", "health_check", GW_CAP_KIND_FWD},
-    {"info.get_stats", "info", "get_stats", GW_CAP_KIND_FWD},
+    /* ── info（0.1.9 M4：info_d → monit_d 整编，旧 info.* 保留转发：
+     *    目标 daemon=monit、方法=info_* 前缀；L2 标准方法透传 monit 宿主） ── */
+    {"info.system", "monit", "info_system", GW_CAP_KIND_FWD},
+    {"info.history", "monit", "info_history", GW_CAP_KIND_FWD},
+    {"info.health", "monit", "info_health", GW_CAP_KIND_FWD},
+    {"info.hardware", "monit", "info_hardware", GW_CAP_KIND_FWD},
+    {"info.health_check", "monit", "health_check", GW_CAP_KIND_FWD},
+    {"info.get_stats", "monit", "get_stats", GW_CAP_KIND_FWD},
 
     /* ── notify ─────────────────────────────────────────────────── */
     {"notify.publish", "notify", "publish", GW_CAP_KIND_FWD},
@@ -156,12 +156,13 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"notify.health_check", "notify", "health_check", GW_CAP_KIND_FWD},
     {"notify.get_stats", "notify", "get_stats", GW_CAP_KIND_FWD},
 
-    /* ── observe ────────────────────────────────────────────────── */
-    {"observe.record_metric", "observe", "record_metric", GW_CAP_KIND_FWD},
-    {"observe.query_metrics", "observe", "query_metrics", GW_CAP_KIND_FWD},
-    {"observe.get_metrics", "observe", "get_metrics", GW_CAP_KIND_FWD},
-    {"observe.get_stats", "observe", "get_stats", GW_CAP_KIND_FWD},
-    {"observe.health_check", "observe", "health_check", GW_CAP_KIND_FWD},
+    /* ── observe（0.1.9 M4：observe_d → monit_d 整编，双 Prometheus
+     *    /metrics 收敛；旧 observe.* 保留转发：方法=observe_* 前缀） ── */
+    {"observe.record_metric", "monit", "observe_record_metric", GW_CAP_KIND_FWD},
+    {"observe.query_metrics", "monit", "observe_query_metrics", GW_CAP_KIND_FWD},
+    {"observe.get_metrics", "monit", "observe_get_metrics", GW_CAP_KIND_FWD},
+    {"observe.get_stats", "monit", "get_stats", GW_CAP_KIND_FWD},
+    {"observe.health_check", "monit", "health_check", GW_CAP_KIND_FWD},
 
     /* ── market ─────────────────────────────────────────────────── */
     {"market.register_agent", "market", "register_agent", GW_CAP_KIND_FWD},

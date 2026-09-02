@@ -25,6 +25,7 @@
 
 #include "logging.h"
 
+#include <stdio.h>
 #include <string.h>
 
 /* 当前 gateway 业务上下文（钩子回调无 ctx 参数，用静态指针承载；
@@ -67,15 +68,17 @@ static const char *gw_svc_sock_for_ns(const char *ns)
     if (strcmp(buf, "a2a") == 0)
         return g_svc_ctx->a2a_sock_path;
     /* 0.1.9 M4：plugin_d → tool_d 整编——旧 plugin ns 解析到 tool.sock，
-     * 方法名在 gw_sys_svc_dispatch 内加 "plugin_" 前缀（见下） */
+     * 方法名在 gw_wire_method 内加 "plugin_" 前缀（见下） */
     if (strcmp(buf, "plugin") == 0)
         return g_svc_ctx->tool_sock_path;
+    /* 0.1.9 M4：info_d / observe_d → monit_d 整编——旧 ns 解析到 monit.sock，
+     * 方法名在 gw_wire_method 内加 "info_" / "observe_" 前缀（见下） */
     if (strcmp(buf, "info") == 0)
-        return g_svc_ctx->info_sock_path;
+        return g_svc_ctx->monit_sock_path;
     if (strcmp(buf, "notify") == 0)
         return g_svc_ctx->notify_sock_path;
     if (strcmp(buf, "observe") == 0)
-        return g_svc_ctx->observe_sock_path;
+        return g_svc_ctx->monit_sock_path;
     if (strcmp(buf, "market") == 0)
         return g_svc_ctx->market_sock_path;
     if (strcmp(buf, "hook") == 0)
@@ -87,6 +90,53 @@ static const char *gw_svc_sock_for_ns(const char *ns)
     if (strcmp(buf, "cupolas") == 0)
         return g_svc_ctx->cupolas_sock_path;
     return NULL;
+}
+
+/* 0.1.9 M4：daemon 整编命名空间路由表（plugin→tool、info/observe→monit）。
+ * 旧 ns 的 syscall 调用在 wire 方法名上加 "<legacy_ns>_" 前缀；l2_pass=1
+ * 表示宿主未登记带前缀的 L2 变体（info / observe 整编情形），shutdown /
+ * get_stats / health_check 三件套透传宿主自身语义；l2_pass=0 保持整编前
+ * 既有全前缀行为（tool_d 已登记 plugin_get_stats 等方法）。 */
+static const struct {
+    const char *ns;
+    int l2_pass;
+} GW_LEGACY_NS[] = {
+    {"plugin", 0},
+    {"info", 1},
+    {"observe", 1},
+};
+
+/* L2 标准方法集（core dispatcher 约定，各 daemon 一致）。 */
+static const char *const GW_L2_METHODS[] = {"shutdown", "get_stats", "health_check"};
+
+static int gw_is_l2_method(const char *method)
+{
+    for (size_t i = 0; i < sizeof(GW_L2_METHODS) / sizeof(GW_L2_METHODS[0]); i++) {
+        if (strcmp(method, GW_L2_METHODS[i]) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+/**
+ * @brief legacy ns -> 宿主 daemon 的 wire 方法名转换（非 legacy ns 原样返回）。
+ * @return wire 方法名（指向 buf 或入参 method，非 OWNER）；缓冲区溢出返回 NULL
+ */
+static const char *gw_wire_method(const char *ns, const char *method, char *buf, size_t buf_sz)
+{
+    for (size_t i = 0; i < sizeof(GW_LEGACY_NS) / sizeof(GW_LEGACY_NS[0]); i++) {
+        const char *legacy = GW_LEGACY_NS[i].ns;
+        size_t l = strlen(legacy);
+        if (strncmp(ns, legacy, l) != 0 || (ns[l] != '\0' && ns[l] != '.'))
+            continue;
+        if (GW_LEGACY_NS[i].l2_pass && gw_is_l2_method(method))
+            return method;
+        int n = snprintf(buf, buf_sz, "%s_%s", legacy, method);
+        if (n < 0 || (size_t)n >= buf_sz)
+            return NULL;
+        return buf;
+    }
+    return method;
 }
 
 /**
@@ -110,20 +160,14 @@ static int gw_sys_svc_dispatch(const char *ns, const char *method, const char *p
         return -1;
     }
 
-    /* 0.1.9 M4：plugin.* → tool_d 方法名前缀转换（"load" → "plugin_load"）。
-     * 兼容直接以旧 plugin ns 发起 syscall 的客户端；tool_d 侧 plugin_* 与
-     * tool 原生方法同表登记，前缀即命名空间消歧。 */
-    char plugin_method[64];
-    const char *wire_method = method;
-    if (strncmp(ns, "plugin", 6) == 0 && (ns[6] == '\0' || ns[6] == '.')) {
-        size_t mlen = strlen(method);
-        if (mlen + 8 >= sizeof(plugin_method)) {
-            AIRY_LOG_WARN("gateway svc_dispatch: plugin method too long: '%s'", method);
-            return -1;
-        }
-        AIRY_MEMCPY(plugin_method, "plugin_", 7);
-        AIRY_MEMCPY(plugin_method + 7, method, mlen + 1);
-        wire_method = plugin_method;
+    /* 0.1.9 M4：legacy ns（plugin / info / observe）→ 宿主 wire 方法名前缀转换
+     * （"load" → "plugin_load"、"system" → "info_system"）。兼容直接以旧 ns
+     * 发起 syscall 的客户端；宿主侧带前缀方法与原生方法同表登记，前缀即消歧。 */
+    char wire_buf[64];
+    const char *wire_method = gw_wire_method(ns, method, wire_buf, sizeof(wire_buf));
+    if (!wire_method) {
+        AIRY_LOG_WARN("gateway svc_dispatch: wire method too long ns=%s method=%s", ns, method);
+        return -1;
     }
 
     char *resp = gw_svc_call(sock, wire_method, params_json, (int)timeout_ms);

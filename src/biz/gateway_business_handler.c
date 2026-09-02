@@ -67,8 +67,7 @@ static void gw_resolve_daemon_sock(char *out, size_t out_size, const char *env_n
         {"market.sock", "127.0.0.1:8082"},   {"sched.sock", "127.0.0.1:8083"},
         {"notify.sock", "127.0.0.1:8084"},   {"mem.sock", "127.0.0.1:8085"},
         {"agent.sock", "127.0.0.1:8086"},    {"a2a.sock", "127.0.0.1:8087"},
-        {"info.sock", "127.0.0.1:8088"},     {"cupolas.sock", "127.0.0.1:8089"},
-        {"think.sock", "127.0.0.1:8090"},    {"observe.sock", "127.0.0.1:8091"},
+        {"cupolas.sock", "127.0.0.1:8089"},  {"think.sock", "127.0.0.1:8090"},
         {"hook.sock", "127.0.0.1:8093"},
         {"channel.sock", "127.0.0.1:8094"},  {"monit.sock", "127.0.0.1:9090"},
     };
@@ -112,12 +111,8 @@ gateway_business_ctx_t *gateway_business_ctx_create(void)
                            "think.sock");
     gw_resolve_daemon_sock(ctx->a2a_sock_path, sizeof(ctx->a2a_sock_path), "AIRY_A2A_SOCK",
                            "a2a.sock");
-    gw_resolve_daemon_sock(ctx->info_sock_path, sizeof(ctx->info_sock_path), "AIRY_INFO_SOCK",
-                           "info.sock");
     gw_resolve_daemon_sock(ctx->notify_sock_path, sizeof(ctx->notify_sock_path), "AIRY_NOTIFY_SOCK",
                            "notify.sock");
-    gw_resolve_daemon_sock(ctx->observe_sock_path, sizeof(ctx->observe_sock_path),
-                           "AIRY_OBSERVE_SOCK", "observe.sock");
     gw_resolve_daemon_sock(ctx->market_sock_path, sizeof(ctx->market_sock_path), "AIRY_MARKET_SOCK",
                            "market.sock");
     gw_resolve_daemon_sock(ctx->hook_sock_path, sizeof(ctx->hook_sock_path), "AIRY_HOOK_SOCK",
