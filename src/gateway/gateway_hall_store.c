@@ -32,6 +32,8 @@
 #include "platform.h"
 #include "logging.h"
 
+#include <cjson/cJSON.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -514,6 +516,84 @@ void gw_hall_watch_init(gw_hall_watch_t *w)
     w->initialized = 1;
 }
 
+/* Read a whole file into a malloc'd buffer (caller AIRY_FREE). NULL on error. */
+static char *gw_hall_read_file(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    long sz = ftell(f);
+    if (sz < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    char *buf = (char *)AIRY_MALLOC((size_t)sz + 1);
+    if (!buf) {
+        fclose(f);
+        return NULL;
+    }
+    size_t got = fread(buf, 1, (size_t)sz, f);
+    fclose(f);
+    if (got != (size_t)sz) {
+        AIRY_FREE(buf);
+        return NULL;
+    }
+    buf[got] = '\0';
+    return buf;
+}
+
+/* Flatten one stored event envelope into the compact on-the-wire event
+ * shape shared by every hall.* read endpoint (see header). */
+char *gw_hall_event_flatten(const char *path)
+{
+    if (!path)
+        return NULL;
+    char *raw = gw_hall_read_file(path);
+    if (!raw)
+        return NULL;
+    cJSON *o = cJSON_Parse(raw);
+    AIRY_FREE(raw);
+    if (!o)
+        return NULL;
+
+    cJSON *f = cJSON_GetObjectItem(o, "file");
+    const char *file_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "id")) : NULL;
+    const char *category = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "category")) : NULL;
+    const char *task_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "task_id")) : NULL;
+    const char *tenant_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "tenant_id")) : NULL;
+    const char *node_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "node_id")) : NULL;
+    const char *ts_utc = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "ts_utc")) : NULL;
+    double seq = f ? cJSON_GetNumberValue(cJSON_GetObjectItem(f, "seq")) : 0;
+    double gseq = f ? cJSON_GetNumberValue(cJSON_GetObjectItem(f, "gseq")) : 0;
+    cJSON *content = cJSON_GetObjectItem(o, "content");
+
+    cJSON *evt = cJSON_CreateObject();
+    if (evt) {
+        cJSON_AddStringToObject(evt, "file_id", file_id ? file_id : "");
+        cJSON_AddStringToObject(evt, "category", category ? category : "");
+        cJSON_AddStringToObject(evt, "task_id", task_id ? task_id : "");
+        cJSON_AddStringToObject(evt, "tenant_id", tenant_id ? tenant_id : "");
+        cJSON_AddStringToObject(evt, "node_id", node_id ? node_id : "");
+        cJSON_AddStringToObject(evt, "ts_utc", ts_utc ? ts_utc : "");
+        cJSON_AddNumberToObject(evt, "seq", seq);
+        cJSON_AddNumberToObject(evt, "gseq", gseq);
+        if (content && cJSON_IsObject(content))
+            cJSON_AddItemToObject(evt, "content", cJSON_Duplicate(content, 1));
+        else
+            cJSON_AddItemToObject(evt, "content", cJSON_CreateObject());
+    }
+    cJSON_Delete(o);
+    if (!evt)
+        return NULL;
+    char *s = cJSON_PrintUnformatted(evt);
+    cJSON_Delete(evt);
+    return s;
+}
+
 int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
 {
     if (!w || !out || out_sz == 0)
@@ -540,38 +620,21 @@ int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
         int gt_ts = strcmp(cands[i].ts_utc, w->last_ts);
         if (gt_ts < 0 || (gt_ts == 0 && cands[i].seq <= w->last_seq))
             continue;
-        FILE *fp = fopen(cands[i].path, "r");
-        if (!fp)
+        /* 推送形态与 hall.stream/replay 的 events 条目一致（SSoT）：
+         * 展开 envelope 为扁平事件，订阅方用同一解码器消费两路数据。 */
+        char *flat = gw_hall_event_flatten(cands[i].path);
+        if (!flat)
             continue;
-        char *raw = NULL;
-        size_t raw_len = 0;
-        char chunk[4096];
-        size_t got;
-        while ((got = fread(chunk, 1, sizeof(chunk), fp)) > 0) {
-            char *nr = (char *)AIRY_REALLOC(raw, raw_len + got + 1);
-            if (!nr) {
-                AIRY_FREE(raw);
-                raw = NULL;
-                raw_len = 0;
-                break;
-            }
-            raw = nr;
-            AIRY_MEMCPY(raw + raw_len, chunk, got);
-            raw_len += got;
-        }
-        fclose(fp);
-        if (!raw)
-            continue;
-        raw[raw_len] = '\0';
-        if (raw_len + 1 < out_sz) {
-            AIRY_MEMCPY(out, raw, raw_len + 1);
-            AIRY_FREE(raw);
+        size_t fl = strlen(flat);
+        if (fl + 1 <= out_sz) {
+            AIRY_MEMCPY(out, flat, fl + 1);
+            AIRY_FREE(flat);
             AIRY_STRNCPY_TERM(w->last_ts, cands[i].ts_utc, sizeof(w->last_ts));
             w->last_seq = cands[i].seq;
             result = 1;
             break;
         }
-        AIRY_FREE(raw);
+        AIRY_FREE(flat);
     }
     AIRY_FREE(cands);
     return result;
