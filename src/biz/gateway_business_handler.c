@@ -69,7 +69,7 @@ static void gw_resolve_daemon_sock(char *out, size_t out_size, const char *env_n
         {"agent.sock", "127.0.0.1:8086"},    {"a2a.sock", "127.0.0.1:8087"},
         {"info.sock", "127.0.0.1:8088"},     {"cupolas.sock", "127.0.0.1:8089"},
         {"think.sock", "127.0.0.1:8090"},    {"observe.sock", "127.0.0.1:8091"},
-        {"plugin.sock", "127.0.0.1:8092"},   {"hook.sock", "127.0.0.1:8093"},
+        {"hook.sock", "127.0.0.1:8093"},
         {"channel.sock", "127.0.0.1:8094"},  {"monit.sock", "127.0.0.1:9090"},
     };
     for (size_t i = 0; i < sizeof(WIN_SOCK_TCP) / sizeof(WIN_SOCK_TCP[0]); i++) {
@@ -112,8 +112,6 @@ gateway_business_ctx_t *gateway_business_ctx_create(void)
                            "think.sock");
     gw_resolve_daemon_sock(ctx->a2a_sock_path, sizeof(ctx->a2a_sock_path), "AIRY_A2A_SOCK",
                            "a2a.sock");
-    gw_resolve_daemon_sock(ctx->plugin_sock_path, sizeof(ctx->plugin_sock_path), "AIRY_PLUGIN_SOCK",
-                           "plugin.sock");
     gw_resolve_daemon_sock(ctx->info_sock_path, sizeof(ctx->info_sock_path), "AIRY_INFO_SOCK",
                            "info.sock");
     gw_resolve_daemon_sock(ctx->notify_sock_path, sizeof(ctx->notify_sock_path), "AIRY_NOTIFY_SOCK",
@@ -332,7 +330,7 @@ char *gateway_business_handle(void *request, void *user_data)
             resp = handle_hall_call(root, ctx);
             break;
         case GW_CAP_KIND_FWD: {
-            gw_ns_forward_rule_t rule = {cap->ns, gw_cap_ns_timeout(cap->ns)};
+            gw_ns_forward_rule_t rule = {cap->ns, gw_cap_ns_timeout(cap->ns), cap->method};
             resp = handle_ns_forward(root, &rule);
             break;
         }
