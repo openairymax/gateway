@@ -29,6 +29,7 @@
 
 #include "gateway_biz_internal.h"
 
+#include "gateway/gateway_hall_store.h"
 #include "syscalls.h"
 
 #include "logging.h"
@@ -230,52 +231,6 @@ static void gw_hall_evt_free_all(gw_hall_evt_list_t *l)
     l->cap = 0;
 }
 
-/* Build the compact event JSON from a raw hall file. Returns a malloc'd
- * string on success (caller AIRY_FREE), NULL when the file is not parseable. */
-static char *gw_hall_event_from_file(const char *path)
-{
-    char *raw = gw_hall_read_file(path);
-    if (!raw)
-        return NULL;
-    cJSON *o = cJSON_Parse(raw);
-    AIRY_FREE(raw);
-    if (!o)
-        return NULL;
-
-    cJSON *f = cJSON_GetObjectItem(o, "file");
-    const char *file_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "id")) : NULL;
-    const char *category = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "category")) : NULL;
-    const char *task_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "task_id")) : NULL;
-    const char *tenant_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "tenant_id")) : NULL;
-    const char *node_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "node_id")) : NULL;
-    const char *ts_utc = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "ts_utc")) : NULL;
-    double seq = f ? cJSON_GetNumberValue(cJSON_GetObjectItem(f, "seq")) : 0;
-    double gseq = f ? cJSON_GetNumberValue(cJSON_GetObjectItem(f, "gseq")) : 0;
-    cJSON *content = cJSON_GetObjectItem(o, "content");
-
-    cJSON *evt = cJSON_CreateObject();
-    if (evt) {
-        cJSON_AddStringToObject(evt, "file_id", file_id ? file_id : "");
-        cJSON_AddStringToObject(evt, "category", category ? category : "");
-        cJSON_AddStringToObject(evt, "task_id", task_id ? task_id : "");
-        cJSON_AddStringToObject(evt, "tenant_id", tenant_id ? tenant_id : "");
-        cJSON_AddStringToObject(evt, "node_id", node_id ? node_id : "");
-        cJSON_AddStringToObject(evt, "ts_utc", ts_utc ? ts_utc : "");
-        cJSON_AddNumberToObject(evt, "seq", seq);
-        cJSON_AddNumberToObject(evt, "gseq", gseq);
-        if (content && cJSON_IsObject(content))
-            cJSON_AddItemToObject(evt, "content", cJSON_Duplicate(content, 1));
-        else
-            cJSON_AddItemToObject(evt, "content", cJSON_CreateObject());
-    }
-    cJSON_Delete(o);
-    if (!evt)
-        return NULL;
-    char *s = cJSON_PrintUnformatted(evt);
-    cJSON_Delete(evt);
-    return s;
-}
-
 /* Scan one hall file: parse its name + build the event. Returns 0 when the
  * file contributed an event, -1 otherwise (skipped). */
 static int gw_hall_collect_file(const char *path, const char *name, gw_hall_evt_list_t *out)
@@ -294,7 +249,7 @@ static int gw_hall_collect_file(const char *path, const char *name, gw_hall_evt_
     for (size_t i = 0; i < parts.seq_len; i++)
         seq = seq * 10 + (unsigned long)(parts.seq[i] - '0');
 
-    char *json = gw_hall_event_from_file(path);
+    char *json = gw_hall_event_flatten(path);
     if (!json)
         return -1;
     gw_hall_evt_push(out, ts_utc, seq, json);

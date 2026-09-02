@@ -57,6 +57,22 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
 void gw_hall_task_id_now(char *out, size_t out_sz);
 
 /**
+ * @brief Read a hall event file and flatten its envelope into the compact
+ *        event JSON consumed by every hall.* read endpoint.
+ *
+ * Wire event bodies are stored with a {"file":{...},"access":{...},
+ * "content":{...}} envelope (byte-aligned with the runtime writer). All
+ * read surfaces (hall.replay / hall.stream events, hall.watch SSE push)
+ * expose the flattened form {file_id,category,task_id,tenant_id,node_id,
+ * ts_utc,seq,gseq,content} — a single on-the-wire event shape (SSoT), so
+ * any client decodes stream and watch payloads identically.
+ *
+ * @param path  hall event file path
+ * @return malloc'd compact JSON (caller AIRY_FREE); NULL on parse failure
+ */
+char *gw_hall_event_flatten(const char *path);
+
+/**
  * @brief Hall event watch cursor (read side, for SSE push).
  *
  * The gateway has no in-process hall handle (unlike the CLI/TUI which link
