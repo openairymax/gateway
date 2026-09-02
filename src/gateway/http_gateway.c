@@ -370,7 +370,7 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
     return success_resp;
 }
 
-static void http_request_completed_callback(
+static void http_req_complete_cb(
     void *cls __attribute__((unused)), struct MHD_Connection *connection __attribute__((unused)),
     void **con_cls, enum MHD_RequestTerminationCode toe __attribute__((unused)))
 {
@@ -442,7 +442,7 @@ static airy_err_t http_gateway_start(void *gateway_impl)
         MHD_start_daemon(MHD_USE_EPOLL_INTERNAL_THREAD | MHD_USE_TURBO, gateway->port, NULL, NULL,
                          handle_http_request, gateway, MHD_OPTION_CONNECTION_LIMIT, conn_limit,
                          MHD_OPTION_CONNECTION_TIMEOUT, conn_timeout, MHD_OPTION_THREAD_POOL_SIZE,
-                         pool_size, MHD_OPTION_NOTIFY_COMPLETED, http_request_completed_callback,
+                         pool_size, MHD_OPTION_NOTIFY_COMPLETED, http_req_complete_cb,
                          NULL, MHD_OPTION_END);
 #pragma GCC diagnostic pop
 
