@@ -56,6 +56,16 @@ const gw_cap_t *gw_cap_find(const char *cap_key);
 size_t gw_cap_count(void);
 
 /**
+ * @brief namespace 独占性门禁（0.1.9 §5.1 执行机制第 1 条）。
+ *
+ * 校验能力注册表 SSoT 不变量：每个 cap_key 的命名空间前缀必须已在
+ * GW_NS_OWNER 登记独占 daemon；FWD 转发目标必须与独占归属一致。
+ * gateway 启动期调用，冲突 fail-closed 拒启（边界从约定变启动期断言）。
+ * @return 0=通过；非 0=存在冲突（日志输出冲突条目）
+ */
+int gw_cap_ns_validate(void);
+
+/**
  * @brief 按索引取注册项（供枚举/自检；index < gw_cap_count()）。
  * @param index 0-based 索引
  * @return 注册项指针；越界返回 NULL

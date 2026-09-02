@@ -259,6 +259,85 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
 
 #define GW_CAP_COUNT (sizeof(GW_CAP_REGISTRY) / sizeof(GW_CAP_REGISTRY[0]))
 
+/* namespace 独占归属表（0.1.9 §5.1 15 daemon 边界契约表登记）：
+ * 每个对外命名空间（cap_key 首段）唯一归属一个 daemon（owner 为 daemon
+ * 短名，与 GW_CAP_REGISTRY 的 ns 字段同格式）；"gateway" = 网关内实现域
+ * （无独立进程）。登记即断言：新 namespace 必须先声明归属，FWD 转发
+ * 目标必须与归属一致——启动期 gw_cap_ns_validate() fail-closed 校验。 */
+static const struct {
+    const char *ns;    /* 外部命名空间前缀 */
+    const char *owner; /* 独占 daemon（gateway = 网关内实现域） */
+} GW_NS_OWNER[] = {
+    {"agent", "agent"},
+    {"llm", "llm"},
+    {"tool", "tool"},
+    {"plugin", "tool"},   /* M4 整编：插件域归 tool_d 独占 */
+    {"sched", "sched"},
+    {"roadmap", "sched"}, /* M3：蓝图路由收拢 sched_d（预留 namespace） */
+    {"think", "think"},
+    {"mem", "mem"},
+    {"market", "market"},
+    {"monit", "monit"},
+    {"observe", "monit"}, /* M4 整编 */
+    {"info", "monit"},    /* M4 整编 */
+    {"notify", "notify"},
+    {"channel", "channel"},
+    {"a2a", "a2a"},
+    {"cupolas", "cupolas"},
+    {"policy", "cupolas"}, /* M2 收权策略域（预留 namespace） */
+    {"maths", "maths"},
+    {"hook", "hook"},
+    {"hall", "gateway"}, /* 网关内实现域（任务看板/事件流/决策链） */
+};
+
+/* namespace 独占性门禁（0.1.9 §5.1 边界深化执行机制第 1 条）：
+ *   - 每个注册 cap_key 的命名空间前缀必须已登记归属（未登记 = 新
+ *     namespace 未声明独占，fail-closed）
+ *   - FWD 转发目标必须与归属 daemon 一致（namespace 归 A 独占却转发
+ *     到 B，即边界漂移，fail-closed）
+ * 特殊处理项（kind != FWD）为网关内路径，其 ns 字段仅作处理域标识，
+ * 不参与转发目标一致性检查（hall 归网关内实现域）。
+ * @return 0=通过；非 0=冲突（gateway 启动期据此拒启） */
+int gw_cap_ns_validate(void)
+{
+    size_t i;
+    for (i = 0; i < GW_CAP_COUNT; ++i) {
+        const gw_cap_t *cap = &GW_CAP_REGISTRY[i];
+        const char *dot = strchr(cap->cap_key, '.');
+        size_t prefix_len;
+        const char *owner = NULL;
+        size_t j;
+
+        if (!dot) {
+            AIRY_LOG_ERROR("cap registry: invalid cap_key '%s' (no '.')",
+                           cap->cap_key);
+            return -1;
+        }
+        prefix_len = (size_t)(dot - cap->cap_key);
+        for (j = 0; j < sizeof(GW_NS_OWNER) / sizeof(GW_NS_OWNER[0]); ++j) {
+            if (strlen(GW_NS_OWNER[j].ns) == prefix_len &&
+                strncmp(GW_NS_OWNER[j].ns, cap->cap_key, prefix_len) == 0) {
+                owner = GW_NS_OWNER[j].owner;
+                break;
+            }
+        }
+        if (!owner) {
+            AIRY_LOG_ERROR("cap registry: namespace '%.*s' (cap_key '%s') has "
+                           "no registered owner daemon",
+                           (int)prefix_len, cap->cap_key, cap->cap_key);
+            return -1;
+        }
+        if (cap->kind == GW_CAP_KIND_FWD && strcmp(cap->ns, owner) != 0) {
+            AIRY_LOG_ERROR("cap registry: cap_key '%s' forwards to '%s' but "
+                           "namespace '%.*s' is exclusively owned by '%s'",
+                           cap->cap_key, cap->ns, (int)prefix_len,
+                           cap->cap_key, owner);
+            return -1;
+        }
+    }
+    return 0;
+}
+
 /* 能力契约版本（0.1.6 P1-4 SSoT 契约版本校验维度）。
  * 仅登记需版本约束的能力；未登记能力视为默认契约版本 1。
  * 契约版本变更 = 语义破坏性变更（参数/返回结构不兼容），须显式递增，
