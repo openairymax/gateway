@@ -200,6 +200,11 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"sched.query", "sched", "query", GW_CAP_KIND_FWD},
     {"sched.get_stats", "sched", "get_stats", GW_CAP_KIND_FWD},
     {"sched.health_check", "sched", "health_check", GW_CAP_KIND_FWD},
+    /* 0.1.9 M3（roadmap CLI 切断）：蓝图三级路由与吸收回灌，
+     * CLI 不再本地持有 roadmap，经本组方法访问 sched_d 唯一实例 */
+    {"sched.plan", "sched", "plan", GW_CAP_KIND_FWD},
+    {"sched.absorb", "sched", "absorb", GW_CAP_KIND_FWD},
+    {"sched.roadmap_stats", "sched", "roadmap_stats", GW_CAP_KIND_FWD},
 
     /* ── monit ──────────────────────────────────────────────────── */
     {"monit.record_metric", "monit", "record_metric", GW_CAP_KIND_FWD},
