@@ -70,7 +70,7 @@ void gw_hall_task_id_now(char *out, size_t out_sz);
  * @param path  hall event file path
  * @return malloc'd compact JSON (caller AIRY_FREE); NULL on parse failure
  */
-char *gw_hall_event_flatten(const char *path);
+char *hall_event_flatten(const char *path);
 
 /**
  * @brief Hall event watch cursor (read side, for SSE push).

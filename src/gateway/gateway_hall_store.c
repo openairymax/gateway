@@ -548,7 +548,7 @@ static char *gw_hall_read_file(const char *path)
 
 /* Flatten one stored event envelope into the compact on-the-wire event
  * shape shared by every hall.* read endpoint (see header). */
-char *gw_hall_event_flatten(const char *path)
+char *hall_event_flatten(const char *path)
 {
     if (!path)
         return NULL;
@@ -622,7 +622,7 @@ int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
             continue;
         /* 推送形态与 hall.stream/replay 的 events 条目一致（SSoT）：
          * 展开 envelope 为扁平事件，订阅方用同一解码器消费两路数据。 */
-        char *flat = gw_hall_event_flatten(cands[i].path);
+        char *flat = hall_event_flatten(cands[i].path);
         if (!flat)
             continue;
         size_t fl = strlen(flat);
