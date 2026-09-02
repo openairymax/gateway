@@ -312,27 +312,18 @@ int gw_acl_check_tool(const gateway_business_ctx_t *ctx, const char *tool_name)
  * Same pass-through mode as handle_mem_call: params/response are forwarded
  * as-is, the response id is rewritten to the request id.
  *
- * 0.1.6 P1-4：方法存在性校验已由主派发经能力注册表（gw_cap_find）完成，
- * 本函数仅做命名空间前缀的防御性校验（防内部误用/透传格式错误）。
+ * 0.1.6 P1-4：方法存在性校验已由主派发经能力注册表（gw_cap_find）完成。
+ * 0.1.9 M4：wire 方法名取自注册表（rule->method），不再按目标命名空间截取
+ * 请求串——plugin.* 转发 tool 命名空间时前缀与目标不一致（plugin_* 方法）。
  *
- * @param rule Forwarding rule (ns/timeout，由能力注册表派生)
+ * @param rule Forwarding rule (ns/timeout/method，由能力注册表派生)
  * @return Complete JSON-RPC response string from the target daemon
  *         (AIRY_MALLOC), or an error response on failure
  */
 char *handle_ns_forward(cJSON *root, const gw_ns_forward_rule_t *rule)
 {
     cJSON *id = cJSON_GetObjectItem(root, "id");
-    cJSON *method = cJSON_GetObjectItem(root, "method");
-    const char *method_str = cJSON_IsString(method) ? method->valuestring : NULL;
-    if (!method_str || !rule || !rule->ns)
-        return jsonrpc_error(-32601, "Method not found", id);
-
-    size_t ns_len = strlen(rule->ns);
-    /* 裸命名空间（如 "llm"）+ "." 前缀防御性校验 */
-    if (strncmp(method_str, rule->ns, ns_len) != 0 || method_str[ns_len] != '.')
-        return jsonrpc_error(-32601, "Method not found", id);
-    const char *inner = method_str + ns_len + 1;
-    if (!*inner)
+    if (!rule || !rule->ns || !rule->method || !*rule->method)
         return jsonrpc_error(-32601, "Method not found", id);
 
     cJSON *params = cJSON_GetObjectItem(root, "params");
@@ -343,8 +334,8 @@ char *handle_ns_forward(cJSON *root, const gw_ns_forward_rule_t *rule)
     /* 架构约束 2026-08-25 "必须走 syscall": 命名空间转发统一经 SYS_SVC_CALL
      * 派发（钩子按命名空间路由到对应 daemon 端点，见 gateway_biz_svcdispatch.c）。 */
     char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call(rule->ns, inner, params_str, (uint32_t)rule->timeout_ms,
-                                      &resp);
+    airy_err_t rc = airy_sys_svc_call(rule->ns, rule->method, params_str,
+                                      (uint32_t)rule->timeout_ms, &resp);
     AIRY_FREE(params_str);
     if (rc != AIRY_SUCCESS || !resp)
         return jsonrpc_error(-32603, "Service unreachable", id);

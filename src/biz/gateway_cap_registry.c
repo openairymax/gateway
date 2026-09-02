@@ -125,19 +125,20 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"a2a.health_check", "a2a", "health_check", GW_CAP_KIND_FWD},
     {"a2a.get_stats", "a2a", "get_stats", GW_CAP_KIND_FWD},
 
-    /* ── plugin ─────────────────────────────────────────────────── */
-    {"plugin.load", "plugin", "load", GW_CAP_KIND_FWD},
-    {"plugin.unload", "plugin", "unload", GW_CAP_KIND_FWD},
-    {"plugin.start", "plugin", "start", GW_CAP_KIND_FWD},
-    {"plugin.stop", "plugin", "stop", GW_CAP_KIND_FWD},
-    {"plugin.execute", "plugin", "execute", GW_CAP_KIND_FWD},
-    {"plugin.get_metadata", "plugin", "get_metadata", GW_CAP_KIND_FWD},
-    {"plugin.get_state", "plugin", "get_state", GW_CAP_KIND_FWD},
-    {"plugin.get_stats", "plugin", "get_stats", GW_CAP_KIND_FWD},
-    {"plugin.list", "plugin", "list", GW_CAP_KIND_FWD},
-    {"plugin.install", "plugin", "install", GW_CAP_KIND_FWD},
-    {"plugin.uninstall", "plugin", "uninstall", GW_CAP_KIND_FWD},
-    {"plugin.health_check", "plugin", "health_check", GW_CAP_KIND_FWD},
+    /* ── plugin（0.1.9 M4：plugin_d → tool_d 整编，旧 plugin.* 保留
+     *    转发：目标 daemon=tool，方法=plugin_* 前缀，tool_d 登记） ── */
+    {"plugin.load", "tool", "plugin_load", GW_CAP_KIND_FWD},
+    {"plugin.unload", "tool", "plugin_unload", GW_CAP_KIND_FWD},
+    {"plugin.start", "tool", "plugin_start", GW_CAP_KIND_FWD},
+    {"plugin.stop", "tool", "plugin_stop", GW_CAP_KIND_FWD},
+    {"plugin.execute", "tool", "plugin_execute", GW_CAP_KIND_FWD},
+    {"plugin.get_metadata", "tool", "plugin_get_metadata", GW_CAP_KIND_FWD},
+    {"plugin.get_state", "tool", "plugin_get_state", GW_CAP_KIND_FWD},
+    {"plugin.get_stats", "tool", "plugin_get_stats", GW_CAP_KIND_FWD},
+    {"plugin.list", "tool", "plugin_list", GW_CAP_KIND_FWD},
+    {"plugin.install", "tool", "plugin_install", GW_CAP_KIND_FWD},
+    {"plugin.uninstall", "tool", "plugin_uninstall", GW_CAP_KIND_FWD},
+    {"plugin.health_check", "tool", "plugin_health_check", GW_CAP_KIND_FWD},
 
     /* ── info ───────────────────────────────────────────────────── */
     {"info.system", "info", "system", GW_CAP_KIND_FWD},

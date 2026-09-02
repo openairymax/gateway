@@ -67,7 +67,6 @@ struct gateway_business_ctx_s {
     char sched_sock_path[256];
     char think_sock_path[256];
     char a2a_sock_path[256];
-    char plugin_sock_path[256];
     char info_sock_path[256];
     char notify_sock_path[256];
     char observe_sock_path[256];
@@ -84,13 +83,15 @@ struct gateway_business_ctx_s {
 
 /* @brief Namespace forwarding rule: <ns>.<method> -> target daemon <method>
  *
- * 0.1.6 P1-4 收敛：方法白名单不再由 rule 携带——能力存在性校验统一走
- * 能力注册表（gateway_cap_registry.h，cap_key 单一权威源）。rule 仅承载
- * 命名空间（裸名，无尾点）与转发超时；daemon 端点由 svc dispatch 钩子
- * 按命名空间解析（gw_svc_sock_for_ns），无需在此维护。 */
+ * 0.1.6 P1-4 收敛：能力存在性校验统一走能力注册表（gateway_cap_registry.h，
+ * cap_key 单一权威源）。daemon 端点由 svc dispatch 钩子按命名空间解析
+ * （gw_svc_sock_for_ns），无需在此维护。
+ * 0.1.9 M4：wire 方法名取自注册表（method 字段）——请求前缀与目标命名空间
+ * 可不一致（plugin.* → tool 命名空间 plugin_* 方法），字符串截取不再成立。 */
 typedef struct {
-    const char *ns;
-    int timeout_ms;
+    const char *ns;      /* 目标 daemon 命名空间（裸名，无尾点） */
+    int timeout_ms;      /* 转发超时 */
+    const char *method;  /* 目标 daemon 侧 wire 方法名（注册表权威值） */
 } gw_ns_forward_rule_t;
 
 /* ---- gateway_biz_tools.c（内置 MCP 工具注册 SSoT, 2026-08-30 S-6）----

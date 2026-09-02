@@ -66,8 +66,10 @@ static const char *gw_svc_sock_for_ns(const char *ns)
         return g_svc_ctx->think_sock_path;
     if (strcmp(buf, "a2a") == 0)
         return g_svc_ctx->a2a_sock_path;
+    /* 0.1.9 M4：plugin_d → tool_d 整编——旧 plugin ns 解析到 tool.sock，
+     * 方法名在 gw_sys_svc_dispatch 内加 "plugin_" 前缀（见下） */
     if (strcmp(buf, "plugin") == 0)
-        return g_svc_ctx->plugin_sock_path;
+        return g_svc_ctx->tool_sock_path;
     if (strcmp(buf, "info") == 0)
         return g_svc_ctx->info_sock_path;
     if (strcmp(buf, "notify") == 0)
@@ -108,10 +110,26 @@ static int gw_sys_svc_dispatch(const char *ns, const char *method, const char *p
         return -1;
     }
 
-    char *resp = gw_svc_call(sock, method, params_json, (int)timeout_ms);
+    /* 0.1.9 M4：plugin.* → tool_d 方法名前缀转换（"load" → "plugin_load"）。
+     * 兼容直接以旧 plugin ns 发起 syscall 的客户端；tool_d 侧 plugin_* 与
+     * tool 原生方法同表登记，前缀即命名空间消歧。 */
+    char plugin_method[64];
+    const char *wire_method = method;
+    if (strncmp(ns, "plugin", 6) == 0 && (ns[6] == '\0' || ns[6] == '.')) {
+        size_t mlen = strlen(method);
+        if (mlen + 8 >= sizeof(plugin_method)) {
+            AIRY_LOG_WARN("gateway svc_dispatch: plugin method too long: '%s'", method);
+            return -1;
+        }
+        AIRY_MEMCPY(plugin_method, "plugin_", 7);
+        AIRY_MEMCPY(plugin_method + 7, method, mlen + 1);
+        wire_method = plugin_method;
+    }
+
+    char *resp = gw_svc_call(sock, wire_method, params_json, (int)timeout_ms);
     if (!resp) {
         AIRY_LOG_WARN("gateway svc_dispatch: service unreachable ns=%s method=%s sock=%s", ns,
-                      method, sock);
+                      wire_method, sock);
         return -1;
     }
     *out_result = resp;
