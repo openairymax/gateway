@@ -196,6 +196,9 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"sched.cancel", "sched", "cancel", GW_CAP_KIND_FWD},
     {"sched.dag_submit", "sched", "dag_submit", GW_CAP_KIND_FWD},
     {"sched.dag_status", "sched", "dag_status", GW_CAP_KIND_FWD},
+    /* 0.1.9 M1-1c（CLI 引擎壳化）：DAG 轻量看板列表，CLI /status 与
+     * TUI board 面板经此访问 sched_d 唯一实例，不再进程内嵌执行引擎 */
+    {"sched.dag_list", "sched", "dag_list", GW_CAP_KIND_FWD},
     {"sched.dag_cancel", "sched", "dag_cancel", GW_CAP_KIND_FWD},
     {"sched.checkpoint_save", "sched", "checkpoint_save", GW_CAP_KIND_FWD},
     {"sched.submit", "sched", "submit", GW_CAP_KIND_FWD},
