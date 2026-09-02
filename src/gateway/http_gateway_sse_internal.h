@@ -5,7 +5,8 @@
  * @file http_gateway_sse_internal.h
  * @brief Shared types, constants and cross-module declarations for the
  *        SSE streaming subsystem (split across http_gateway_sse.c,
- *        gateway_sse_stream.c, gateway_sse_tool.c, gateway_sse_memory.c).
+ *        gateway_sse_frame.c, gateway_sse_stream.c, gateway_sse_tool.c,
+ *        gateway_sse_memory.c, gateway_sse_hall_watch.c).
  *
  * This header is PRIVATE to the SSE subsystem — never install or expose it
  * outside the gateway translation unit.
@@ -133,6 +134,19 @@ typedef struct {
      * 不再进入工具循环/最终文本阶段。 */
     int llm_error;
 } gw_sse_ctx_t;
+
+/* ── gateway_sse_frame.c ─────────────────────────────────────────────
+ * Pure SSE event → wire-frame encoders; write into sctx->step_buf and
+ * return 1 on success (0 = OOM/alloc failure) for the int-returning ones. */
+
+int  gw_sse_emit_reasoning(gw_sse_ctx_t *sctx, const char *content);
+int  gw_sse_emit_usage(gw_sse_ctx_t *sctx);
+int  gw_sse_emit_error(gw_sse_ctx_t *sctx, const char *message);
+void gw_sse_emit_keepalive(gw_sse_ctx_t *sctx);
+void gw_sse_emit_tool_call(gw_sse_ctx_t *sctx, const char *tname,
+                           const char *targs);
+void gw_sse_emit_tool_result(gw_sse_ctx_t *sctx, const char *tname,
+                             const char *tid, const char *res, int tool_ok);
 
 /* ── gateway_sse_stream.c ──────────────────────────────────────────── */
 
