@@ -57,20 +57,32 @@ set(GATEWAY_HEADERS
 # ========== nghttp2 检测（HTTP/2 支持） ==========
 # 头文件位于项目本地 commons/include/third_party/nghttp2/
 # 运行时库可能只有 .so.14（无开发版 .so 软链接）
-find_library(NGHTTP2_LIBRARY NAMES nghttp2)
-if(NOT NGHTTP2_LIBRARY)
-    # 回退：查找版本化运行时库文件
-    find_file(NGHTTP2_LIBRARY
-        NAMES libnghttp2.so.14 libnghttp2.so.19 libnghttp2.so
-        PATHS /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib
-    )
-endif()
-if(NGHTTP2_LIBRARY)
-    set(AIRY_HAS_HTTP2 TRUE CACHE BOOL "nghttp2 available")
-    airy_print_ok("[GATEWAY]   nghttp2 found: ${NGHTTP2_LIBRARY} (HTTP/2 gateway enabled)")
-else()
+#
+# WIN32 强制关闭：http2 家族实现是 POSIX-only（pthread 事件循环线程 +
+# fcntl F_GETFL/F_SETFL + poll/nfds_t），gateway_lib_obj 未接 winpthreads
+# 头文件路径，MSVC 下编译即报 C2065。关闭后本家族源码经
+# #ifndef AIRY_HAS_HTTP2 降级为不可用实现（create 告警返回 NULL、
+# start/stop 返回 ENOSYS），与"缺 nghttp2 库平台为空 TU"的既有设计
+# 同路径；Windows 原生线程模型移植完成后再恢复。
+if(WIN32)
     set(AIRY_HAS_HTTP2 FALSE CACHE BOOL "nghttp2 available")
-    airy_print_warn("[GATEWAY]   nghttp2 not found, HTTP/2 gateway disabled")
+    airy_print_warn("[GATEWAY]   HTTP/2 gateway disabled on Windows (POSIX-only implementation)")
+else()
+    find_library(NGHTTP2_LIBRARY NAMES nghttp2)
+    if(NOT NGHTTP2_LIBRARY)
+        # 回退：查找版本化运行时库文件
+        find_file(NGHTTP2_LIBRARY
+            NAMES libnghttp2.so.14 libnghttp2.so.19 libnghttp2.so
+            PATHS /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib
+        )
+    endif()
+    if(NGHTTP2_LIBRARY)
+        set(AIRY_HAS_HTTP2 TRUE CACHE BOOL "nghttp2 available")
+        airy_print_ok("[GATEWAY]   nghttp2 found: ${NGHTTP2_LIBRARY} (HTTP/2 gateway enabled)")
+    else()
+        set(AIRY_HAS_HTTP2 FALSE CACHE BOOL "nghttp2 available")
+        airy_print_warn("[GATEWAY]   nghttp2 not found, HTTP/2 gateway disabled")
+    endif()
 endif()
 
 # ========== 库目标 ==========
