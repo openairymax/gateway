@@ -292,7 +292,11 @@ if(BUILD_TESTS)
     add_test(NAME rpc_handler_test COMMAND test_rpc_handler)
 
     # 性能基准测试工具 (C-W1-004 / PERF-001~003)
-    if(BUILD_BENCHMARK)
+    # gateway_benchmark.c 直接使用 pthread_barrier_*（Linux 扩展，macOS
+    # ld64/Apple 无 pthread_barrier，MSVC 无 pthread）及 __atomic 内建与
+    # _Atomic 混用（clang 拒绝）。仅 Linux 构建，避免 macOS/Windows
+    # BUILD_TESTS=ON 门禁误伤（基准工具非发布物）。
+    if(BUILD_BENCHMARK AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_executable(gateway_benchmark tests/gateway_benchmark.c)
         target_compile_definitions(gateway_benchmark PRIVATE AIRY_COMPLIANCE_IMPL)
         target_include_directories(gateway_benchmark PRIVATE
