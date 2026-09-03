@@ -5,13 +5,13 @@
 
 **语言:** [English](README.md) | 简体中文
 
-[![Version](https://img.shields.io/badge/version-0.1.1-5a6b7e)](https://atomgit.com/openairymax/gateway)
+[![Version](https://img.shields.io/badge/version-0.1.9-5a6b7e)](https://atomgit.com/openairymax/gateway)
 [![License](https://img.shields.io/badge/license-AGPL--3.0+Apache--2.0-4a90d9)](LICENSE)
 [![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)](https://en.cppreference.com/w/c/11)
 
 - **仓库：** `git@atomgit.com:openairymax/gateway.git`
-- **分支：** `feature/official-hubs-01`
-- **版本：** 0.1.1（Airymax 奠基发行版）
+- **分支：** `develop/hubs-01`
+- **版本：** 0.1.9（与 agentrt 管理仓对齐）
 
 ---
 
@@ -26,7 +26,7 @@ gateway 严格遵循 **K-1 内核极简** 原则——**只做协议翻译，零
               (守护进程)  (库)      (内核)
 ```
 
-在 Airymax 0.1.1 发行版中，工作区被拆分为 **38 个仓库**（1 个伞仓 + 5 个管理仓 + 29 个叶子仓 + 3 个顶层仓）；`gateway` 是 [agentrt](../) 管理仓聚合的 7 个叶子仓之一，构成循环分层架构中的**网关层**（位于协议层 `protocols` 之上、服务层 `daemons` 之下）。gateway 库由 `daemons/` 中的 `gateway_d` 守护进程封装，并以系统服务形式对外暴露。
+`gateway` 是 [agentrt](../) 管理仓聚合的 7 个叶子仓之一，构成循环分层架构中的**网关层**（位于协议层 `protocols` 之上、服务层 `daemons` 之下）。gateway 库由 `daemons/` 中的 `gateway_d` 守护进程封装，并以系统服务形式对外暴露。
 
 ## 模块分类
 
@@ -131,7 +131,7 @@ gateway/
 | **atoms** | `agentrt/atoms/` | CoreKern 类型与 IPC 原语；`atoms/syscall` 是 `syscall_router` 的派发目标；`atoms/memory` 链接为 `airy_memory` |
 | **commons** | `agentrt/commons/` | 平台抽象、类型、错误框架、日志、同步、内存宏——链接为 `airy_common` |
 | **cupolas** | `agentrt/cupolas/` | 逻辑上游：网关在协议边界调用 cupolas 进行请求鉴权与输入净化 |
-| cJSON | 外部 | JSON 解析——Airymax 0.1.1 起**硬依赖**（不允许桩库） |
+| cJSON | 外部 | JSON 解析——**硬依赖**（不允许桩库） |
 | libmicrohttpd | 外部 | HTTP 服务器（≥ 0.9.70） |
 | libwebsockets | 外部 | WebSocket 支持（≥ 4.3.0） |
 | OpenSSL | 外部 | TLS/SSL（≥ 1.1.1） |
@@ -170,7 +170,7 @@ cmake --install /tmp/gateway-build --prefix /opt/airymax
 
 | 依赖 | 条件宏 | 缺失时行为 |
 |------|--------|-----------|
-| cJSON | `AIRY_HAS_CJSON` | **硬失败**——网关模块以 `FATAL_ERROR` 跳过（Airymax 0.1.1 不允许桩库） |
+| cJSON | `AIRY_HAS_CJSON` | **硬失败**——网关模块以 `FATAL_ERROR` 跳过（不允许桩库） |
 | libmicrohttpd | `AIRY_HAS_MICROHTTPD` | HTTP 网关不可用 |
 | libwebsockets | `AIRY_HAS_LIBWEBSOCKETS` | WebSocket 网关不可用 |
 | libcurl | `AIRY_HAS_CURL` | 基准测试使用模拟模式 |

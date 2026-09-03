@@ -5,13 +5,13 @@
 
 **Language:** English | [简体中文](README_zh.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.1-5a6b7e)](https://atomgit.com/openairymax/gateway)
+[![Version](https://img.shields.io/badge/version-0.1.9-5a6b7e)](https://atomgit.com/openairymax/gateway)
 [![License](https://img.shields.io/badge/license-AGPL--3.0+Apache--2.0-4a90d9)](LICENSE)
 [![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)](https://en.cppreference.com/w/c/11)
 
 - **Repository:** `git@atomgit.com:openairymax/gateway.git`
-- **Branch:** `feature/official-hubs-01`
-- **Version:** 0.1.1 (Airymax foundational release)
+- **Branch:** `develop/hubs-01`
+- **Version:** 0.1.9 (aligned with agentrt management repo)
 
 ---
 
@@ -26,7 +26,7 @@ External client → gateway_d → gateway → atoms/syscall → backend services
                    (daemon)   (lib)      (kernel)
 ```
 
-Within the Airymax 0.1.1 release, the workspace is partitioned into **38 repositories** (1 umbrella + 5 management + 29 leaf + 3 top-level); `gateway` is one of the 7 leaf repositories aggregated by the [agentrt](../) management repo, forming the **Gateway Layer** in the cyclic architecture (above the Protocol Layer `protocols`, below the Service Layer `daemons`). The gateway library is wrapped by the `gateway_d` daemon (in `daemons/`) which exposes it as a system service.
+`gateway` is one of the 7 leaf repositories aggregated by the [agentrt](../) management repo, forming the **Gateway Layer** in the cyclic architecture (above the Protocol Layer `protocols`, below the Service Layer `daemons`). The gateway library is wrapped by the `gateway_d` daemon (in `daemons/`) which exposes it as a system service.
 
 ## Module Classification
 
@@ -131,7 +131,7 @@ External client
 | **atoms** | `agentrt/atoms/` | CoreKern types and IPC primitives; `atoms/syscall` is the dispatch target for `syscall_router`; `atoms/memory` linked as `airy_memory` |
 | **commons** | `agentrt/commons/` | Platform abstraction, types, error framework, logging, sync, memory macros — linked as `airy_common` |
 | **cupolas** | `agentrt/cupolas/` | Logical upstream: gateway invokes cupolas for request authentication and input sanitization at the protocol boundary |
-| cJSON | external | JSON parsing — **hard dependency** as of Airymax 0.1.1 (stub library is not supported) |
+| cJSON | external | JSON parsing — **hard dependency** (stub libraries are not supported) |
 | libmicrohttpd | external | HTTP server (≥ 0.9.70) |
 | libwebsockets | external | WebSocket support (≥ 4.3.0) |
 | OpenSSL | external | TLS/SSL (≥ 1.1.1) |
@@ -170,7 +170,7 @@ cmake --install /tmp/gateway-build --prefix /opt/airymax
 
 | Dependency | Conditional Macro | Behavior When Missing |
 |------------|-------------------|-----------------------|
-| cJSON | `AIRY_HAS_CJSON` | **Hard failure** — gateway module is skipped with `FATAL_ERROR` (Airymax 0.1.1 disallows stub libraries) |
+| cJSON | `AIRY_HAS_CJSON` | **Hard failure** — gateway module is skipped with `FATAL_ERROR` (stub libraries are disallowed) |
 | libmicrohttpd | `AIRY_HAS_MICROHTTPD` | HTTP gateway unavailable |
 | libwebsockets | `AIRY_HAS_LIBWEBSOCKETS` | WebSocket gateway unavailable |
 | libcurl | `AIRY_HAS_CURL` | Benchmark runs in simulation mode |
