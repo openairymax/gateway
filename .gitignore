@@ -47,7 +47,7 @@ test-results/
 test_output/
 
 # ---------- Core dump ----------
-core
+/core
 core.*
 *.core
 
