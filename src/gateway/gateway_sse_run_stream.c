@@ -290,4 +290,24 @@ int handle_run_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connec
     return ret;
 }
 
-#endif /* !_WIN32 */
+#else /* _WIN32 */
+
+/*
+ * Windows stub for POST /api/v1/agent/run/stream (M1-1d).
+ *
+ * The full streaming endpoint relays agent_d stream frames over a POSIX
+ * Unix-domain socket; Windows has no equivalent UDS transport yet, so the
+ * route stays registered (route table remains the SSoT for both platforms)
+ * but answers 501 Not Implemented explicitly instead of silently falling
+ * through to a generic 404. Keeps the HTTP API surface identical across
+ * platforms until a named-pipe transport lands (#128 Windows milestone).
+ */
+int handle_run_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
+                          http_request_context_t *context)
+{
+    (void)context;
+    return gw_sse_send_json_error(gateway, connection, 501,
+                                  "agent.run_stream not implemented on Windows");
+}
+
+#endif /* _WIN32 */
