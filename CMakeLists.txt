@@ -254,7 +254,11 @@ install(FILES
 # ========== 测试 ==========
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_BENCHMARK "Build performance benchmark tool (PERF-001~003)" ON)
-if(BUILD_TESTS)
+# Windows 排除（windows-build #128 实证 LNK1181）：gateway 链 svc_common
+# （daemons/common，jsonrpc_get_error_message），Windows 支持矩阵排除
+# daemons → 目标缺席 → 测试 exe 链接裸库名失败。与 daemons/CLI 同批，
+# 随 0.1.12/13 Windows 移植里程碑回归。
+if(BUILD_TESTS AND NOT WIN32)
     enable_testing()
 
     # 主网关测试 (7个用例) - 2026-08-20 重写匹配当前公共 API
