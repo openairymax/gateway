@@ -73,6 +73,7 @@ struct gateway_business_ctx_s {
     char monit_sock_path[256];
     char channel_sock_path[256];
     char cupolas_sock_path[256];
+    char maths_sock_path[256];
     char default_model[128];
 
     gateway_shutdown_fn_t on_shutdown;
