@@ -123,6 +123,8 @@ gateway_business_ctx_t *gateway_business_ctx_create(void)
                            "AIRY_CHANNEL_SOCK", "channel.sock");
     gw_resolve_daemon_sock(ctx->cupolas_sock_path, sizeof(ctx->cupolas_sock_path),
                            "AIRY_CUPOLAS_SOCK", "cupolas.sock");
+    gw_resolve_daemon_sock(ctx->maths_sock_path, sizeof(ctx->maths_sock_path), "AIRY_MATHS_SOCK",
+                           "maths.sock");
 
     const char *tcp_env = getenv("AIRY_LLM_TCP_ADDR");
     AIRY_STRNCPY_TERM(ctx->llm_tcp_addr, (tcp_env && *tcp_env) ? tcp_env : "127.0.0.1",

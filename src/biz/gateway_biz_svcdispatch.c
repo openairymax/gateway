@@ -89,6 +89,8 @@ static const char *gw_svc_sock_for_ns(const char *ns)
         return g_svc_ctx->channel_sock_path;
     if (strcmp(buf, "cupolas") == 0)
         return g_svc_ctx->cupolas_sock_path;
+    if (strcmp(buf, "maths") == 0)
+        return g_svc_ctx->maths_sock_path;
     return NULL;
 }
 

@@ -262,6 +262,11 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"policy.rollback", "cupolas", "policy_rollback", GW_CAP_KIND_FWD},
     {"policy.status", "cupolas", "policy_status", GW_CAP_KIND_FWD},
 
+    /* ── maths（0.1.9 M4 maths_d 路由补全：GW_NS_OWNER 已登记归属，
+     *    此前无 cap 注册 → 经 gateway 完全不可达（fail-closed -32601）；
+     *    先补 /daemons 探测面，业务方法按需后续登记） ───────────── */
+    {"maths.health_check", "maths", "health_check", GW_CAP_KIND_FWD},
+
     /* ── hall（网关内实现） ─────────────────────────────────────── */
     {"hall.board", "hall", "board", GW_CAP_KIND_HALL},
     {"hall.tasks", "hall", "tasks", GW_CAP_KIND_HALL},
