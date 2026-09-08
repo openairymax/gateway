@@ -507,7 +507,7 @@ int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *conne
     /* B11（2026-09-07，0.1.13 清零）：legacy /api/v1/chat/stream 退役——
      * 树内零消费者（TUI 自 e9bb7f3 全量切 agent.run_stream；daemons/sdk/
      * CLI/测试零命中）。保留路由但显式 410 Gone 引导客户端改用 run_stream
-     *（/api/v1/run）；下方 legacy 编排体留作可追溯死代码，随 0.1.14 网关
+     *（/api/v1/run）；下方 legacy 编排体留作可追溯死代码，随 0.2.x 网关
      * 清理专项物理移除（含本 410 后的死体）。行为变化对在册客户端为零。
      */
     return gw_sse_send_json_error(gateway, connection, 410,
