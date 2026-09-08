@@ -22,6 +22,7 @@
 #include "syscall_router.h"
 #include "error.h"
 #include "airy_memory.h"
+#include "logging.h"
 
 #ifdef GATEWAY_HAS_HTTP
 
@@ -389,6 +390,65 @@ static void http_req_complete_cb(
     }
 }
 
+/*
+ * libmicrohttpd 轮询后端选择与版本错位防御（G4b 实证教训）：
+ *
+ * MHD_USE_* 宏值在 0.9.x 系列内多次重排（1.0.0 再次重排：EPOLL=512、
+ * INTERNAL_POLLING_THREAD=8、AUTO=65536、TURBO=4096）。一旦编译期头与
+ * 运行时库版本错位（如构建机 1.0.x 头、干净部署机 0.9.x 库），flags
+ * 位语义全乱。G4b 干净 macOS 主机三轮实证：MHD_start_daemon 返回非空、
+ * 日志打 "started successfully"，但 lsof/netstat 无任何 8080 LISTEN
+ * socket——daemon 假活，HTTP 端口从未监听。因此：
+ *   a) 不硬编码 epoll 组合（epoll 仅 Linux 存在），改用
+ *      MHD_USE_AUTO_INTERNAL_THREAD 让库按平台自选后端
+ *      （Linux→epoll/poll，macOS→poll/select），需 MHD 0.9.63+；
+ *      更老版本回退 select internally。
+ *   b) 启动成功后必须 connect 自证（http_gateway_probe_listen），
+ *      listen 缺失一律 fail-closed。
+ *   c) 编译期与运行时版本对照日志，错位即显性可见。
+ */
+#if MHD_VERSION >= 0x00096300
+#define GATEWAY_MHD_FLAGS (MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_TURBO)
+#else
+#define GATEWAY_MHD_FLAGS (MHD_USE_SELECT_INTERNALLY | MHD_USE_TURBO)
+#endif
+
+/* 启动自证：MHD_start_daemon 返回非空不代表端口真实可达（头/库版本
+ * 错位、平台后端差异均可致 daemon 非空而 listen 缺失）。以对
+ * 127.0.0.1:port 的 connect 探测为真值（与干净主机核验脚本同源），
+ * 探测连接即连即关、不带数据；http_req_complete_cb 对空 con_cls
+ * 安全，MHD 侧至多一次空连接终止，无害。
+ * gateway_d 不在 Windows 构建（无 libmicrohttpd），保留分支仅为
+ * 编译单元完整。 */
+static airy_err_t http_gateway_probe_listen(uint16_t port)
+{
+#ifdef _WIN32
+    (void)port;
+    return AIRY_SUCCESS;
+#else
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return AIRY_EBUSY;
+    }
+    struct sockaddr_in sa;
+    __builtin_memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(port);
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    airy_err_t err = AIRY_EBUSY;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) == 0) {
+            err = AIRY_SUCCESS;
+            break;
+        }
+        usleep(100 * 1000);
+    }
+    close(fd);
+    return err;
+#endif
+}
+
 static airy_err_t http_gateway_start(void *gateway_impl)
 {
     http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
@@ -436,21 +496,45 @@ static airy_err_t http_gateway_start(void *gateway_impl)
             pool_size = (nproc > 32) ? 32 : (unsigned int)nproc;
     }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
+    /* 版本对照取证：MHD_USE_* 宏值跨版本重排（见 GATEWAY_MHD_FLAGS
+     * 注释），编译期头与运行时库不一致时此日志直接暴露错位。 */
+    AIRY_LOG_INFO("http_gateway_start: MHD compile=0x%06x runtime=%s flags=0x%x port=%u",
+                  (unsigned)MHD_VERSION, MHD_get_version(), (unsigned)GATEWAY_MHD_FLAGS,
+                  (unsigned)gateway->port);
+
     gateway->daemon =
-        MHD_start_daemon(MHD_USE_EPOLL_INTERNAL_THREAD | MHD_USE_TURBO, gateway->port, NULL, NULL,
-                         handle_http_request, gateway, MHD_OPTION_CONNECTION_LIMIT, conn_limit,
+        MHD_start_daemon(GATEWAY_MHD_FLAGS, gateway->port, NULL, NULL,
+                         /* handle_http_request 原型返回 int；MHD_Result
+                          * (0.9.71+) 亦以 int 实现（值域 0/1），ABI
+                          * 兼容，显式转换替代全域 pragma 压制。 */
+                         (MHD_AccessHandlerCallback)(void (*)(void))handle_http_request, gateway,
+                         MHD_OPTION_CONNECTION_LIMIT, conn_limit,
                          MHD_OPTION_CONNECTION_TIMEOUT, conn_timeout, MHD_OPTION_THREAD_POOL_SIZE,
                          pool_size, MHD_OPTION_NOTIFY_COMPLETED, http_req_complete_cb,
                          NULL, MHD_OPTION_END);
-#pragma GCC diagnostic pop
 
     if (!gateway->daemon) {
+        AIRY_LOG_ERROR("http_gateway_start: MHD_start_daemon failed (flags=0x%x, port=%u)",
+                       (unsigned)GATEWAY_MHD_FLAGS, (unsigned)gateway->port);
+        return AIRY_EBUSY;
+    }
+
+    /* 启动自证：listen 缺失（版本错位/后端异常）一律 fail-closed，
+     * 禁止 daemon 假活继续运行。 */
+    if (http_gateway_probe_listen(gateway->port) != AIRY_SUCCESS) {
+        AIRY_LOG_ERROR("http_gateway_start: listen probe failed on 127.0.0.1:%u "
+                       "(daemon=%p, compile=0x%06x, runtime=%s); fail-closed",
+                       (unsigned)gateway->port, (void *)gateway->daemon, (unsigned)MHD_VERSION,
+                       MHD_get_version());
+        MHD_stop_daemon(gateway->daemon);
+        gateway->daemon = NULL;
         return AIRY_EBUSY;
     }
 
     atomic_store(&gateway->running, true);
+
+    AIRY_LOG_INFO("http_gateway_start: HTTP gateway listening on %s:%u (probe ok)",
+                  gateway->host ? gateway->host : "127.0.0.1", (unsigned)gateway->port);
 
     return AIRY_SUCCESS;
 }
