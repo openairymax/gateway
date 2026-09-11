@@ -246,7 +246,8 @@ int http2_session_send_data(http2_gateway_session_t *sess)
                                   remaining);
                         return -1;
                     }
-                    memcpy(sess->pending_send_buf, data_ptr + offset, remaining);
+                    AIRY_MEMCPY_SAFE(sess->pending_send_buf, data_ptr + offset, remaining,
+                                     remaining);
                     sess->pending_send_len = remaining;
                     sess->pending_send_offset = 0;
                     AIRY_LOG_WARN("partial write: buffered %zu bytes for fd=%d (total=%zu, sent=%zu)",
