@@ -152,7 +152,8 @@ int ws_send_message(struct lws *wsi, ws_message_t *msg)
                          "ws_send_message: allocation failed");
         return AIRY_ERR_OUT_OF_MEMORY;
     }
-    memcpy(send_buf + LWS_SEND_BUFFER_PRE_PADDING, json_str, out_len);
+    AIRY_MEMCPY_SAFE(send_buf + LWS_SEND_BUFFER_PRE_PADDING, json_str, out_len,
+                     out_len + LWS_SEND_BUFFER_POST_PADDING);
 
     int result = lws_write(wsi, send_buf + LWS_SEND_BUFFER_PRE_PADDING, out_len, LWS_WRITE_TEXT);
 
