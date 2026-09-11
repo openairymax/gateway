@@ -13,6 +13,15 @@
 #include "gateway_internal.h"
 
 #include <stdint.h>
+/* sockaddr_storage（bind_addr 字段）：Windows 用 winsock2，POSIX 用
+ * sys/socket（netinet/in 保证 in_addr/in6_addr 完整类型）。 */
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
 #ifdef AIRY_HAS_CJSON
 #include <cjson/cJSON.h>
 #else
@@ -104,6 +113,11 @@ typedef struct http_gateway {
     struct MHD_Daemon *daemon;
     uint16_t port;
     char *host;
+    /* WS-2 T-11c：显式 bind 地址。MHD_OPTION_SOCK_ADDR 保存调用者
+     * 指针不复制（daemon->listen_addr = va_arg），sockaddr 必须活过
+     * MHD_stop_daemon——故嵌入本结构而非栈变量。host 为空/"0.0.0.0"/
+     * "::" 时不启用（绑全部接口）。 */
+    struct sockaddr_storage bind_addr;
 
     void *handler_adapter;
     gateway_internal_handler_t handler;
