@@ -123,10 +123,23 @@ typedef struct {
     /* streaming=1：SSE 长连接端点，绕过 JSON-RPC 聚合分发直接走路由（SSoT：
      * 分发逻辑不再硬编码流式路径，由路由表自身表达） */
     int streaming;
+    /* auth_required=1：敏感面（0.1.15 WS-2 T-11a）——入口鉴权门禁依据本字段
+     * 判定（SSoT：敏感路径清单只在路由表维护一处，防两处漂移）。公开面
+     * （OPTIONS 预检、/health）为 0；未登记路由按 0 处理（404 兜底）。 */
+    int auth_required;
 } http_route_t;
 
 typedef int (*http_route_handler_t)(http_gateway_t *, struct MHD_Connection *,
                                     http_request_context_t *);
+
+/**
+  * @brief 路由敏感性分类器（0.1.15 WS-2 T-11a，SSoT：http_routes 表）
+  *
+  * @param method HTTP 方法（NULL 安全）
+  * @param url 请求 URL 路径（NULL 安全）
+  * @return 1=敏感面（需入口鉴权），0=公开面或未登记路由
+ */
+int http_gateway_route_auth_required(const char *method, const char *url);
 
 
 /**

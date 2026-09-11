@@ -13,6 +13,7 @@
 #include "http_gateway_routes.h"
 
 #include "gateway_rate_limiter.h"
+#include "gateway_auth.h"
 #include "gateway_rpc_handler.h"
 #include "gateway_utils.h"
 #include "http_gateway.h"
@@ -102,33 +103,75 @@ int handle_options_preflight(http_gateway_t *gateway, struct MHD_Connection *con
     return ret;
 }
 
+/* ================= 入口鉴权（0.1.15 WS-2 T-11a） =================
+ * 纯判定逻辑在 gateway_auth.c（可独立单测），此处仅做 MHD 桥接（K-1）：
+ * 提取凭证与对端地址 → 调用策略 → 拒绝时经统一工厂出 401。 */
+
 /**
-  * @brief Validate the API key (protects sensitive endpoints)
-  * @param connection MHD connection object
- * @param gateway Gateway instance
-  * @return true if the key is valid, false otherwise
+ * @brief 提取真实 socket 对端地址并判定回环（T-11a）
+ *
+ * 安全输入只认 socket 地址：X-Forwarded-For 可伪造，仅限流可用，
+ * 不得作为鉴权输入。
  */
-static bool gateway_verify_api_key(struct MHD_Connection *connection,
-                                   http_gateway_t *gateway __attribute__((unused)))
+static int gateway_peer_is_loopback(struct MHD_Connection *connection)
 {
+    const union MHD_ConnectionInfo *cinfo =
+        MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
+    const struct sockaddr *addr = cinfo ? (const struct sockaddr *)cinfo->client_addr : NULL;
+    if (!addr)
+        return 0; /* 地址不可得：fail-closed 视为非回环 */
 
-    const char *env_key = getenv("GATEWAY_API_KEY");
-    if (!env_key || !env_key[0])
-        return false;
+    char addr_buf[64];
+    if (addr->sa_family == AF_INET) {
+        inet_ntop(AF_INET, &((const struct sockaddr_in *)addr)->sin_addr, addr_buf,
+                  sizeof(addr_buf));
+    } else if (addr->sa_family == AF_INET6) {
+        inet_ntop(AF_INET6, &((const struct sockaddr_in6 *)addr)->sin6_addr, addr_buf,
+                  sizeof(addr_buf));
+    } else {
+        return 0;
+    }
+    return gw_auth_addr_is_loopback(addr_buf);
+}
 
+/**
+ * @brief 统一 401 拒绝响应（T-11a：CORS-safe 工厂 + 安全头）
+ */
+static int http_gateway_queue_unauthorized(http_gateway_t *gateway,
+                                           struct MHD_Connection *connection)
+{
+    const char *err_json =
+        "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Unauthorized: "
+        "API key required\"},\"id\":null}";
+    struct MHD_Response *response =
+        create_http_response_ex(gateway, connection, 401, err_json, strlen(err_json));
+    atomic_fetch_add(&gateway->requests_failed, 1);
+    int ret = MHD_queue_response(connection, 401, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
+/**
+ * @brief 入口鉴权门禁（T-11a）：敏感路由统一强制
+ *
+ * 判定语义（fail-closed 双层）见 gateway_auth.c：key 已配置 → 凭证必查
+ * （回环不豁免）；未配置 → 仅放行回环对端。
+ * @return MHD_YES=放行（调用方继续正常处理），否则为已 queue 的拒绝响应
+ */
+static int gateway_enforce_entry_auth(http_gateway_t *gateway, struct MHD_Connection *connection)
+{
     const char *auth_header =
         MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
-    if (auth_header && strncmp(auth_header, "Bearer ", 7) == 0) {
-        if (strcmp(auth_header + 7, env_key) == 0)
-            return true;
-    }
-
     const char *key_param =
         MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "api_key");
-    if (key_param && strcmp(key_param, env_key) == 0)
-        return true;
 
-    return false;
+    int verdict = gw_auth_decide(1, gw_auth_key_matches(auth_header, key_param),
+                                 gw_auth_key_configured(), gateway_peer_is_loopback(connection));
+    if (verdict == GW_AUTH_DENY) {
+        AIRY_LOG_WARN("gateway auth: request denied (sensitive route, no valid credential)");
+        return http_gateway_queue_unauthorized(gateway, connection);
+    }
+    return MHD_YES;
 }
 
 /**
@@ -184,23 +227,15 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
 }
 
 /**
-  * @brief Handle GET /metrics (CC=3) - requires API key authentication
+  * @brief Handle GET /metrics (CC=2)
+  *
+  * T-11a 后鉴权由入口门禁统一强制（路由表 auth_required=1），本处理器
+  * 不再自校验（删除旧 strcmp 版 gateway_verify_api_key，T-17 恒定时间
+  * 比较由 gw_auth_key_matches 兼收）。
  */
 int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connection,
                           http_request_context_t *context __attribute__((unused)))
 {
-
-    if (!gateway_verify_api_key(connection, gateway)) {
-        const char *err_json =
-            "{\"error\":{\"code\":-32001,\"message\":\"Unauthorized: API key required\"}}";
-        struct MHD_Response *response =
-            create_http_response_ex(gateway, connection, 401, err_json, strlen(err_json));
-        int ret = MHD_queue_response(connection, 401, response);
-        MHD_destroy_response(response);
-        atomic_fetch_add(&gateway->requests_failed, 1);
-        return ret;
-    }
-
     char *metrics_json = NULL;
     airy_err_t err = airy_sys_telemetry_metrics(&metrics_json);
 
@@ -286,19 +321,41 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
 /**
   * @brief HTTP route table (priority-ordered)
   *
+  * auth_required（0.1.15 WS-2 T-11a）：1=敏感面（入口鉴权门禁强制），
+  * 0=公开面（OPTIONS 预检、/health 健康探针）或 404 兜底行。
+  *
   * Route matching rules:
   * 1. 1. Match the HTTP method
   * 2. 2. Match the path ("*" wildcard supported)
   * 3. 3. Fall back to the default route (handle_not_found)
  */
-static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc, 0},
-                                           {"POST", GW_SSE_CHAT_PATH, handle_chat_stream_sse, 1},
-                                           {"POST", GW_SSE_RUN_STREAM_PATH, handle_run_stream_sse, 1},
-                                           {"GET", "/api/v1/hall/watch", handle_hall_watch_sse, 0},
-                                           {"OPTIONS", "*", handle_options_preflight, 0},
-                                           {"GET", "/health", handle_health_check, 0},
-                                           {"GET", "/metrics", handle_metrics_export, 0},
-                                           {NULL, NULL, handle_not_found, 0}};
+static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc, 0, 1},
+                                           {"POST", GW_SSE_CHAT_PATH, handle_chat_stream_sse, 1, 1},
+                                           {"POST", GW_SSE_RUN_STREAM_PATH, handle_run_stream_sse, 1, 1},
+                                           {"GET", "/api/v1/hall/watch", handle_hall_watch_sse, 0, 1},
+                                           {"OPTIONS", "*", handle_options_preflight, 0, 0},
+                                           {"GET", "/health", handle_health_check, 0, 0},
+                                           {"GET", "/metrics", handle_metrics_export, 0, 1},
+                                           {NULL, NULL, handle_not_found, 0, 0}};
+
+/**
+  * @brief 路由敏感性分类器（T-11a，SSoT：http_routes 表 auth_required 字段）
+  *
+  * NULL 方法/URL 与未登记路由一律按公开面（0）处理——真实请求随后由
+  * find_http_route 走 404 兜底，无敏感数据可泄露。
+ */
+int http_gateway_route_auth_required(const char *method, const char *url)
+{
+    if (!method || !url)
+        return 0;
+    for (const http_route_t *route = http_routes; route->method != NULL; route++) {
+        if (strcmp(method, route->method) == 0 &&
+            (strcmp(route->path, "*") == 0 || strcmp(url, route->path) == 0)) {
+            return route->auth_required;
+        }
+    }
+    return 0;
+}
 
 /**
   * @brief Whether the URL matches a streaming (SSE long-lived) route
@@ -474,6 +531,16 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
             int ret = MHD_queue_response(connection, 429, response);
             MHD_destroy_response(response);
             return ret;
+        }
+    }
+
+    /* WS-2 T-11a：入口鉴权门禁（限流后、上下文分配前）。
+     * MHD 对同一请求多次回调，本判定幂等；敏感面未授权请求在 body
+     * 累积前即被拒绝（fail-closed 双层语义见 gateway_auth.c）。 */
+    if (http_gateway_route_auth_required(method, url)) {
+        int auth_ret = gateway_enforce_entry_auth(gateway, connection);
+        if (auth_ret != MHD_YES) {
+            return auth_ret;
         }
     }
 
