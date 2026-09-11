@@ -88,6 +88,14 @@ spec:
                 secretKeyRef:
                   name: agentrt-gateway-secrets
                   key: jwt_secret
+            # WS-2 T-11a：网关入口凭证。K8s 形态必须注入——未配置时
+            # bind 侧 fail-closed 收敛 127.0.0.1，Ingress 转发的 Pod
+            # 流量将被切断。创建方式见 secret.yaml 模板。
+            - name: GATEWAY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agentrt-gateway-secrets
+                  key: gateway_api_key
             - name: AGENTRT_ENABLE_AUTH
               valueFrom:
                 configMapKeyRef:
