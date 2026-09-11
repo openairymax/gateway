@@ -25,6 +25,8 @@ endif()
 
 set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_api.c
+    # 入口鉴权纯策略（0.1.15 WS-2 T-11a/T-17），无 MHD 依赖可独立单测
+    ${GATEWAY_SRC_BASE}/src/gateway/gateway_auth.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_hall_store.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_routes.c

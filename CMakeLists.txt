@@ -295,6 +295,13 @@ if(BUILD_TESTS AND NOT WIN32)
     target_link_libraries(test_rpc_handler gateway)
     add_test(NAME rpc_handler_test COMMAND test_rpc_handler)
 
+    # 网关入口鉴权测试（0.1.15 WS-2 T-24/T-11a/T-17）：
+    # deny 行为测试先行（必红），随后 gateway_auth.c 落地转绿
+    add_executable(test_gateway_auth tests/test_gateway_auth.c)
+    target_compile_definitions(test_gateway_auth PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_link_libraries(test_gateway_auth gateway)
+    add_test(NAME gateway_auth_test COMMAND test_gateway_auth)
+
     # 性能基准测试工具 (C-W1-004 / PERF-001~003)
     # gateway_benchmark.c 直接使用 pthread_barrier_*（Linux 扩展，macOS
     # ld64/Apple 无 pthread_barrier，MSVC 无 pthread）及 __atomic 内建与
