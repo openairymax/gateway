@@ -380,15 +380,21 @@ static const struct {
 /* 高敏能力所需权限（0.1.6 P1-4 SSoT 权限校验维度）。
  * 仅此表列出的能力在分发时做 ACL 授权检查（fail-closed：未注册规则拒绝，
  * 管理员在 permission_rules.yaml / daemon_security_add_acl_rule 显式授权）。
- * 日常核心链路能力（llm/think/agent/tool/mem 读等）不在表中 → 默认放行，
- * 保持现有调用行为不变。 */
+ * 日常核心链路能力（llm/think/mem 读等）不在表中 → 默认放行，
+ * 保持现有调用行为不变。
+ * 0.1.15 WS-2 T-11b：agent.run 收入权限模型（默认拒绝）——外部主体经
+ * 网关驱动的最高敏执行入口，独立权限 cap:agent.run；agent.cancel 归
+ * 既有 cap:agent.control。本地模板 permission_rules.yaml v1.2.0 对
+ * external 主体显式授权，保持单机开箱即用；生产环境默认拒绝。 */
 static const struct {
     const char *cap_key;
     const char *perm;
 } GW_CAP_EXTRA_PERM[] = {
+    {"agent.run", "cap:agent.run"},
     {"agent.spawn", "cap:agent.control"},
     {"agent.terminate", "cap:agent.control"},
     {"agent.invoke", "cap:agent.control"},
+    {"agent.cancel", "cap:agent.control"},
     {"plugin.load", "cap:plugin.admin"},
     {"plugin.unload", "cap:plugin.admin"},
     {"plugin.install", "cap:plugin.admin"},
