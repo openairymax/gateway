@@ -414,31 +414,49 @@ static void http_req_complete_cb(
 #endif
 
 /* 启动自证：MHD_start_daemon 返回非空不代表端口真实可达（头/库版本
- * 错位、平台后端差异均可致 daemon 非空而 listen 缺失）。以对
- * 127.0.0.1:port 的 connect 探测为真值（与干净主机核验脚本同源），
+ * 错位、平台后端差异均可致 daemon 非空而 listen 缺失）。以对实际
+ * bind 地址的 connect 探测为真值（与干净主机核验脚本同源）：host
+ * 可解析则连该地址（与 start 的 bind 逻辑同源）；host 缺省或为
+ * 全接口通配（"0.0.0.0"/"::"）则连回环（通配 bind 下回环必然可达）。
  * 探测连接即连即关、不带数据；http_req_complete_cb 对空 con_cls
  * 安全，MHD 侧至多一次空连接终止，无害。
  * gateway_d 不在 Windows 构建（无 libmicrohttpd），保留分支仅为
  * 编译单元完整。 */
-static airy_err_t http_gateway_probe_listen(uint16_t port)
+static airy_err_t http_gateway_probe_listen(const char *host, uint16_t port)
 {
 #ifdef _WIN32
+    (void)host;
     (void)port;
     return AIRY_SUCCESS;
 #else
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_storage ss;
+    __builtin_memset(&ss, 0, sizeof(ss));
+
+    /* 缺省探测目标：127.0.0.1（host 为空/通配/未识别时的安全值）。 */
+    struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
+    sin->sin_family = AF_INET;
+    sin->sin_port = htons(port);
+    sin->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    if (host && host[0]) {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&ss;
+        if (inet_pton(AF_INET, host, &sin->sin_addr) == 1) {
+            sin->sin_family = AF_INET;
+        } else if (inet_pton(AF_INET6, host, &sin6->sin6_addr) == 1) {
+            sin6->sin6_family = AF_INET6;
+            sin6->sin6_port = htons(port);
+        }
+        /* 非 IP 字面量：start 侧已显性 fail，此处保持回环缺省。 */
+    }
+
+    int fd = socket(ss.ss_family, SOCK_STREAM, 0);
     if (fd < 0) {
         return AIRY_EBUSY;
     }
-    struct sockaddr_in sa;
-    __builtin_memset(&sa, 0, sizeof(sa));
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(port);
-    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     airy_err_t err = AIRY_EBUSY;
     for (int attempt = 0; attempt < 3; ++attempt) {
-        if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) == 0) {
+        if (connect(fd, (struct sockaddr *)&ss, sizeof(ss)) == 0) {
             err = AIRY_SUCCESS;
             break;
         }
@@ -502,6 +520,36 @@ static airy_err_t http_gateway_start(void *gateway_impl)
                   (unsigned)MHD_VERSION, MHD_get_version(), (unsigned)GATEWAY_MHD_FLAGS,
                   (unsigned)gateway->port);
 
+    /* WS-2 T-11c：显式 bind 地址（修复历史缺陷：MHD_start_daemon 此前
+     * 只传 port 从未传 host，无论配置什么 listen host，HTTP 面一律绑
+     * 全部接口——非回环暴露）。行为约定：
+     *   - host 为空 / "0.0.0.0" / "::"：不传 MHD_OPTION_SOCK_ADDR，
+     *     绑全部接口（显式声明的通配行为）；
+     *   - 其余 host：必须是合法 IPv4/IPv6 字面量，解析失败显性
+     *     fail-closed，禁止静默回落全网卡；
+     *   - MHD_OPTION_SOCK_ADDR 保存调用者指针不复制，sockaddr 嵌入
+     *     gateway 结构（生命周期覆盖至 MHD_stop_daemon）。 */
+    struct sockaddr *bind_addr = NULL;
+    if (gateway->host && gateway->host[0] && strcmp(gateway->host, "0.0.0.0") != 0 &&
+        strcmp(gateway->host, "::") != 0) {
+        __builtin_memset(&gateway->bind_addr, 0, sizeof(gateway->bind_addr));
+        struct sockaddr_in *sin = (struct sockaddr_in *)&gateway->bind_addr;
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&gateway->bind_addr;
+        if (inet_pton(AF_INET, gateway->host, &sin->sin_addr) == 1) {
+            sin->sin_family = AF_INET;
+            sin->sin_port = htons(gateway->port);
+        } else if (inet_pton(AF_INET6, gateway->host, &sin6->sin6_addr) == 1) {
+            sin6->sin6_family = AF_INET6;
+            sin6->sin6_port = htons(gateway->port);
+        } else {
+            AIRY_LOG_ERROR("http_gateway_start: invalid listen host '%s' (IP literal required); "
+                           "fail-closed instead of binding all interfaces",
+                           gateway->host);
+            return AIRY_EINVAL;
+        }
+        bind_addr = (struct sockaddr *)&gateway->bind_addr;
+    }
+
     gateway->daemon =
         MHD_start_daemon(GATEWAY_MHD_FLAGS, gateway->port, NULL, NULL,
                          /* handle_http_request 原型返回 int；MHD_Result
@@ -511,21 +559,22 @@ static airy_err_t http_gateway_start(void *gateway_impl)
                          MHD_OPTION_CONNECTION_LIMIT, conn_limit,
                          MHD_OPTION_CONNECTION_TIMEOUT, conn_timeout, MHD_OPTION_THREAD_POOL_SIZE,
                          pool_size, MHD_OPTION_NOTIFY_COMPLETED, http_req_complete_cb,
-                         NULL, MHD_OPTION_END);
+                         NULL, MHD_OPTION_SOCK_ADDR, bind_addr, MHD_OPTION_END);
 
     if (!gateway->daemon) {
-        AIRY_LOG_ERROR("http_gateway_start: MHD_start_daemon failed (flags=0x%x, port=%u)",
-                       (unsigned)GATEWAY_MHD_FLAGS, (unsigned)gateway->port);
+        AIRY_LOG_ERROR("http_gateway_start: MHD_start_daemon failed (flags=0x%x, host=%s, port=%u)",
+                       (unsigned)GATEWAY_MHD_FLAGS, gateway->host ? gateway->host : "0.0.0.0",
+                       (unsigned)gateway->port);
         return AIRY_EBUSY;
     }
 
     /* 启动自证：listen 缺失（版本错位/后端异常）一律 fail-closed，
      * 禁止 daemon 假活继续运行。 */
-    if (http_gateway_probe_listen(gateway->port) != AIRY_SUCCESS) {
-        AIRY_LOG_ERROR("http_gateway_start: listen probe failed on 127.0.0.1:%u "
+    if (http_gateway_probe_listen(gateway->host, gateway->port) != AIRY_SUCCESS) {
+        AIRY_LOG_ERROR("http_gateway_start: listen probe failed on %s:%u "
                        "(daemon=%p, compile=0x%06x, runtime=%s); fail-closed",
-                       (unsigned)gateway->port, (void *)gateway->daemon, (unsigned)MHD_VERSION,
-                       MHD_get_version());
+                       gateway->host ? gateway->host : "127.0.0.1", (unsigned)gateway->port,
+                       (void *)gateway->daemon, (unsigned)MHD_VERSION, MHD_get_version());
         MHD_stop_daemon(gateway->daemon);
         gateway->daemon = NULL;
         return AIRY_EBUSY;
