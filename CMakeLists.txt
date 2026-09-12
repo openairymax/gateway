@@ -172,6 +172,10 @@ target_include_directories(gateway
         # 头文件位于 commons/include/third_party/nghttp2/nghttp2.h
         # include 路径需指向 third_party/ 以解析 <nghttp2/nghttp2.h>
         ${COMMONS_DIR}/include/third_party
+        # 8.3.3 灰度：gw_svc_call 的 L2 先行路（daemon_l2_channel_for_socket
+        # / daemon_l2_rpc_call_resp，daemon_l1_server.h）。置于 commons 路径
+        # 之后——daemons/common/include 是兼容层，顺序约束见根 CMakeLists。
+        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
 )
 
 # P0.18.1: svc_common 提供 jsonrpc_get_error_message（jsonrpc_helpers.c），
@@ -189,6 +193,9 @@ target_link_libraries(gateway
         airy_protocols
         airy_common
         airy_memory
+        # 8.3.3 灰度：L2 先行路符号（daemon_l2_*）。corekern 的 airy_ipc_*
+        # 经 daemon_l1_server 的 PRIVATE 链自动补全（$<LINK_ONLY>）。
+        daemon_l1_server
 )
 
 if(AIRY_HAS_CJSON)
