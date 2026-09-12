@@ -40,7 +40,6 @@ typedef struct {
     const char *ns;       /* 目标 daemon 命名空间 */
     const char *method;   /* L2 方法名（转发/处理的目标方法） */
     gw_cap_kind_t kind;   /* 处理方式 */
-    int version;          /* 能力契约版本（0 = 默认契约版本 1；见 gw_cap_version） */
 } gw_cap_t;
 
 /**
