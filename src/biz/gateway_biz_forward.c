@@ -24,6 +24,7 @@
 #include "logging.h"
 #include "platform.h"
 #include "daemon_security.h"
+#include "daemon_l1_server.h" /* blueprint 8.3.3: L2 first path in gw_svc_call */
 
 #include "syscalls.h"
 
@@ -89,6 +90,27 @@ char *jsonrpc_error(int code, const char *msg, const cJSON *id)
 char *gw_svc_call(const char *sock_path, const char *method, const char *params_json,
                   int timeout_ms)
 {
+    /* Blueprint 8.3.3 grey rollout: when the ns transport switch resolves to
+     * "corekern" (the only case channel_for_socket succeeds), serve the call
+     * over the L2 channel. The _resp variant returns the complete JSON-RPC
+     * response — daemon error replies included verbatim — so the return
+     * contract matches the socket path below bit-for-bit. Any L2 miss falls
+     * through to the socket path: NOT_FOUND from channel_for_socket (switch
+     * off) skips the block entirely, ENOENT from connect (switch on but
+     * bridge not mounted yet: the grey coexistence norm) fails the call and
+     * drops to the fallback, as does any other transport loss. Stream and
+     * cancelable calls keep the socket path (daemon_rpc_client.c): chunked
+     * replies have no L2 mapping yet. */
+    char channel[64];
+    if (sock_path && daemon_l2_channel_for_socket(sock_path, channel, sizeof(channel)) == 0) {
+        char *l2_resp = NULL;
+        uint32_t l2_timeout = timeout_ms > 0 ? (uint32_t)timeout_ms : 0;
+        if (daemon_l2_rpc_call_resp(channel, method, params_json, l2_timeout, &l2_resp) ==
+            AIRY_SUCCESS)
+            return l2_resp;
+        /* transport on but bridge not mounted: fall back to the socket path */
+    }
+
 #ifndef _WIN32
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
