@@ -1,7 +1,7 @@
 # Gateway Config — 静态分析配置
 
-**模块路径**: `agentrt/gateway/config/`
-**版本**: v0.1.0
+**位置：** `config/`
+**版本：** 0.1.15
 
 ## 概述
 
@@ -58,4 +58,8 @@ cppcheck --config-file=config/cppcheck.cfg src/
 
 ---
 
-© 2025-2026 SPHARX Ltd. All Rights Reserved.
+## 许可
+
+Copyright (c) 2025-2026 SPHARX Ltd.
+
+本目录随网关模块一同发布，采用双许可证：`AGPL-3.0-or-later OR Apache-2.0`。完整文本见仓库根的 [LICENSE](../LICENSE)。

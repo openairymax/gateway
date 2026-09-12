@@ -1,143 +1,143 @@
 # Gateway Deploy — Kubernetes 部署配置
 
-**模块路径**: `agentrt/gateway/deploy/`
-**版本**: v0.1.0
+**位置：** `deploy/k8s/`
+**版本：** 0.1.15
 
 ## 概述
 
-`gateway/deploy/` 包含 AgentRT Gateway 的 Kubernetes 部署配置，提供从开发环境到生产环境的完整部署方案。K8s 配置支持多环境 ConfigMap、滚动更新、自动扩缩容、网络策略和 Ingress TLS 终止。
+`gateway/deploy/` 提供 AirymaxRT 网关的 Kubernetes 部署清单，覆盖命名空间、多环境配置、滚动更新、自动扩缩容、服务暴露、Ingress TLS 与网络策略。清单以变量占位（镜像地址、TLS 域名）便于适配不同集群，可直接 `kubectl apply`，也可作为 GitOps 基线。
 
 ## 目录结构
 
 ```
 deploy/
-├── k8s/                    # Kubernetes 资源清单
-│   ├── namespace.yaml      # 命名空间定义（agentrt-gateway）
-│   ├── configmap.yaml      # 多环境 ConfigMap（development/staging/production）
-│   ├── deployment.yaml     # Deployment + ServiceAccount + HPA
-│   └── service.yaml        # Service + Headless Service + Ingress + NetworkPolicy
+├── k8s/
+│   ├── namespace.yaml      # 命名空间（agentrt-gateway）
+│   ├── configmap.yaml      # 三环境 ConfigMap（development / staging / production）
+│   ├── deployment.yaml     # Deployment + ServiceAccount + HorizontalPodAutoscaler
+│   ├── service.yaml        # ClusterIP + Headless Service + Ingress + NetworkPolicy
+│   └── secret.yaml         # Secret 模板（gateway_api_key / jwt_secret）
 └── README.md               # 本文件
 ```
 
-## 核心组件
+## 资源清单
 
 ### namespace.yaml
 
-创建 `agentrt-gateway` 命名空间，隔离网关资源，避免与其他服务冲突。
+创建 `agentrt-gateway` 命名空间，隔离网关资源。
 
 ### configmap.yaml
 
-三环境配置分离，通过不同 ConfigMap 段管理 development / staging / production 的差异化配置：
+按环境划分三份同名 ConfigMap `agentrt-gateway-manager`，分别位于 `agentrt-development` / `agentrt-staging` / `agentrt-production`：
 
-| 配置项 | Development | Staging | Production |
-|--------|-------------|---------|------------|
-| `AIRY_LOG_LEVEL` | DEBUG | INFO | WARN |
-| `AIRY_MAX_SESSIONS` | 100 | 500 | 1000 |
-| `AIRY_SESSION_TIMEOUT` | 3600 | 1800 | 900 |
+| 键 | Development | Staging | Production |
+|----|-------------|---------|------------|
+| `AGENTRT_ENV` | development | staging | production |
+| `AGENTRT_LOG_LEVEL` | DEBUG | INFO | WARN |
+| `AGENTRT_MAX_SESSIONS` | 100 | 500 | 1000 |
+| `AGENTRT_SESSION_TIMEOUT` | 3600 | 1800 | 900 |
 
-ConfigMap 挂载到容器 `/etc/agentrt/gateway`。
+三份共用的键：`AGENTRT_HTTP_PORT=8080`、`AGENTRT_WS_PORT=8081`、`AGENTRT_HEALTH_CHECK_INTERVAL=30`、`REDIS_PORT=6379`、`ENABLE_METRICS=true`、`ENABLE_TRACING=true`，以及按环境区分的 `REDIS_HOST`。
 
 ### deployment.yaml
 
-| 资源 | 说明 |
-|------|------|
-| **Deployment** | 3 副本部署，滚动更新策略（maxSurge=1, maxUnavailable=0） |
-| **ServiceAccount** | 服务账户 `agentrt-gateway`，用于 RBAC 权限控制 |
-| **HPA** | 基于 CPU(70%) 和内存(80%) 自动扩缩容，范围 3-10 副本，缩容稳定窗口 300s |
-| **安全上下文** | runAsNonRoot，UID 1000，只读根文件系统 |
-| **Pod 反亲和** | 优先调度到不同节点，提升可用性 |
+| 项 | 值 |
+|----|----|
+| **Deployment** | 3 副本，RollingUpdate（`maxSurge=1`、`maxUnavailable=0`） |
+| **镜像** | `${GATEWAY_IMAGE:-ghcr.io/spharx/agentrt-gateway}:latest` |
+| **端口** | `http` 8080 / `websocket` 8081 / `metrics` 9090 |
+| **ServiceAccount** | `agentrt-gateway` |
+| **安全上下文** | `runAsNonRoot`，UID/GID/fsGroup `1000` |
+| **调度** | Pod 反亲和（preferred，按主机名拓扑分散）；容忍 `not-ready` / `unreachable` |
+| **卷挂载** | `/etc/agentrt/gateway`（ConfigMap，只读）、`/var/log/agentrt`（emptyDir） |
+| **HPA** | `autoscaling/v2`，3–10 副本，CPU 70% / 内存 80%；缩容稳定窗口 300s |
 
 ### service.yaml
 
 | 资源 | 说明 |
 |------|------|
-| **Service** | ClusterIP 类型，暴露 HTTP(8080) / WebSocket(8081) / Metrics(9090) |
-| **Headless Service** | 无头服务，用于 StatefulSet 场景下的 Pod 直接寻址 |
-| **Ingress** | Nginx Ingress + cert-manager TLS，支持 API 和 WebSocket 双域名路由 |
-| **NetworkPolicy** | 入站限制（仅 Ingress 和监控命名空间），出站限制（DNS + Redis + 外部 HTTPS） |
+| **ClusterIP** | `agentrt-gateway`，暴露 HTTP 8080 / WebSocket 8081 / Metrics 9090 |
+| **Headless** | `agentrt-gateway-headless`（`clusterIP: None`），用于 Pod 直接寻址 |
+| **Ingress** | Nginx Ingress + cert-manager（`letsencrypt-prod`），API 与 WebSocket 双域名，TLS 终止，`proxy-body-size: 10m` |
+| **NetworkPolicy** | 入站仅放行 Ingress 命名空间（8080/8081）与监控命名空间（9090）；出站限 DNS（53）、Redis（6379）、外部 HTTPS（443） |
 
-## 端口映射
+Ingress 域名以变量占位：`${GATEWAY_API_HOST:-api.agentrt.example.com}`、`${GATEWAY_WS_HOST:-ws.agentrt.example.com}`，证书 secret 为 `agentrt-gateway-tls`。
 
-| 端口 | 协议 | 用途 |
+### secret.yaml
+
+`agentrt-gateway-secrets`（Opaque）为**模板**，占位值不可直接用于生产。真实凭证请用命令行生成，避免明文入库：
+
+```bash
+kubectl -n agentrt-gateway create secret generic agentrt-gateway-secrets \
+  --from-literal=gateway_api_key="$(openssl rand -hex 32)" \
+  --from-literal=jwt_secret="$(openssl rand -hex 32)"
+```
+
+`gateway_api_key` 为网关入口凭证，客户端以 `Authorization: Bearer <key>` 携带。Kubernetes 形态必须注入该值：未配置时网关以 fail-closed 方式将监听收敛到 `127.0.0.1`，经 Ingress 转发的流量将不可达。
+
+## 容器环境变量
+
+Deployment 注入下列环境变量（值来自 ConfigMap / Secret）：
+
+| 变量 | 来源 | 说明 |
 |------|------|------|
-| 8080 | TCP | HTTP REST API |
-| 8081 | TCP | WebSocket 双向通信 |
-| 9090 | TCP | Prometheus 指标端点 |
+| `AGENTRT_MODULE` | 常量 `gateway` | 模块标识 |
+| `AGENTRT_LOG_LEVEL` | ConfigMap | 日志级别 |
+| `AGENTRT_HTTP_PORT` / `AGENTRT_WS_PORT` | 常量 | 监听端口 8080 / 8081 |
+| `AGENTRT_METRICS_PORT` | 常量 | 指标端口 9090 |
+| `AGENTRT_REDIS_HOST` / `AGENTRT_REDIS_PORT` | ConfigMap | Redis 端点 |
+| `AGENTRT_JWT_SECRET` | Secret `jwt_secret` | JWT 签名密钥 |
+| `GATEWAY_API_KEY` | Secret `gateway_api_key` | 入口鉴权凭证 |
+| `AGENTRT_ENABLE_AUTH` | ConfigMap | 是否启用鉴权 |
 
-## 健康检查
+> 网关库在进程内另以 `GATEWAY_*` / `AIRY_*` 环境变量细化传输、限流与后端端点，完整清单见 [../README.md](../README.md) 的「运行时配置」。
+
+## 健康检查与资源
 
 | 探针 | 路径 | 初始延迟 | 周期 | 超时 | 失败阈值 |
 |------|------|---------|------|------|---------|
-| **livenessProbe** | `/health` | 10s | 15s | 5s | 3 |
-| **readinessProbe** | `/health/ready` | 5s | 10s | 3s | 3 |
-| **startupProbe** | `/health` | 0s | 5s | 3s | 30 |
-
-## 资源限制
+| **liveness** | `/health` | 10s | 15s | 5s | 3 |
+| **readiness** | `/health/ready` | 5s | 10s | 3s | 3 |
+| **startup** | `/health` | 0s | 5s | 3s | 30 |
 
 | 资源 | Requests | Limits |
 |------|----------|--------|
 | CPU | 500m | 2 |
 | Memory | 128Mi | 512Mi |
 
-## 使用说明
+## 部署步骤
 
 ```bash
-# 1. 创建命名空间
+# 1. 命名空间
 kubectl apply -f k8s/namespace.yaml
 
-# 2. 创建配置（根据目标环境选择对应 ConfigMap 段）
+# 2. 配置（按目标环境选用对应 ConfigMap）
 kubectl apply -f k8s/configmap.yaml
 
-# 3. 部署网关（含 Deployment + ServiceAccount + HPA）
+# 3. 创建入口凭证 Secret（见上文 secret.yaml 说明）
+
+# 4. 工作负载（Deployment + ServiceAccount + HPA）
 kubectl apply -f k8s/deployment.yaml
 
-# 4. 创建服务暴露（含 Service + Ingress + NetworkPolicy）
+# 5. 暴露（Service + Headless + Ingress + NetworkPolicy）
 kubectl apply -f k8s/service.yaml
 ```
 
-## 环境变量
+## 监控
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `AIRY_MODULE` | `gateway` | 模块标识 |
-| `AIRY_LOG_LEVEL` | `INFO` | 日志级别（DEBUG/INFO/WARN/ERROR） |
-| `AIRY_HTTP_PORT` | `8080` | HTTP 监听端口 |
-| `AIRY_WS_PORT` | `8081` | WebSocket 监听端口 |
-| `AIRY_METRICS_PORT` | `9090` | Prometheus 指标端口 |
-| `AIRY_MAX_SESSIONS` | `1000` | 最大会话数 |
-| `AIRY_SESSION_TIMEOUT` | `900` | 会话超时（秒） |
-| `AIRY_REDIS_HOST` | - | Redis 主机地址 |
-| `AIRY_REDIS_PORT` | `6379` | Redis 端口 |
-| `AIRY_JWT_SECRET` | - | JWT 签名密钥（从 Secret 挂载） |
-| `AIRY_ENABLE_AUTH` | - | 是否启用认证 |
-| `ENABLE_METRICS` | `true` | 是否启用 Prometheus 指标 |
-| `ENABLE_TRACING` | `true` | 是否启用链路追踪 |
+Pod 模板带有 Prometheus 抓取注解 `prometheus.io/scrape=true`、`prometheus.io/port=9090`、`prometheus.io/path=/metrics`，可被集群内 Prometheus 自动发现并采集 `/metrics`。
 
-## 安全配置
-
-- **TLS**：通过 cert-manager + Let's Encrypt 自动证书管理，Ingress 层 TLS 终止
-- **速率限制**：基于令牌桶算法，防止 DDoS 攻击
-- **CORS**：支持跨域配置，生产环境建议限制来源
-- **网络策略**：入站仅允许 Ingress 控制器和监控命名空间，出站限制为 DNS/Redis/外部 HTTPS
-- **安全上下文**：容器以非 root 用户（UID 1000）运行，只读根文件系统
-- **Pod 反亲和**：优先调度到不同节点，提升可用性
-
-## 监控集成
-
-- **Prometheus**：通过注解 `prometheus.io/scrape: "true"` 自动发现，采集端口 9090
-- **Grafana**：预配置 AgentRT 仪表盘（`docker/monitoring/grafana_airy_dashboard.json`）
-- **告警规则**：`docker/monitoring/alerts.yml` 定义网关专用告警
-
-## 依赖关系
+## 依赖
 
 | 组件 | 用途 |
 |------|------|
-| Kubernetes ≥ 1.24 | 容器编排平台 |
-| cert-manager | TLS 证书自动管理 |
-| Nginx Ingress Controller | Ingress 路由 |
-| Prometheus | 指标采集 |
-| Grafana | 可视化仪表盘 |
+| Kubernetes ≥ 1.24 | 容器编排 |
+| cert-manager | Ingress TLS 证书签发 |
+| Nginx Ingress Controller | 七层路由与 WebSocket 转发 |
+| Prometheus | 指标采集（可选） |
 
----
+## 许可
 
-© 2025-2026 SPHARX Ltd. All Rights Reserved.
+Copyright (c) 2025-2026 SPHARX Ltd.
+
+本目录随网关模块一同发布，采用双许可证：`AGPL-3.0-or-later OR Apache-2.0`。完整文本见仓库根的 [LICENSE](../LICENSE)。
