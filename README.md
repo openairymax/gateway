@@ -1,238 +1,128 @@
-# gateway — HTTP/WS/Stdio → JSON-RPC 2.0 Gateway
+# gateway — HTTP/WS/SSE/Stdio → JSON-RPC 2.0 protocol gateway
 
-> The external entry point into the Airymax runtime: every inbound HTTP, WebSocket, or Stdio request becomes a unified JSON-RPC 2.0 call.
-> Leaf repository under the [agentrt](../) management repo.
+> The external entry point into the Airymax runtime: every inbound HTTP, HTTP/2, WebSocket, SSE, Stdio, MCP, A2A, or OpenAI-compatible request is translated into a unified JSON-RPC 2.0 call and dispatched to the runtime.
 
 **Language:** English | [简体中文](README_zh.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.9-5a6b7e)](https://atomgit.com/openairymax/gateway)
+[![Version](https://img.shields.io/badge/version-0.1.15-5a6b7e)](https://atomgit.com/openairymax/gateway)
 [![License](https://img.shields.io/badge/license-AGPL--3.0+Apache--2.0-4a90d9)](LICENSE)
 [![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)](https://en.cppreference.com/w/c/11)
 
-- **Repository:** `git@atomgit.com:openairymax/gateway.git`
-- **Branch:** `develop/hubs-01`
-- **Version:** 0.1.9 (aligned with agentrt management repo)
+- **Repository:** <https://atomgit.com/openairymax/gateway>
+- **Version:** 0.1.15
+- **Artifact:** static library `gateway`
 
 ---
 
-## Overview
+## What it is
 
-**gateway** is the **protocol gateway layer** of the Airymax agent runtime. It is the bridge that connects the external world to the Airymax kernel: it takes inbound HTTP, WebSocket, and Stdio requests and uniformly translates them into internal JSON-RPC 2.0 calls that are dispatched through `agentrt/atoms/syscall` into the kernel services.
+**gateway** is the protocol gateway layer of the Airymax agent runtime. It sits between external clients and the runtime core: it accepts inbound HTTP, HTTP/2, WebSocket, SSE, and Stdio traffic, auto-detects the wire protocol (JSON-RPC, MCP, A2A, OpenAI-compatible), normalizes it into JSON-RPC 2.0, and forwards it inward — either through the syscall interface (`atoms/syscall`) or through a thin business-delegation layer that calls backend service endpoints (LLM, tool-execution, scheduling).
 
-gateway follows the **K-1 kernel-minimalism** principle strictly: it does **only protocol translation, zero business logic**. Every business decision is delegated to the kernel via the syscall interface. It auto-detects and converts JSON-RPC, MCP, A2A, and OpenAI-API protocols at the boundary, manages long-lived connections and WebSocket sessions, enforces token-bucket rate limiting and request authentication (via `cupolas`), and is built event-driven on libmicrohttpd and libwebsockets for high concurrency.
+Its focus is protocol translation and connection management, not application logic: business decisions are handed off to the runtime. The module additionally provides cross-cutting boundary controls — token-bucket rate limiting, entry authentication (fail-closed, loopback-aware), URL sanitization, and CORS.
 
 ```
-External client → gateway_d → gateway → atoms/syscall → backend services
-                   (daemon)   (lib)      (kernel)
+external client ──► gateway ──► JSON-RPC 2.0 ──► runtime (syscall / backend services)
+                 (HTTP/HTTP2/WS/SSE/Stdio · MCP/A2A/OpenAI)
 ```
 
-`gateway` is one of the 7 leaf repositories aggregated by the [agentrt](../) management repo, forming the **Gateway Layer** in the cyclic architecture (above the Protocol Layer `protocols`, below the Service Layer `daemons`). The gateway library is wrapped by the `gateway_d` daemon (in `daemons/`) which exposes it as a system service.
+The `gateway` library is intended to be embedded and launched by a host process (for example a gateway daemon) that owns the event loop and graceful-shutdown lifecycle.
 
-## Module Classification
+## Capabilities
 
-**Class — (Service / Composition layer).**
+| Area | Detail |
+|------|--------|
+| Transports | HTTP/1.1 (libmicrohttpd), HTTP/2 (nghttp2, POSIX only), WebSocket (libwebsockets), SSE, Stdio REPL |
+| Protocol handling | Auto-detect and convert JSON-RPC 2.0, MCP, A2A, and OpenAI-compatible request bodies to a single internal JSON-RPC 2.0 shape |
+| Inward dispatch | Route JSON-RPC methods to the syscall interface, or forward business calls (`agent.run`, `tools/call`, embeddings, task scheduling) to backend service endpoints |
+| Streaming | Server-Sent Events for chat stream, agent run stream, and hall event watch |
+| Boundary security | Entry authentication (fail-closed, loopback-aware), token-bucket rate limiting (per IP / per API key), URL sanitization, CORS |
+| Operations | `/health`, `/metrics`, and JSON statistics snapshot via `gateway_get_stats()` |
 
-gateway is a service/composition module: it provides the external-facing protocol translation surface, not foundational primitives. It depends on `protocols` (router/gateway/registry interfaces, A2A/MCP/OpenAI adapters), `atoms` (CoreKern types and IPC primitives; `atoms/syscall` is the dispatch target; `atoms/memory`), `commons` (platform/types/error/logging/sync/memory macros), and logically on `cupolas` (request authentication and input sanitization at the protocol boundary). Its primary consumer is the `gateway_d` daemon, plus SDK/external clients connecting over HTTP/WS/Stdio/MCP.
+## Composition
 
-## Directory Structure
+The library target `gateway` is built from three source areas:
+
+| Area | Path | Responsibility |
+|------|------|----------------|
+| Transports | `src/gateway/` | HTTP, HTTP/2, WebSocket, SSE, Stdio servers; endpoint authentication; protocol bridge; hall event read/write |
+| Business delegation | `src/biz/` | Unified protocol entry, `agent.run`/`tools/call`/embeddings/scheduling forwarding, capability registry, PEP cache |
+| Shared utilities | `src/utils/` | JSON-RPC 2.0 helpers, syscall router, RPC handler, protocol detect/convert, rate limiter |
+
+The same source list is shared with the gateway daemon host via `cmake/gateway-sources.cmake`.
+
+### Directory structure
 
 ```
 gateway/
-├── CMakeLists.txt                       # CMake build configuration (static lib gateway)
-├── README.md                            # This file (English)
-├── README_zh.md                         # Chinese version
-├── LICENSE                              # Dual license texts (AGPL-3.0 + Apache-2.0)
-├── NOTICE                               # Copyright notice
-├── include/                             # Public headers
-│   ├── gateway.h                        # Unified public API (lifecycle / control / query)
+├── CMakeLists.txt                       # CMake build (static library `gateway`)
+├── cmake/
+│   └── gateway-sources.cmake            # Source list shared with the daemon host
+├── include/
+│   ├── gateway.h                        # Public API (lifecycle / control / query)
 │   └── gateway_protocol_bridge.h        # Gateway ↔ protocols bridge interface
 ├── src/
-│   ├── gateway/                         # Core gateway implementation
-│   │   ├── gateway.h                    # Internal header (ops vtable, structs)
-│   │   ├── gateway_internal.h           # Internal types and function decls
-│   │   ├── gateway_api.c                # Public API (create / start / stop / destroy)
-│   │   ├── http_gateway.c/.h            # HTTP gateway (libmicrohttpd)
-│   │   ├── http_gateway_routes.c/.h     # Static HTTP route table
-│   │   ├── ws_gateway.c/.h              # WebSocket gateway (libwebsockets)
-│   │   ├── stdio_gateway.c/.h           # Stdio gateway (REPL interaction)
-│   │   └── gateway_protocol_bridge.c    # Protocol bridge impl
-│   └── utils/                           # Utility modules
-│       ├── jsonrpc.c/.h                 # JSON-RPC 2.0 utilities (validate / response / batch)
-│       ├── syscall_router.c/.h          # JSON-RPC method → syscall dispatch
-│       ├── gateway_rpc_handler.c/.h     # Shared RPC handling for HTTP/WS/Stdio
-│       ├── gateway_protocol_handler.c/.h  # MCP / A2A / OpenAI auto-detection & conversion
-│       ├── gateway_rate_limiter.c/.h    # Token-bucket rate limiter
-│       └── gateway_utils.h              # Generic helper macros & inlines
-├── tests/                               # Tests & benchmarks
-│   ├── test_gateway.c                   # Gateway main test (7 cases)
-│   ├── test_jsonrpc.c                   # JSON-RPC protocol test (17 cases)
-│   ├── test_syscall_router.c            # Syscall router test (8 cases)
-│   ├── test_gateway_rpc_handler.c       # RPC handler test (14 cases)
-│   └── gateway_benchmark.c              # Performance benchmark
-├── deploy/                              # K8s deployment (namespace / configmap / deployment / service)
-└── config/                              # Static-analysis config (cppcheck.cfg)
+│   ├── gateway/                         # Transport layer
+│   │   ├── gateway_api.c                # Public API implementation
+│   │   ├── http_gateway.[ch]            # HTTP/1.1 server (libmicrohttpd)
+│   │   ├── http_gateway_routes.[ch]     # Static HTTP route table + entry auth gate
+│   │   ├── http_gateway_sse*.c          # SSE base + frame/stream/run/hall/memory/tool
+│   │   ├── http2_gateway*.[ch]          # HTTP/2 server (nghttp2, POSIX only)
+│   │   ├── ws_gateway*.[ch]             # WebSocket server (libwebsockets)
+│   │   ├── stdio_gateway.[ch]           # Stdio REPL gateway
+│   │   ├── gateway_auth.[ch]            # Entry authentication
+│   │   ├── gateway_protocol_bridge.c    # Protocol bridge implementation
+│   │   └── gateway_hall_store.[ch]      # Hall event recording (write side)
+│   ├── biz/                             # Business-delegation layer
+│   │   ├── gateway_business_handler.[ch]# Unified protocol entry + business chain
+│   │   ├── gateway_biz_*.c              # forward / svcdispatch / hall / backend / tools / agent
+│   │   ├── gateway_cap_registry.[ch]    # Capability registry
+│   │   ├── gateway_pep_cache.[ch]       # PEP cache
+│   │   └── gateway_svc_adapter.c        # Service adapter
+│   └── utils/                           # Shared utilities
+│       ├── jsonrpc.[ch]                 # JSON-RPC 2.0 validate / respond / batch
+│       ├── syscall/                     # JSON-RPC method → syscall dispatch
+│       ├── gateway_rpc_handler.[ch]     # Shared RPC handling for all transports
+│       ├── gateway_protocol_*.[ch]      # Protocol detect / convert / handler
+│       └── gateway_rate_limiter.[ch]    # Token-bucket rate limiter
+├── tests/                               # Unit tests + benchmark
+├── deploy/                              # Kubernetes manifests (see deploy/README.md)
+└── config/                              # Static-analysis config (see config/README.md)
 ```
 
-## Core Components
+### HTTP routes
 
-| Component | File | Responsibility |
-|-----------|------|----------------|
-| **Public API** | `include/gateway.h` | Unified lifecycle API: `create / start / stop / destroy` |
-| **HTTP gateway** | `http_gateway.c` | libmicrohttpd-based HTTP server with dynamic endpoint registration |
-| **WebSocket gateway** | `ws_gateway.c` | libwebsockets-based bidirectional RPC |
-| **Stdio gateway** | `stdio_gateway.c` | Stdin/stdout REPL mode, blocking single-threaded |
-| **Protocol bridge** | `gateway_protocol_bridge.c` | Gateway ↔ protocols module bridge with auto-detection |
-| **JSON-RPC 2.0** | `jsonrpc.c` | Request validation, response generation, batch processing, notifications |
-| **Syscall router** | `syscall_router.c` | JSON-RPC method-name → syscall function dispatch |
-| **RPC handler** | `gateway_rpc_handler.c` | Shared RPC handling logic across all three gateways |
-| **Multi-protocol handler** | `gateway_protocol_handler.c` | MCP / A2A / OpenAI auto-detection and conversion |
-| **Rate limiter** | `gateway_rate_limiter.c` | Token-bucket algorithm, per-IP / per-API-Key throttling |
+The static route table (see `src/gateway/http_gateway_routes.c`):
 
-## Architecture
+| Method | Path | Streaming | Auth | Purpose |
+|--------|------|-----------|------|---------|
+| `POST` | `/` | no | yes | JSON-RPC 2.0 entry (also MCP / A2A / OpenAI bodies) |
+| `POST` | `/api/v1/chat/stream` | SSE | yes | Chat stream |
+| `POST` | `/api/v1/agent/run/stream` | SSE | yes | Agent run stream |
+| `GET` | `/api/v1/hall/watch` | SSE | no | Hall event watch |
+| `OPTIONS` | `*` | no | no | CORS preflight |
+| `GET` | `/health` | no | no | Liveness / readiness |
+| `GET` | `/metrics` | no | yes | Metrics export |
 
-```
-┌──────────────────────────────────────────────┐
-│             Applications (OpenLab)            │
-├──────────────────────────────────────────────┤
-│             Ecosystem (Toolkit / SDK)         │
-├──────────────────────────────────────────────┤
-│              Daemon Services (daemons)        │
-├──────────────────────────────────────────────┤
-│          ★ gateway (Gateway Layer) ★         │
-├──────────────────────────────────────────────┤
-│   protocols / heapstore / cupolas             │
-├──────────────────────────────────────────────┤
-│            atoms / commons / OS               │
-└──────────────────────────────────────────────┘
+## Usage
 
-External client
-  │
-  ├─ HTTP REST ───→ http_gateway ──→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
-  ├─ WebSocket ──→ ws_gateway ────→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
-  ├─ Stdio ──────→ stdio_gateway ─→ JSON-RPC 2.0 ──→ syscall_router ──→ backend
-  └─ MCP ────────→ gateway_protocol_handler → JSON-RPC 2.0 ──→ syscall_router ──→ backend
-                         │
-              gateway_protocol_handler  (auto-detect / convert / unified)
-                         │
-              gateway_rpc_handler       (shared RPC logic)
-                         │
-                  atoms/syscall → kernel services
-```
+### Public API
 
-**Design principles:** K-1 kernel-minimalism (protocol translation only, zero business logic); multi-protocol auto-detection (JSON-RPC / MCP / A2A / OpenAI-API); event-driven high concurrency (libmicrohttpd + libwebsockets); security at boundary (cupolas authentication + token-bucket rate limiting + CORS); dynamic endpoint extensibility.
-
-## Upstream Dependencies
-
-> `commons` is the foundation for all agentrt modules; gateway consumes it. gateway also depends on `protocols`, `atoms`, and logically `cupolas`.
-
-| Dependency | Source | Purpose |
-|------------|--------|---------|
-| **protocols** | `agentrt/protocols/` | Protocol router / gateway / registry interfaces; A2A / MCP / OpenAI adapters — linked as `airy_protocols` |
-| **atoms** | `agentrt/atoms/` | CoreKern types and IPC primitives; `atoms/syscall` is the dispatch target for `syscall_router`; `atoms/memory` linked as `airy_memory` |
-| **commons** | `agentrt/commons/` | Platform abstraction, types, error framework, logging, sync, memory macros — linked as `airy_common` |
-| **cupolas** | `agentrt/cupolas/` | Logical upstream: gateway invokes cupolas for request authentication and input sanitization at the protocol boundary |
-| cJSON | external | JSON parsing — **hard dependency** (stub libraries are not supported) |
-| libmicrohttpd | external | HTTP server (≥ 0.9.70) |
-| libwebsockets | external | WebSocket support (≥ 4.3.0) |
-| OpenSSL | external | TLS/SSL (≥ 1.1.1) |
-| libcurl | external | HTTP client for benchmarks (optional; benchmark falls back to simulation mode) |
-
-## Downstream Consumers
-
-| Consumer | What they use |
-|----------|---------------|
-| **gateway_d** | The gateway daemon (`agentrt/daemons/gateway_d/`) wraps this library and exposes it as a system service |
-| SDK / external clients | SDK ships gateway client libraries; external clients connect over HTTP / WebSocket / Stdio / MCP |
-| Agent applications | Agent apps invoke the runtime through the gateway's JSON-RPC 2.0 surface |
-
-## Build
-
-```bash
-# Build the gateway module (requires cJSON dev headers — hard dependency)
-cmake -S . -B /tmp/gateway-build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DBUILD_BENCHMARK=ON
-cmake --build /tmp/gateway-build --target gateway --parallel $(nproc)
-
-# Run tests
-ctest --test-dir /tmp/gateway-build -R "gateway|jsonrpc|syscall|rpc_handler" --output-on-failure
-
-# Run performance benchmark
-/tmp/gateway-build/gateway_benchmark
-
-# Static analysis & formatting (if targets exist)
-cmake --build /tmp/gateway-build --target cppcheck
-cmake --build /tmp/gateway-build --target format
-
-# Install
-cmake --install /tmp/gateway-build --prefix /opt/airymax
-```
-
-**CMake options & conditional compilation:**
-
-| Dependency | Conditional Macro | Behavior When Missing |
-|------------|-------------------|-----------------------|
-| cJSON | `AIRY_HAS_CJSON` | **Hard failure** — gateway module is skipped with `FATAL_ERROR` (stub libraries are disallowed) |
-| libmicrohttpd | `AIRY_HAS_MICROHTTPD` | HTTP gateway unavailable |
-| libwebsockets | `AIRY_HAS_LIBWEBSOCKETS` | WebSocket gateway unavailable |
-| libcurl | `AIRY_HAS_CURL` | Benchmark runs in simulation mode |
-
-**Build artifacts:**
-
-- `gateway` — static library aggregating all gateway components
-- Public headers installed under `include/agentrt/gateway`
-
-**Configuration example:**
-
-```json
-{
-  "gateway": {
-    "http_port": 8080,
-    "ws_port": 8081,
-    "metrics_port": 9090,
-    "tls_cert": "/etc/agentrt/certs/server.crt",
-    "tls_key": "/etc/agentrt/certs/server.key",
-    "rate_limit": {
-      "enabled": true,
-      "requests_per_second": 1000,
-      "requests_per_minute": 50000,
-      "burst_size": 2000
-    },
-    "cors": {
-      "allowed_origins": ["*"],
-      "allowed_methods": ["GET", "POST", "OPTIONS"]
-    }
-  }
-}
-```
-
-## API
-
-### Lifecycle
+Lifecycle and control (see `include/gateway.h`):
 
 | Function | Description |
 |----------|-------------|
 | `gateway_http_create(host, port)` | Create an HTTP gateway instance |
 | `gateway_ws_create(host, port)` | Create a WebSocket gateway instance |
-| `gateway_stdio_create()` | Create a Stdio gateway instance |
-| `gateway_destroy(gw)` | Destroy a gateway instance and release resources |
+| `gateway_stdio_create()` | Create a Stdio gateway instance (blocking REPL after start) |
 | `gateway_start(gw)` | Start the gateway (HTTP/WS non-blocking; Stdio blocking) |
 | `gateway_stop(gw)` | Gracefully stop the gateway |
-
-### Control & Query
-
-| Function | Description |
-|----------|-------------|
-| `gateway_set_handler(gw, handler, user_data)` | Set a custom request handler callback |
+| `gateway_destroy(gw)` | Destroy the instance and release resources |
+| `gateway_set_handler(gw, handler, user_data)` | Install a custom request-handler callback |
 | `gateway_register_endpoint(gw, method, path, handler, user_data)` | Register a dynamic HTTP endpoint |
-| `gateway_get_type(gw)` | Get the gateway type enum |
+| `gateway_get_type(gw)` | Get the gateway type (`HTTP` / `WS` / `STDIO`) |
 | `gateway_is_running(gw)` | Check whether the gateway is running |
-| `gateway_get_stats(gw, out_json)` | Get JSON-format statistics |
+| `gateway_get_stats(gw, out_json)` | Get a JSON statistics snapshot (caller frees) |
 | `gateway_get_name(gw)` | Get the gateway name |
-
-### Error codes
-
-`GATEWAY_SUCCESS` (0), `GATEWAY_ERROR_INVALID` (-1), `GATEWAY_ERROR_MEMORY` (-2), `GATEWAY_ERROR_IO` (-3), `GATEWAY_ERROR_TIMEOUT` (-4), `GATEWAY_ERROR_CLOSED` (-5), `GATEWAY_ERROR_PROTOCOL` (-6).
-
-### Usage example
 
 ```c
 #include "gateway.h"
@@ -244,7 +134,7 @@ int main(void) {
     gateway_start(gw);
 
     char *stats = NULL;
-    gateway_get_stats(gw, &stats);
+    gateway_get_stats(gw, &stats);   /* caller frees */
     printf("Stats: %s\n", stats);
     free(stats);
 
@@ -254,11 +144,85 @@ int main(void) {
 }
 ```
 
+### Error codes
+
+`GATEWAY_SUCCESS` (0), `GATEWAY_ERROR_INVALID` (-1), `GATEWAY_ERROR_MEMORY` (-2), `GATEWAY_ERROR_IO` (-3), `GATEWAY_ERROR_TIMEOUT` (-4), `GATEWAY_ERROR_CLOSED` (-5), `GATEWAY_ERROR_PROTOCOL` (-6).
+
+Boundary rejections are reported as JSON-RPC errors: authentication failure (`-32001`), unsafe URL (`-32002`), rate limit exceeded (`-32004`), parse error (`-32700`), method not found (`-32601`), oversized request (`413`), internal error (`-32603`).
+
+## Build
+
+```bash
+# Requires cJSON development headers (hard dependency).
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DBUILD_BENCHMARK=ON
+cmake --build build --target gateway --parallel
+
+# Tests
+ctest --test-dir build --output-on-failure
+
+# Static analysis & formatting
+cmake --build build --target cppcheck
+cmake --build build --target format
+```
+
+**CMake options:**
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `BUILD_TESTS` | `ON` | Build the unit-test targets (disabled on Windows) |
+| `BUILD_BENCHMARK` | `ON` | Build the benchmark target (Linux only) |
+
+**Conditional compilation:**
+
+| Feature | Macro | Behavior when absent |
+|---------|-------|----------------------|
+| cJSON | `AIRY_HAS_CJSON` | **Hard failure** — `FATAL_ERROR` (stub libraries are not supported) |
+| HTTP/1.1 | `AIRY_HAS_MICROHTTPD` → `GATEWAY_HAS_HTTP` | HTTP gateway unavailable |
+| WebSocket | `AIRY_HAS_LIBWEBSOCKETS` | WebSocket gateway unavailable |
+| HTTP/2 | `AIRY_HAS_HTTP2` | HTTP/2 gateway unavailable; **always disabled on Windows (POSIX only)** |
+| libcurl | `AIRY_HAS_CURL` | Benchmark runs in simulation mode |
+
+**Artifact:** static library `gateway`; public headers install under `include/agentrt/gateway`.
+
+### Runtime configuration
+
+The gateway is configured through environment variables (there is no JSON config file).
+
+| Variable | Purpose |
+|----------|---------|
+| `GATEWAY_API_KEY` | API key for entry authentication |
+| `GATEWAY_RATE_LIMIT_ENABLED` / `_RPS` / `_RPM` | Enable rate limiting; requests per second / minute |
+| `GATEWAY_CORS_MODE` / `GATEWAY_CORS_ORIGINS` | CORS policy |
+| `GATEWAY_HTTP_CONN_LIMIT` / `GATEWAY_HTTP_TIMEOUT` / `GATEWAY_HTTP_THREADS` | HTTP/1.1 server tuning |
+| `GATEWAY_HTTP2_MAX_STREAMS` / `GATEWAY_HTTP2_TIMEOUT` | HTTP/2 server tuning |
+| `GATEWAY_MAX_REQUEST_SIZE` | Maximum request body size |
+| `GATEWAY_PROTOCOL_HANDLER` | Protocol-handler selection |
+| `AIRY_LLM_SOCK` / `AIRY_LLM_TCP_ADDR` / `AIRY_LLM_TCP_PORT` | LLM backend endpoint |
+| `AIRY_AGENT_SOCK` / `AIRY_TOOL_SOCK` | Agent / tool backend endpoints |
+| `AIRY_AGENT_MODEL` | Default model for agent runs |
+| `AIRY_GW_SSE_MAX_TOKENS` / `AIRY_GW_SSE_MAX_TOOL_LOOPS` | SSE stream limits |
+| `AIRY_MAX_SESSIONS` / `AIRY_RATE_LIMIT_TABLE_SIZE` | Session and rate-limiter table sizes |
+| `AIRY_STDIO_BUFFER_SIZE` / `AIRY_GATEWAY_MEM_PUBLIC` | Stdio buffer size; public-memory flag |
+
+## Relationships
+
+**Upstream dependencies** (linked by this module):
+
+| Dependency | Provides |
+|------------|----------|
+| [protocols](https://atomgit.com/openairymax/protocols) | Router / gateway / registry interfaces and the A2A / MCP / OpenAI adapters (`airy_protocols`) |
+| [agentrt atoms](https://atomgit.com/openairymax/atoms) | Syscall dispatch target and memory primitives (`airy_memory`) |
+| [agentrt commons](https://atomgit.com/openairymax/commons) | Platform, types, error, logging, and sync foundation (`airy_common`, `svc_common`, `airy_syscall`) |
+| cJSON (external) | JSON parsing — **hard dependency** |
+| libmicrohttpd / libwebsockets / nghttp2 / OpenSSL | HTTP, WebSocket, HTTP/2, and TLS transports |
+
+**Downstream consumers:** the gateway daemon host wraps this library and runs it as a system service; SDKs and agent applications connect over HTTP / WebSocket / SSE / Stdio / MCP.
+
 ## License
 
-Copyright (c) 2025-2026 SPHARX Ltd. All Rights Reserved.
+Copyright (c) 2025-2026 SPHARX Ltd.
 
-This module is dual-licensed under the terms of either:
+This module is open source and dual-licensed; you may choose either license:
 
 - **GNU Affero General Public License v3.0 or later**
   ([AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.txt)), or
@@ -267,4 +231,4 @@ This module is dual-licensed under the terms of either:
 
 SPDX-License-Identifier: `AGPL-3.0-or-later OR Apache-2.0`
 
-The full license texts are in the [LICENSE](LICENSE) file; the copyright notice is in [NOTICE](NOTICE). You may select either license to comply with. The AGPL-3.0-or-later terms apply by default; the Apache-2.0 alternative is provided for downstream integration scenarios (e.g., closed-source or proprietary distribution) that the AGPL does not accommodate.
+The full license texts are in [LICENSE](LICENSE); the copyright notice is in [NOTICE](NOTICE).
