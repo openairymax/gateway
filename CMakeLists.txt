@@ -361,6 +361,19 @@ if(BUILD_TESTS AND NOT WIN32)
     )
     add_test(NAME gw_daemon_roundtrip COMMAND test_gw_daemon_roundtrip)
 
+    # 0.1.16 B3 E2E：南向 A-IPC 统一客户端面往返（gw_aipc_call 分片聚合 /
+    # gw_aipc_stream 连接下发 / gw_aipc_subscribe 握手 / 不可达快速失败）。
+    # mock daemon 走真实 UDS accept/往返；socket 位于 /tmp（pid 后缀）。
+    add_executable(test_gw_aipc_client_e2e tests/test_gw_aipc_client_e2e.c)
+    target_compile_definitions(test_gw_aipc_client_e2e PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_include_directories(test_gw_aipc_client_e2e PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/biz
+        ${CMAKE_CURRENT_SOURCE_DIR}/../commons/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/memory
+    )
+    target_link_libraries(test_gw_aipc_client_e2e gateway)
+    add_test(NAME gw_aipc_client_e2e COMMAND test_gw_aipc_client_e2e)
+
     # 性能基准测试工具 (C-W1-004 / PERF-001~003)
     # gateway_benchmark.c 直接使用 pthread_barrier_*（Linux 扩展，macOS
     # ld64/Apple 无 pthread_barrier，MSVC 无 pthread）及 __atomic 内建与

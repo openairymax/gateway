@@ -37,6 +37,9 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_memory.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_hall_watch.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_run_stream.c
+    # 0.1.16 B3：南向 A-IPC 统一客户端面（AF_UNIX 唯一合法落点，门禁 N2）；
+    # 依赖 daemon_l1_server（L2 先行路），两侧消费方均经 svc_common 解析
+    ${GATEWAY_SRC_BASE}/src/biz/gateway_aipc_client.c
     # http2 家族：无条件编译（缺库为空 TU，实现由 AIRY_HAS_HTTP2 守卫）
     ${GATEWAY_SRC_BASE}/src/gateway/http2_gateway.c
     ${GATEWAY_SRC_BASE}/src/gateway/http2_gateway_event.c

@@ -12,6 +12,9 @@
 
 #include "http_gateway_sse_internal.h"
 
+/* 0.1.16 B3: southbound A-IPC unified client face */
+#include "biz/gateway_aipc_client.h"
+
 /* ── Socket resolution ─────────────────────────────────────────────── */
 
 void gw_sse_resolve_tool_sock(char *out, size_t out_size)
@@ -42,105 +45,31 @@ int gw_sse_max_tool_loops(void)
     return GW_SSE_MAX_TOOL_LOOPS;
 }
 
-/* ── Generic Unix-socket JSON-RPC (used by tool execution) ─────────── */
-
-static char *gw_sse_rpc(const char *sock_path, const char *req_json, int timeout_s)
-{
-#ifndef _WIN32
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0)
-        return NULL;
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
-        return NULL;
-    }
-    struct timeval tv = {timeout_s, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    size_t len = strlen(req_json);
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, req_json + sent, len - sent, 0);
-        if (n <= 0) {
-            close(fd);
-            return NULL;
-        }
-        sent += (size_t)n;
-    }
-
-    size_t cap = 65536;
-    size_t used = 0;
-    char *resp = (char *)AIRY_MALLOC(cap);
-    if (!resp) {
-        close(fd);
-        return NULL;
-    }
-    resp[0] = '\0';
-    char buf[4096];
-    for (;;) {
-        ssize_t n = recv(fd, buf, sizeof(buf), 0);
-        if (n <= 0)
-            break;
-        if (used + (size_t)n + 1 > cap) {
-            size_t new_cap = (used + (size_t)n + 1) * 2;
-            if (new_cap > 1048576) {
-                AIRY_FREE(resp);
-                close(fd);
-                return NULL;
-            }
-            char *np = (char *)AIRY_REALLOC(resp, new_cap);
-            if (!np) {
-                AIRY_FREE(resp);
-                close(fd);
-                return NULL;
-            }
-            resp = np;
-            cap = new_cap;
-        }
-        AIRY_MEMCPY(resp + used, buf, (size_t)n);
-        used += (size_t)n;
-        resp[used] = '\0';
-    }
-    close(fd);
-    return resp;
-#else
-    (void)sock_path;
-    (void)req_json;
-    (void)timeout_s;
-    return NULL;
-#endif
-}
-
 /* ── Tool execution ────────────────────────────────────────────────── */
 
 int gw_sse_execute_tool(const char *tool_sock, const char *name, const char *args_json,
                         char **out_text)
 {
     *out_text = NULL;
-    cJSON *req = cJSON_CreateObject();
-    if (!req)
-        return -1;
-    cJSON_AddStringToObject(req, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(req, "id", 1);
-    cJSON_AddStringToObject(req, "method", "execute_tool");
     cJSON *params = cJSON_CreateObject();
+    if (!params)
+        return -1;
     cJSON_AddStringToObject(params, "tool_id", name);
     cJSON *pargs = cJSON_Parse(args_json && args_json[0] ? args_json : "{}");
     if (!pargs)
         pargs = cJSON_CreateObject();
     cJSON_AddItemToObject(params, "params", pargs);
-    cJSON_AddItemToObject(req, "params", params);
-    char *req_str = cJSON_PrintUnformatted(req);
-    cJSON_Delete(req);
-    if (!req_str)
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
         return -1;
 
-    char *resp = gw_sse_rpc(tool_sock, req_str, GW_SSE_RECV_TIMEOUT_S);
-    AIRY_FREE(req_str);
+    /* 0.1.16 B3: the southbound transport lives in the unified A-IPC client
+     * face (REQUEST/RESPONSE over gw_aipc_call); the former handwritten UDS
+     * client (gw_sse_rpc) is gone. */
+    char *resp = gw_aipc_call(tool_sock, "execute_tool", params_str,
+                              GW_SSE_RECV_TIMEOUT_S * 1000);
+    AIRY_FREE(params_str);
     if (!resp) {
         *out_text = AIRY_STRDUP("Tool service unreachable");
         return -1;

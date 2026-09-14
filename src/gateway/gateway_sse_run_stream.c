@@ -17,6 +17,9 @@
 
 #include "http_gateway_sse_internal.h"
 
+/* 0.1.16 B3: southbound A-IPC unified client face */
+#include "biz/gateway_aipc_client.h"
+
 #include "airy_memory.h"
 #include "airy_run_stream.h"
 #include "logging.h"
@@ -77,31 +80,12 @@ static char *rs_build_request(const cJSON *params)
     return req_str;
 }
 
-/* 连接 agent.sock 并发送 run_stream 请求；返回 fd（-1 失败） */
+/* 连接 agent.sock 并发送 run_stream 请求；返回 fd（-1 失败）。
+ * 0.1.16 B3：连接 + 请求下发收口到统一 A-IPC 客户端面
+ * （gw_aipc_stream 过渡态，poll_timeout 0 = 保持阻塞 recv 语义）。 */
 static int rs_connect(const char *sock_path, const char *req_json)
 {
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0)
-        return -1;
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
-        return -1;
-    }
-    size_t len = strlen(req_json);
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, req_json + sent, len - sent, 0);
-        if (n <= 0) {
-            close(fd);
-            return -1;
-        }
-        sent += (size_t)n;
-    }
-    return fd;
+    return gw_aipc_stream(sock_path, req_json, 0);
 }
 
 /* 追加一块数据到行缓冲（超出上限截断丢弃，防无限膨胀） */

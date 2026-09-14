@@ -15,6 +15,7 @@
 
 #include "gateway_pep_cache.h"
 
+#include "gateway_aipc_client.h" /* 0.1.16 B3: southbound A-IPC unified client face */
 #include "airy_memory.h"
 #include "daemon_security.h"
 #include "logging.h"
@@ -29,8 +30,6 @@
 #ifndef _WIN32
 #include <poll.h>
 #include <pthread.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 #endif
 
@@ -307,24 +306,9 @@ static void *epoch_watch_main(void *arg)
     }
 
     for (;;) {
-        int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (fd < 0) {
-            AIRY_LOG_WARN("gateway PEP: epoch watch socket() failed, retry in 2s");
-            sleep(2);
-            continue;
-        }
-        struct sockaddr_un addr;
-        __builtin_memset(&addr, 0, sizeof(addr));
-        addr.sun_family = AF_UNIX;
-        snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", a->path);
-        if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-            AIRY_LOG_WARN("gateway PEP: notify_d unreachable (%s), retry in 2s", a->path);
-            close(fd);
-            sleep(2);
-            continue;
-        }
-
-        /* SSE 握手：notify_d 将本连接注册为长连接订阅客户端 */
+        /* SSE 握手：notify_d 将本连接注册为长连接订阅客户端。
+         * 0.1.16 B3：连接 + 握手下发收口到统一 A-IPC 客户端面
+         * （gw_aipc_subscribe 过渡态），本地手搓 socket 创建已删除。 */
         char hdr[512];
         int hl = snprintf(hdr, sizeof(hdr),
                           "GET /events HTTP/1.1\r\n"
@@ -333,9 +317,14 @@ static void *epoch_watch_main(void *arg)
                           "Connection: keep-alive\r\n"
                           "X-Client-Id: gateway-pep\r\n"
                           "\r\n");
-        if (hl <= 0 || hl >= (int)sizeof(hdr) ||
-            send(fd, hdr, (size_t)hl, 0) <= 0) {
-            close(fd);
+        if (hl <= 0 || hl >= (int)sizeof(hdr)) {
+            AIRY_LOG_WARN("gateway PEP: epoch watch handshake build failed, retry in 2s");
+            sleep(2);
+            continue;
+        }
+        int fd = gw_aipc_subscribe(a->path, hdr, (size_t)hl);
+        if (fd < 0) {
+            AIRY_LOG_WARN("gateway PEP: notify_d unreachable (%s), retry in 2s", a->path);
             sleep(2);
             continue;
         }
