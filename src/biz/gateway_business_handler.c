@@ -14,8 +14,8 @@
  * Split from the original 2608-line monolith by single responsibility
  * (2026-08-11):
  *   - gateway_biz_forward.c  namespace forwarding (L2 protocol client)
- *   - gateway_biz_llm.c      LLM calls + tool loop (ReAct)
- *   - gateway_biz_agent.c    agent.run orchestration (dual-think injection + cancel)
+ *   - gateway_biz_agent.c    LLM calls + ReAct tool loop + agent.run
+ *                            orchestration (dual-think injection + cancel)
  *   - gateway_biz_backend.c  MCP/OpenAI/A2A protocol backends
  *   - gateway_biz_hall.c     hall.* task board / event stream / chain (in-gateway)
  *   - gateway_cap_registry.c unified capability registry (0.1.6 P1-4: cap_key
