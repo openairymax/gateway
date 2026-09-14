@@ -316,6 +316,51 @@ if(BUILD_TESTS AND NOT WIN32)
     target_link_libraries(test_gateway_auth gateway)
     add_test(NAME gateway_auth_test COMMAND test_gateway_auth)
 
+    # 0.1.16 审计 E2E：网关翻译层经注入钩子派发至 mock daemon socket，
+    # 校验 ns→端点映射、legacy wire 前缀改写与响应原文回传（10 用例）。
+    # 链接 airy_gateway_service（biz 派发实现：gw_sys_svc_dispatch_* /
+    # gw_svc_call，归 daemons/gateway_d 消费，不进纯 gateway 库）+ gateway
+    # （公共翻译层：jsonrpc / syscall_router）。两侧源清单互补不重叠。
+    # gateway_biz_internal.h 传递包含 gateway_mcp_server.h（宿主导协议头），
+    # 故需显式补 daemons/gateway_d/src/protocol。
+    add_executable(test_svcdispatch_e2e tests/test_svcdispatch_e2e.c)
+    target_compile_definitions(test_svcdispatch_e2e PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_include_directories(test_svcdispatch_e2e PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/biz
+        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/gateway_d/src/protocol
+        ${COREKERN_DIR}/include
+        ${SYSCALL_DIR}/include
+        ${COMMONS_DIR}/include
+        ${COMMONS_DIR}/utils/include
+        ${COMMONS_DIR}/utils/memory
+    )
+    target_link_libraries(test_svcdispatch_e2e
+        airy_gateway_service
+        gateway
+    )
+    add_test(NAME svcdispatch_e2e COMMAND test_svcdispatch_e2e)
+
+    # 0.1.16 审计 E2E：gateway↔daemon 双 transport 往返（Blueprint 8.3.3
+    # 灰度矩阵：socket / corekern L2 优先 / 卸载回落，3 Case）。
+    add_executable(test_gw_daemon_roundtrip tests/test_gw_daemon_roundtrip.c)
+    target_compile_definitions(test_gw_daemon_roundtrip PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_include_directories(test_gw_daemon_roundtrip PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/biz
+        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/gateway_d/src/protocol
+        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
+        ${COREKERN_DIR}/include
+        ${SYSCALL_DIR}/include
+        ${COMMONS_DIR}/include
+        ${COMMONS_DIR}/utils/include
+        ${COMMONS_DIR}/utils/memory
+        ${COMMONS_DIR}/utils/ipc
+    )
+    target_link_libraries(test_gw_daemon_roundtrip
+        airy_gateway_service
+        gateway
+    )
+    add_test(NAME gw_daemon_roundtrip COMMAND test_gw_daemon_roundtrip)
+
     # 性能基准测试工具 (C-W1-004 / PERF-001~003)
     # gateway_benchmark.c 直接使用 pthread_barrier_*（Linux 扩展，macOS
     # ld64/Apple 无 pthread_barrier，MSVC 无 pthread）及 __atomic 内建与
