@@ -17,9 +17,6 @@
 #ifndef HTTP_GATEWAY_ROUTES_H
 #define HTTP_GATEWAY_ROUTES_H
 
-/* SSE chat streaming route path (shared by the route table in
- * http_gateway_routes.c and the streaming handler in http_gateway_sse.c). */
-#define GW_SSE_CHAT_PATH "/api/v1/chat/stream"
 /* M1-1d：agent.run_stream SSE 纯翻译端点（§2.4 v1 事件帧协议） */
 #define GW_SSE_RUN_STREAM_PATH "/api/v1/agent/run/stream"
 
@@ -63,16 +60,6 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
  */
 int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connection,
                           http_request_context_t *context);
-
-/**
-  * @brief Handle POST /api/v1/chat/stream (SSE streaming chat)
-  *
-  * The gateway proxies llm_d complete_stream: parses OpenAI messages /
-  * simplified JSON-RPC agent.run bodies, pulls chunks from llm_d and forwards
-  * them as SSE events (data: <chunk>\n\n, then data: [DONE] at EOF).
- */
-int handle_chat_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
-                           http_request_context_t *context);
 
 /**
   * @brief Handle GET /api/v1/hall/watch (SSE hall event push)

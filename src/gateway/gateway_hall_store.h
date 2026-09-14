@@ -8,12 +8,11 @@
  * The runtime writes the single-source-of-truth event flow (hall_store,
  * atoms/coreloopthree) into $AIRY_DATA_DIR/agentrt/hall, and the gateway
  * already implements the read side (gateway_biz_hall.c: hall.board/tasks/
- * replay/stream). This module adds the counterpart write side so that
- * sessions that never touch the in-process hall handle - SSE streaming
- * chat (handle_chat_stream_sse) and gateway-orchestrated agent.run - still
- * produce visible events (decision chain / board), keeping the invariant
- * "what a client can see is what has been recorded" across all entry
- * points.
+ * replay/stream). This module provides the counterpart write side so that
+ * gateway-side entries that never touch the in-process hall handle - e.g.
+ * capability-registry events (gateway_cap_registry.c) - still produce
+ * visible events (decision chain / board), keeping the invariant "what a
+ * client can see is what has been recorded" across all entry points.
  *
  * Event file format is byte-for-byte aligned with hall_store.c:
  *   root:  $AIRY_DATA_DIR/agentrt/hall

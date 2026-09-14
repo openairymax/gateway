@@ -330,7 +330,6 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
   * 3. 3. Fall back to the default route (handle_not_found)
  */
 static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc, 0, 1},
-                                           {"POST", GW_SSE_CHAT_PATH, handle_chat_stream_sse, 1, 1},
                                            {"POST", GW_SSE_RUN_STREAM_PATH, handle_run_stream_sse, 1, 1},
                                            {"GET", "/api/v1/hall/watch", handle_hall_watch_sse, 0, 1},
                                            {"OPTIONS", "*", handle_options_preflight, 0, 0},

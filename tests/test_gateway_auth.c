@@ -51,8 +51,6 @@ static void auth_route_sensitive_matrix(void)
 {
     /* 敏感面：聚合 JSON-RPC + 全部 SSE + metrics（T-11a 范围） */
     CHECK(http_gateway_route_auth_required("POST", "/") == 1, "POST / is sensitive");
-    CHECK(http_gateway_route_auth_required("POST", "/api/v1/chat/stream") == 1,
-          "POST chat/stream is sensitive");
     CHECK(http_gateway_route_auth_required("POST", "/api/v1/agent/run/stream") == 1,
           "POST agent/run/stream is sensitive");
     CHECK(http_gateway_route_auth_required("GET", "/api/v1/hall/watch") == 1,
@@ -62,6 +60,11 @@ static void auth_route_sensitive_matrix(void)
     /* 公开面：CORS 预检与健康探针（K8s liveness 不携带凭证） */
     CHECK(http_gateway_route_auth_required("OPTIONS", "/") == 0, "OPTIONS preflight is public");
     CHECK(http_gateway_route_auth_required("GET", "/health") == 0, "GET /health is public");
+
+    /* 0.1.16 B6：legacy /api/v1/chat/stream 路由已物理移除（退役端点），
+     * 不再登记于 http_routes 表 → 分类器按未登记路由返回 0；防止无声再生。 */
+    CHECK(http_gateway_route_auth_required("POST", "/api/v1/chat/stream") == 0,
+          "retired chat/stream route not registered");
 
     /* 未登记路由不在此判定（404/动态端点由 T-11c 监听面收敛处置） */
     CHECK(http_gateway_route_auth_required("GET", "/nope") == 0, "unknown route not classified");
