@@ -176,9 +176,19 @@ char *gw_sse_feedback(const char *text);
 
 /* ── gateway_sse_memory.c ──────────────────────────────────────────── */
 
-void gw_sse_mem_inject(cJSON *history, const char *prompt);
-void gw_sse_mem_record(gw_sse_ctx_t *sctx);
-char *gw_sse_utf8_sanitize(const char *s, size_t len);
+void   gw_sse_mem_inject(cJSON *history, const char *prompt);
+void   gw_sse_mem_record(gw_sse_ctx_t *sctx);
+char  *gw_sse_utf8_sanitize(const char *s, size_t len);
+/* 返回不超过 min(avail,max_bytes) 的最长 UTF-8 安全前缀长度（不切断多字节
+ * 序列、不越界探测）。注入侧与写回侧共用，单测直接覆盖。 */
+size_t gw_sse_utf8_safe_len(const char *s, size_t avail, size_t max_bytes);
+/* 组装写回 mem_d 的 "用户: …/AgentRT: …" 记录体（UTF-8 边界安全 + 清洗）。
+ * 返回堆分配字符串，调用方 AIRY_FREE；参数非法/失败返回 NULL。 */
+char  *gw_sse_mem_format_record(const char *user_prompt, const char *final_text);
+/* 组装写回 mem_d 的 metadata JSON（reasoning 经 UTF-8 边界回退 + 清洗后再
+ * JSON 转义，保证产物无残余非法字节、且为完整合法 JSON）。返回写入长度
+ * （不含 NUL），cap 不足/参数非法返回 -1。回归用例直接覆盖。 */
+int    gw_sse_mem_build_meta(char *meta, size_t cap, const gw_sse_ctx_t *sctx);
 
 /* ── Shared helpers (defined in http_gateway_sse.c) ────────────────── */
 
