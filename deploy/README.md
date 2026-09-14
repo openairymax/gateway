@@ -1,7 +1,7 @@
 # Gateway Deploy — Kubernetes 部署配置
 
 **位置：** `deploy/k8s/`
-**版本：** 0.1.15
+**版本：** 0.1.16
 
 ## 概述
 
