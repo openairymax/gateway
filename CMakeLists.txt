@@ -290,6 +290,13 @@ if(BUILD_TESTS AND NOT WIN32)
     target_link_libraries(test_sse_stream gateway)
     add_test(NAME sse_stream_test COMMAND test_sse_stream)
 
+    # SSE 记忆子系统 UTF-8 边界回归（N-1：记忆注入/写回不得产生半字符非法
+    # UTF-8，否则召回后注入请求体，provider 直接回 400）
+    add_executable(test_sse_utf8 tests/test_sse_utf8.c)
+    target_compile_definitions(test_sse_utf8 PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_link_libraries(test_sse_utf8 gateway)
+    add_test(NAME sse_utf8_test COMMAND test_sse_utf8)
+
     # jsonrpc 协议测试 (17个用例)
     add_executable(test_jsonrpc tests/test_jsonrpc.c)
     target_compile_definitions(test_jsonrpc PRIVATE AIRY_COMPLIANCE_IMPL)
