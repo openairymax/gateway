@@ -14,8 +14,14 @@
 
 #include "http_gateway_sse_internal.h"
 
+#include "airy_string.h"
+
 /* ── UTF-8 sanitiser ───────────────────────────────────────────────── */
 
+/* 统一基础库 string_utf8_sanitize() 是全仓唯一的 UTF-8 清洗权威实现
+ * （RFC 3629 全量判定：截断尾序列、overlong、代理区、>U+10FFFF 一律替换
+ * U+FFFD）。本函数仅保留 gateway 内既有的「malloc 返回串」签名形状，
+ * 判定逻辑全部委托权威实现，禁止在此复制第二套状态机。 */
 char *gw_sse_utf8_sanitize(const char *s, size_t len)
 {
     if (!s)
@@ -23,41 +29,8 @@ char *gw_sse_utf8_sanitize(const char *s, size_t len)
     char *out = (char *)AIRY_MALLOC(len * 3 + 1);
     if (!out)
         return NULL;
-    size_t o = 0;
-    size_t i = 0;
-    while (i < len) {
-        unsigned char c = (unsigned char)s[i];
-        size_t need = 0;
-        if (c < 0x80) {
-            out[o++] = (char)c;
-            i += 1;
-            continue;
-        } else if ((c & 0xE0) == 0xC0) {
-            need = 2;
-        } else if ((c & 0xF0) == 0xE0) {
-            need = 3;
-        } else if ((c & 0xF8) == 0xF0) {
-            need = 4;
-        }
-        int valid = 1;
-        for (size_t k = 1; need && k < need; ++k) {
-            if (i + k >= len || ((unsigned char)s[i + k] & 0xC0) != 0x80) {
-                valid = 0;
-                break;
-            }
-        }
-        if (need && valid) {
-            for (size_t k = 0; k < need; ++k)
-                out[o++] = s[i + k];
-            i += need;
-        } else {
-            out[o++] = (char)0xEF;
-            out[o++] = (char)0xBF;
-            out[o++] = (char)0xBD;
-            i += 1;
-        }
-    }
-    out[o] = '\0';
+    size_t written = string_utf8_sanitize(s, len, out, len * 3 + 1);
+    out[written] = '\0';
     return out;
 }
 
