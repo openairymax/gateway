@@ -1,15 +1,15 @@
-# gateway — HTTP/WS/SSE/Stdio → JSON-RPC 2.0 protocol gateway
+# gateway — System Protocol Gateway Layer (HTTP/WS/SSE/Stdio → JSON-RPC 2.0)
 
 > The external entry point into the Airymax runtime: every inbound HTTP, HTTP/2, WebSocket, SSE, Stdio, MCP, A2A, or OpenAI-compatible request is translated into a unified JSON-RPC 2.0 call and dispatched to the runtime.
 
 **Language:** English | [简体中文](README_zh.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.15-5a6b7e)](https://atomgit.com/openairymax/gateway)
+[![Version](https://img.shields.io/badge/version-0.1.16-5a6b7e)](https://atomgit.com/openairymax/gateway)
 [![License](https://img.shields.io/badge/license-AGPL--3.0+Apache--2.0-4a90d9)](LICENSE)
 [![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)](https://en.cppreference.com/w/c/11)
 
 - **Repository:** <https://atomgit.com/openairymax/gateway>
-- **Version:** 0.1.15
+- **Version:** 0.1.16
 - **Artifact:** static library `gateway`
 
 ---

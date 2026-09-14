@@ -1,15 +1,15 @@
-# gateway — HTTP/WS/SSE/Stdio → JSON-RPC 2.0 协议网关
+# gateway — 系统协议网关层（HTTP/WS/SSE/Stdio → JSON-RPC 2.0）
 
 > Airymax 运行时对外的统一入口：每一路入站的 HTTP、HTTP/2、WebSocket、SSE、Stdio、MCP、A2A 或 OpenAI 兼容请求，都会被翻译为统一的 JSON-RPC 2.0 调用并派发到运行时。
 
 **语言:** [English](README.md) | 简体中文
 
-[![Version](https://img.shields.io/badge/version-0.1.15-5a6b7e)](https://atomgit.com/openairymax/gateway)
+[![Version](https://img.shields.io/badge/version-0.1.16-5a6b7e)](https://atomgit.com/openairymax/gateway)
 [![License](https://img.shields.io/badge/license-AGPL--3.0+Apache--2.0-4a90d9)](LICENSE)
 [![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)](https://en.cppreference.com/w/c/11)
 
 - **仓库：** <https://atomgit.com/openairymax/gateway>
-- **版本：** 0.1.15
+- **版本：** 0.1.16
 - **产物：** 静态库 `gateway`
 
 ---
