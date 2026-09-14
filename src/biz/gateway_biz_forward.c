@@ -6,9 +6,10 @@
  * @file gateway_biz_forward.c
  * @brief Gateway namespace forwarding: L2 protocol client.
  *
- * Acts as the gateway -> daemon L2 service-protocol client
- * (<daemon>.<method>), providing a unified Unix-socket JSON-RPC call
- * (gw_svc_call) and the namespace forwarding handlers.
+ * Namespace forwarding handlers (<daemon>.<method>). The transport behind
+ * gw_svc_call moved to the unified southbound A-IPC client face
+ * (gateway_aipc_client.c) in 0.1.16 B3; this file keeps the legacy entry as
+ * a thin wrapper plus the forwarding/ACL logic.
  *
  * 0.1.6 P1-4 收敛：外部可调用方法的枚举/白名单统一由能力注册表
  * （gateway_cap_registry.h，cap_key 单一权威源）承载，本文件不再维护
@@ -24,25 +25,13 @@
 #include "logging.h"
 #include "platform.h"
 #include "daemon_security.h"
-#include "daemon_l1_server.h" /* blueprint 8.3.3: L2 first path in gw_svc_call */
+#include "gateway_aipc_client.h" /* 0.1.16 B3: southbound face owns the transport */
 
 #include "syscalls.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#endif
 
 char *jsonrpc_error(int code, const char *msg, const cJSON *id)
 {
@@ -73,13 +62,11 @@ char *jsonrpc_error(int code, const char *msg, const cJSON *id)
 }
 
 /**
- * @brief Generic daemon internal service call (Unix socket JSON-RPC)
+ * @brief Generic daemon internal service call (legacy entry, 0.1.16 B3)
  *
- * Builds {"jsonrpc":"2.0","method":<method>,"params":<params_json>,"id":1},
- * sends it to the target daemon socket and blocks until the full JSON response
- * is read. The gateway acts as a client of the L2 service protocol
- * (<daemon>.<method>) to call each daemon; daemons need no knowledge of the
- * external protocol.
+ * Thin wrapper kept for zero call-site churn: the transport (L2-first per
+ * blueprint 8.3.3, socket/TCP fallback) now lives in the unified southbound
+ * A-IPC client face (gateway_aipc_client.c). See gw_aipc_call().
  *
  * @param sock_path   Target daemon socket path
  * @param method      Internal service method (e.g. "spawn"/"invoke"/"write")
@@ -90,217 +77,7 @@ char *jsonrpc_error(int code, const char *msg, const cJSON *id)
 char *gw_svc_call(const char *sock_path, const char *method, const char *params_json,
                   int timeout_ms)
 {
-    /* Blueprint 8.3.3 grey rollout: when the ns transport switch resolves to
-     * "corekern" (the only case channel_for_socket succeeds), serve the call
-     * over the L2 channel. The _resp variant returns the complete JSON-RPC
-     * response — daemon error replies included verbatim — so the return
-     * contract matches the socket path below bit-for-bit. Any L2 miss falls
-     * through to the socket path: NOT_FOUND from channel_for_socket (switch
-     * off) skips the block entirely, ENOENT from connect (switch on but
-     * bridge not mounted yet: the grey coexistence norm) fails the call and
-     * drops to the fallback, as does any other transport loss. Stream and
-     * cancelable calls keep the socket path (daemon_rpc_client.c): chunked
-     * replies have no L2 mapping yet. */
-    char channel[64];
-    if (sock_path && daemon_l2_channel_for_socket(sock_path, channel, sizeof(channel)) == 0) {
-        char *l2_resp = NULL;
-        uint32_t l2_timeout = timeout_ms > 0 ? (uint32_t)timeout_ms : 0;
-        if (daemon_l2_rpc_call_resp(channel, method, params_json, l2_timeout, &l2_resp) ==
-            AIRY_SUCCESS)
-            return l2_resp;
-        /* transport on but bridge not mounted: fall back to the socket path */
-    }
-
-#ifndef _WIN32
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0)
-        return NULL;
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
-        return NULL;
-    }
-
-    struct timeval tv = {timeout_ms / 1000, (timeout_ms % 1000) * 1000};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    cJSON *req = cJSON_CreateObject();
-    if (!req) {
-        close(fd);
-        return NULL;
-    }
-    cJSON_AddStringToObject(req, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(req, "id", 1);
-    cJSON_AddStringToObject(req, "method", method);
-    if (params_json && params_json[0]) {
-        cJSON *p = cJSON_Parse(params_json);
-        cJSON_AddItemToObject(req, "params", p ? p : cJSON_CreateObject());
-    } else {
-        cJSON_AddItemToObject(req, "params", cJSON_CreateObject());
-    }
-    char *req_str = cJSON_PrintUnformatted(req);
-    cJSON_Delete(req);
-    if (!req_str) {
-        close(fd);
-        return NULL;
-    }
-
-    size_t len = strlen(req_str);
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, req_str + sent, len - sent, 0);
-        if (n <= 0) {
-            AIRY_FREE(req_str);
-            close(fd);
-            return NULL;
-        }
-        sent += (size_t)n;
-    }
-    AIRY_FREE(req_str);
-
-    size_t cap = 65536;
-    size_t used = 0;
-    char *resp = (char *)AIRY_MALLOC(cap);
-    if (!resp) {
-        close(fd);
-        return NULL;
-    }
-    resp[0] = '\0';
-    char buf[4096];
-    for (;;) {
-        ssize_t n = recv(fd, buf, sizeof(buf), 0);
-        if (n <= 0)
-            break;
-        if (used + (size_t)n + 1 > cap) {
-            size_t new_cap = (used + (size_t)n + 1) * 2;
-            if (new_cap > GW_LLM_MAX_RESP) {
-                AIRY_FREE(resp);
-                close(fd);
-                return NULL;
-            }
-            char *np = (char *)AIRY_REALLOC(resp, new_cap);
-            if (!np) {
-                AIRY_FREE(resp);
-                close(fd);
-                return NULL;
-            }
-            resp = np;
-            cap = new_cap;
-        }
-        AIRY_MEMCPY(resp + used, buf, (size_t)n);
-        used += (size_t)n;
-        resp[used] = '\0';
-    }
-    close(fd);
-    return resp;
-#else
-    /* Windows：daemon 统一走 TCP 回环（daemon_main.h parse_args 强制），
-     * sock_path 参数约定为 "host:port"（如 "127.0.0.1:8086"），与
-     * daemon_rpc_client 及 gateway 的 AIRY_LLM_TCP_ADDR/PORT 约定一致。 */
-    SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == INVALID_SOCKET)
-        return NULL;
-
-    char host[128];
-    char port_str[16];
-    const char *colon = sock_path ? strrchr(sock_path, ':') : NULL;
-    if (!colon || colon == sock_path || (size_t)(colon - sock_path) >= sizeof(host) ||
-        strlen(colon + 1) >= sizeof(port_str)) {
-        closesocket(fd);
-        return NULL;
-    }
-    size_t host_len = (size_t)(colon - sock_path);
-    AIRY_MEMCPY(host, sock_path, host_len);
-    host[host_len] = '\0';
-    AIRY_STRNCPY_TERM(port_str, colon + 1, sizeof(port_str));
-    struct sockaddr_in addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons((uint16_t)atoi(port_str));
-    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0)
-        addr.sin_addr.s_addr = INADDR_LOOPBACK;
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        closesocket(fd);
-        return NULL;
-    }
-
-    int timeout_ms_win = timeout_ms > 0 ? timeout_ms : GW_LLM_DEFAULT_TIMEOUT_MS;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms_win,
-               sizeof(timeout_ms_win));
-
-    cJSON *req = cJSON_CreateObject();
-    if (!req) {
-        closesocket(fd);
-        return NULL;
-    }
-    cJSON_AddStringToObject(req, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(req, "id", 1);
-    cJSON_AddStringToObject(req, "method", method);
-    if (params_json && params_json[0]) {
-        cJSON *p = cJSON_Parse(params_json);
-        cJSON_AddItemToObject(req, "params", p ? p : cJSON_CreateObject());
-    } else {
-        cJSON_AddItemToObject(req, "params", cJSON_CreateObject());
-    }
-    char *req_str = cJSON_PrintUnformatted(req);
-    cJSON_Delete(req);
-    if (!req_str) {
-        closesocket(fd);
-        return NULL;
-    }
-
-    size_t len = strlen(req_str);
-    size_t sent = 0;
-    while (sent < len) {
-        int n = send(fd, req_str + sent, (int)(len - sent), 0);
-        if (n <= 0) {
-            AIRY_FREE(req_str);
-            closesocket(fd);
-            return NULL;
-        }
-        sent += (size_t)n;
-    }
-    AIRY_FREE(req_str);
-
-    size_t cap = 65536;
-    size_t used = 0;
-    char *resp = (char *)AIRY_MALLOC(cap);
-    if (!resp) {
-        closesocket(fd);
-        return NULL;
-    }
-    resp[0] = '\0';
-    char buf[4096];
-    for (;;) {
-        int n = recv(fd, buf, sizeof(buf), 0);
-        if (n <= 0)
-            break;
-        if (used + (size_t)n + 1 > cap) {
-            size_t new_cap = (used + (size_t)n + 1) * 2;
-            if (new_cap > GW_LLM_MAX_RESP) {
-                AIRY_FREE(resp);
-                closesocket(fd);
-                return NULL;
-            }
-            char *np = (char *)AIRY_REALLOC(resp, new_cap);
-            if (!np) {
-                AIRY_FREE(resp);
-                closesocket(fd);
-                return NULL;
-            }
-            resp = np;
-            cap = new_cap;
-        }
-        AIRY_MEMCPY(resp + used, buf, (size_t)n);
-        used += (size_t)n;
-        resp[used] = '\0';
-    }
-    closesocket(fd);
-    return resp;
-#endif
+    return gw_aipc_call(sock_path, method, params_json, timeout_ms);
 }
 
 /**

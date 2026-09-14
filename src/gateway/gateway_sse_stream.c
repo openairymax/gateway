@@ -16,6 +16,9 @@
 /* OpenAI tools schema shared with gateway_d (SSoT, one-to-one with tool_d) */
 #include "airy_tool_schema.h"
 
+/* 0.1.16 B3: southbound A-IPC unified client face */
+#include "biz/gateway_aipc_client.h"
+
 /* ── Socket resolution ─────────────────────────────────────────────── */
 
 void gw_sse_resolve_llm_sock(char *out, size_t out_size)
@@ -76,40 +79,11 @@ int gw_sse_stream_start(const char *sock_path, const char *req_json, int timeout
 {
     /* timeout_s = llm 流空闲总预算（秒）；实际 recv 轮询窗口固定为
      * GW_SSE_POLL_TIMEOUT_S，空闲时由 content_reader 发 keep-alive，
-     * 总预算由调用方经 sctx->idle_deadline_ms 监督。 */
+     * 总预算由调用方经 sctx->idle_deadline_ms 监督。
+     * 0.1.16 B3：连接 + 请求下发收口到统一 A-IPC 客户端面
+     * （gw_aipc_stream 过渡态：fd 归调用方消费）。 */
     (void)timeout_s;
-#ifndef _WIN32
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0)
-        return -1;
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
-        return -1;
-    }
-    struct timeval tv = {GW_SSE_POLL_TIMEOUT_S, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    size_t len = strlen(req_json);
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, req_json + sent, len - sent, 0);
-        if (n <= 0) {
-            close(fd);
-            return -1;
-        }
-        sent += (size_t)n;
-    }
-    return fd;
-#else
-    (void)sock_path;
-    (void)req_json;
-    (void)timeout_s;
-    return -1;
-#endif
+    return gw_aipc_stream(sock_path, req_json, GW_SSE_POLL_TIMEOUT_S);
 }
 
 /* ── Stream buffer management ──────────────────────────────────────── */
