@@ -96,7 +96,6 @@ gateway/
 | 方法 | 路径 | 流式 | 鉴权 | 用途 |
 |------|------|------|------|------|
 | `POST` | `/` | 否 | 是 | JSON-RPC 2.0 入口（也承载 MCP / A2A / OpenAI 请求体） |
-| `POST` | `/api/v1/chat/stream` | SSE | 是 | 聊天流 |
 | `POST` | `/api/v1/agent/run/stream` | SSE | 是 | 智能体运行流 |
 | `GET` | `/api/v1/hall/watch` | SSE | 否 | hall 事件观察 |
 | `OPTIONS` | `*` | 否 | 否 | CORS 预检 |
@@ -200,7 +199,6 @@ cmake --build build --target format
 | `AIRY_LLM_SOCK` / `AIRY_LLM_TCP_ADDR` / `AIRY_LLM_TCP_PORT` | LLM 后端端点 |
 | `AIRY_AGENT_SOCK` / `AIRY_TOOL_SOCK` | 智能体 / 工具后端端点 |
 | `AIRY_AGENT_MODEL` | 智能体运行的默认模型 |
-| `AIRY_GW_SSE_MAX_TOKENS` / `AIRY_GW_SSE_MAX_TOOL_LOOPS` | SSE 流式上限 |
 | `AIRY_MAX_SESSIONS` / `AIRY_RATE_LIMIT_TABLE_SIZE` | 会话与限流表大小 |
 | `AIRY_STDIO_BUFFER_SIZE` / `AIRY_GATEWAY_MEM_PUBLIC` | Stdio 缓冲区大小；公共内存标志 |
 

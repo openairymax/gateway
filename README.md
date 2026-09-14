@@ -96,7 +96,6 @@ The static route table (see `src/gateway/http_gateway_routes.c`):
 | Method | Path | Streaming | Auth | Purpose |
 |--------|------|-----------|------|---------|
 | `POST` | `/` | no | yes | JSON-RPC 2.0 entry (also MCP / A2A / OpenAI bodies) |
-| `POST` | `/api/v1/chat/stream` | SSE | yes | Chat stream |
 | `POST` | `/api/v1/agent/run/stream` | SSE | yes | Agent run stream |
 | `GET` | `/api/v1/hall/watch` | SSE | no | Hall event watch |
 | `OPTIONS` | `*` | no | no | CORS preflight |
@@ -200,7 +199,6 @@ The gateway is configured through environment variables (there is no JSON config
 | `AIRY_LLM_SOCK` / `AIRY_LLM_TCP_ADDR` / `AIRY_LLM_TCP_PORT` | LLM backend endpoint |
 | `AIRY_AGENT_SOCK` / `AIRY_TOOL_SOCK` | Agent / tool backend endpoints |
 | `AIRY_AGENT_MODEL` | Default model for agent runs |
-| `AIRY_GW_SSE_MAX_TOKENS` / `AIRY_GW_SSE_MAX_TOOL_LOOPS` | SSE stream limits |
 | `AIRY_MAX_SESSIONS` / `AIRY_RATE_LIMIT_TABLE_SIZE` | Session and rate-limiter table sizes |
 | `AIRY_STDIO_BUFFER_SIZE` / `AIRY_GATEWAY_MEM_PUBLIC` | Stdio buffer size; public-memory flag |
 

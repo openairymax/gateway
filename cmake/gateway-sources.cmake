@@ -31,10 +31,6 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_routes.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_sse.c
-    ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_frame.c
-    ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_stream.c
-    ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_tool.c
-    ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_memory.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_hall_watch.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_run_stream.c
     # 0.1.16 B3：南向 A-IPC 统一客户端面（AF_UNIX 唯一合法落点，门禁 N2）；
