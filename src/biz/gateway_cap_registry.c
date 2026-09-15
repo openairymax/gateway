@@ -107,6 +107,17 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"mem.kb_search", "mem", "kb_search", GW_CAP_KIND_MEM},
     {"mem.kb_delete", "mem", "kb_delete", GW_CAP_KIND_MEM},
     {"mem.kb_list", "mem", "kb_list", GW_CAP_KIND_MEM},
+    {"mem.cache_put", "mem", "cache_put", GW_CAP_KIND_MEM},
+    {"mem.cache_get", "mem", "cache_get", GW_CAP_KIND_MEM},
+    {"mem.cache_del", "mem", "cache_del", GW_CAP_KIND_MEM},
+    {"mem.cache_stats", "mem", "cache_stats", GW_CAP_KIND_MEM},
+    {"mem.ledger_append", "mem", "ledger_append", GW_CAP_KIND_MEM},
+    {"mem.ledger_window", "mem", "ledger_window", GW_CAP_KIND_MEM},
+    {"mem.ledger_budget", "mem", "ledger_budget", GW_CAP_KIND_MEM},
+    {"mem.ledger_mark", "mem", "ledger_mark", GW_CAP_KIND_MEM},
+    {"mem.ledger_history", "mem", "ledger_history", GW_CAP_KIND_MEM},
+    {"mem.ledger_stats", "mem", "ledger_stats", GW_CAP_KIND_MEM},
+    {"mem.compress", "mem", "compress", GW_CAP_KIND_MEM},
 
     /* ── a2a（Agent-to-Agent） ──────────────────────────────────── */
     {"a2a.register_agent", "a2a", "register_agent", GW_CAP_KIND_FWD},
