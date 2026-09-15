@@ -35,7 +35,7 @@
 extern "C" {
 #endif
 
-#define GW_LLM_DEFAULT_MODEL "deepseek-v4-flash"
+#define GW_LLM_DEFAULT_MODEL "deepseek-flash"
 /* LLM full-response timeout 90s: long-thinking / multi-tool_call rounds can
  * exceed 30s; the old 30s value made the gateway hit recv timeout while the
  * LLM had not yet returned, breaking the tool chain. */
