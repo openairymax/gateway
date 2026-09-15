@@ -78,9 +78,7 @@ char *route_session_methods(const char *method, cJSON *params, cJSON *request_id
 
     if (err != AIRY_SUCCESS) {
         cJSON_Delete(result);
-        char err_msg[64];
-        snprintf(err_msg, sizeof(err_msg), "System call failed: %d", err);
-        return jsonrpc_create_error_response(request_id, -32000, err_msg, NULL);
+        return gw_syscall_error_response(request_id, err);
     }
 
     return jsonrpc_create_success_response(request_id, result);
