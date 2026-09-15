@@ -119,6 +119,10 @@ char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id);
 int syscall_svc_call_unwrap(const char *ns, const char *method, const char *params_json,
                             int timeout_ms, char **out_result);
 
+/* C-5 收敛：syscall 契约错误统一出口。契约码经 airy_err_code_name/
+ * airy_err_str 语义化后才可进入 JSON-RPC 用户面，禁止裸数值直出。 */
+char *gw_syscall_error_response(cJSON *request_id, airy_err_t err);
+
 /* Mem domain thin IPC forwarders (syscall_router_memory.c). Declared here so
  * gateway route handlers (e.g. SSE chat memory injection) can call them with
  * a real prototype instead of an implicit int-returning declaration. */

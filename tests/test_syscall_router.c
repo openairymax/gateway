@@ -276,7 +276,50 @@ static void test_route_unknown_method(void)
 }
 
 /**
-  * @brief Verify syscall_router safety against NULL arguments
+ * @brief C-5 收敛回归：syscall 失败响应必须语义化（符号名+描述），
+ *        禁止 "System call failed: %d" 裸数值直出
+ */
+static void test_syscall_error_semantics(void)
+{
+    TEST_BEGIN("syscall_error_semantics");
+
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "input", "c5 semantics probe");
+    char *response = gateway_syscall_route("airy_sys_task_submit", params, NULL);
+    ASSERT_NOT_NULL(response);
+    cJSON_Delete(params);
+
+    CJSON_PARSE_GUARD(resp_json, response, {
+        TEST_FAIL("parse response failed");
+        return;
+    });
+
+    cJSON *result = cJSON_GetObjectItem(resp_json, "result");
+    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
+    if (result && !error) {
+        /* daemon 在线且受理成功：无失败样本，语义出口无从触发，跳过 */
+        cJSON_free(response);
+        TEST_PASS();
+        return;
+    }
+
+    ASSERT_NOT_NULL(error);
+    cJSON *msg = cJSON_GetObjectItem(error, "message");
+    ASSERT_NOT_NULL(msg);
+    ASSERT_NOT_NULL(msg->valuestring);
+
+    const char *m = msg->valuestring;
+    /* 语义化形态 "System call failed: ERR_XXX (desc) [-n]"：
+     * 符号名前缀 + 可读描述 + 诊断后缀；裸数字形态无 " (" 分隔 */
+    ASSERT_TRUE(strncmp(m, "System call failed: ERR_", 24) == 0);
+    ASSERT_TRUE(strstr(m, " (") != NULL && strstr(m, ") [") != NULL);
+
+    cJSON_free(response);
+    TEST_PASS();
+}
+
+/**
+ * @brief Verify syscall_router safety against NULL arguments
  */
 static void test_null_safety(void)
 {
@@ -357,6 +400,7 @@ int main(int argc, char **argv)
 
     printf("[Error Handling Tests]\n");
     test_route_unknown_method();
+    test_syscall_error_semantics();
     test_null_safety();
     test_method_prefix_matching();
     printf("\n");

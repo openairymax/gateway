@@ -62,6 +62,21 @@ int syscall_svc_call_unwrap(const char *ns, const char *method, const char *para
 }
 
 /**
+ * @brief C-5 收敛：syscall 契约错误统一出口（五域 route 共用，禁止副本漂移）。
+ *
+ * 契约码先语义化（符号名 + 可读描述）再进入 JSON-RPC error.message，
+ * 数字仅作诊断后缀保留；未登记码显式标注 ERR_UNKNOWN，便于第一时间
+ * 暴露契约缺口而非静默泄漏裸码。
+ */
+char *gw_syscall_error_response(cJSON *request_id, airy_err_t err)
+{
+    char err_msg[192];
+    snprintf(err_msg, sizeof(err_msg), "System call failed: %s (%s) [%d]",
+             airy_err_code_name(err), airy_err_str(err), (int)err);
+    return jsonrpc_create_error_response(request_id, -32000, err_msg, NULL);
+}
+
+/**
   * @brief Route a system call request
  */
 char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id)
