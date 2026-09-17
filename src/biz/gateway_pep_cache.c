@@ -3,7 +3,7 @@
 
 /**
  * @file gateway_pep_cache.c
- * @brief Gateway PEP 裁定缓存实现（M2-S5，0.1.9 §3.2）。
+ * @brief Gateway PEP 裁定缓存实现。
  *
  * 缓存键：(agent, tool, action) 三元组（FNV-1a 哈希 + 逐字段比对）。
  * 失效键：epoch——每次 miss RPC 返回权威 epoch，与本地已见 epoch 不等
@@ -15,7 +15,7 @@
 
 #include "gateway_pep_cache.h"
 
-#include "gateway_aipc_client.h" /* 0.1.16 B3: southbound A-IPC unified client face */
+#include "gateway_aipc_client.h" /* southbound A-IPC unified client face */
 #include "airy_memory.h"
 #include "daemon_security.h"
 #include "logging.h"
@@ -251,7 +251,7 @@ int gw_pep_check(const gateway_business_ctx_t *ctx, const char *agent, const cha
     return verdict;
 }
 
-/* ── M2-S4 epoch 主动失效（0.1.9 §3.2/§3.3.1） ────────────────────
+/* ── epoch 主动失效 ────────────────────────────────────────────────
  * gateway 订阅 notify_d topic=airy.cupolas.epoch：策略热更新（activate/
  * rollback，epoch+1 + 广播）到达时主动整体失效缓存，无需等下次 miss
  * RPC 才对齐——保证全 runtime 生效 < 1s（订阅面 fail-open：notify_d
@@ -307,8 +307,8 @@ static void *epoch_watch_main(void *arg)
 
     for (;;) {
         /* SSE 握手：notify_d 将本连接注册为长连接订阅客户端。
-         * 0.1.16 B3：连接 + 握手下发收口到统一 A-IPC 客户端面
-         * （gw_aipc_subscribe 过渡态），本地手搓 socket 创建已删除。 */
+         * 连接 + 握手统一走 A-IPC 客户端面（gw_aipc_subscribe），
+         * 本地手搓 socket 创建已删除。 */
         char hdr[512];
         int hl = snprintf(hdr, sizeof(hdr),
                           "GET /events HTTP/1.1\r\n"

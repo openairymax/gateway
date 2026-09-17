@@ -8,10 +8,10 @@
  *
  * Namespace forwarding handlers (<daemon>.<method>). The transport behind
  * gw_svc_call moved to the unified southbound A-IPC client face
- * (gateway_aipc_client.c) in 0.1.16 B3; this file keeps the legacy entry as
+ * (gateway_aipc_client.c); this file keeps the legacy entry as
  * a thin wrapper plus the forwarding/ACL logic.
  *
- * 0.1.6 P1-4 收敛：外部可调用方法的枚举/白名单统一由能力注册表
+ * 收敛：外部可调用方法的枚举/白名单统一由能力注册表
  * （gateway_cap_registry.h，cap_key 单一权威源）承载，本文件不再维护
  * 任何方法清单；未登记能力在 gateway_business_handler.c 主派发处
  * fail-closed 拒绝（-32601），防止任意方法透传。
@@ -25,7 +25,7 @@
 #include "logging.h"
 #include "platform.h"
 #include "daemon_security.h"
-#include "gateway_aipc_client.h" /* 0.1.16 B3: southbound face owns the transport */
+#include "gateway_aipc_client.h" /* southbound face owns the transport */
 
 #include "syscalls.h"
 
@@ -62,7 +62,7 @@ char *jsonrpc_error(int code, const char *msg, const cJSON *id)
 }
 
 /**
- * @brief Generic daemon internal service call (legacy entry, 0.1.16 B3)
+ * @brief Generic daemon internal service call (legacy entry)
  *
  * Thin wrapper kept for zero call-site churn: the transport (L2-first per
  * blueprint 8.3.3, socket/TCP fallback) now lives in the unified southbound
@@ -83,7 +83,7 @@ char *gw_svc_call(const char *sock_path, const char *method, const char *params_
 /**
  * @brief ACL check for tool execution from external protocols
  *
- * M2-S5（0.1.9 §3.2 PEP）：经 gateway PEP 裁定缓存判定——命中缓存
+ * PEP：经 gateway PEP 裁定缓存判定——命中缓存
  * 零 RPC，miss 时向 PDP（cupolas_d）请求裁定并以响应 epoch 对齐失效；
  * PDP 不可达降级本地 ACL（daemon_check_tool_permission，fail-closed）。
  *
@@ -111,8 +111,8 @@ int gw_acl_check_tool(const gateway_business_ctx_t *ctx, const char *tool_name)
  * Same pass-through mode as handle_mem_call: params/response are forwarded
  * as-is, the response id is rewritten to the request id.
  *
- * 0.1.6 P1-4：方法存在性校验已由主派发经能力注册表（gw_cap_find）完成。
- * 0.1.9 M4：wire 方法名取自注册表（rule->method），不再按目标命名空间截取
+ * 方法存在性校验已由主派发经能力注册表（gw_cap_find）完成。
+ * wire 方法名取自注册表（rule->method），不再按目标命名空间截取
  * 请求串——plugin.* 转发 tool 命名空间时前缀与目标不一致（plugin_* 方法）。
  *
  * @param rule Forwarding rule (ns/timeout/method，由能力注册表派生)

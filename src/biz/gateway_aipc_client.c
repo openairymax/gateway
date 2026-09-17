@@ -4,7 +4,7 @@
 // @owner: team-B
 /**
  * @file gateway_aipc_client.c
- * @brief Gateway southbound A-IPC unified client face (0.1.16 B3, design §4).
+ * @brief Gateway southbound A-IPC unified client face.
  *
  * Single owner of every socket(AF_UNIX) creation under gateway/src (gate N2).
  * The REQUEST/RESPONSE implementation is the migrated gw_svc_call body
@@ -12,7 +12,7 @@
  * a thin wrapper (gateway_biz_forward.c) so zero call sites changed.
  *
  * STREAM/EVENT are the transition form from design §4.2: connect + send is
- * centralized here while the B1 L2 STREAM/EVENT client mapping matures; the
+ * centralized here while the L2 STREAM/EVENT client mapping matures; the
  * fd-returning contract keeps the MHD pull-model readers and the PEP
  * fail-open observer untouched.
  */

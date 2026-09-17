@@ -9,9 +9,9 @@
  * History: this translation unit formerly hosted the legacy
  * /api/v1/chat/stream tool-loop content_reader state machine
  * (LLM_ROUND/LLM_STREAM/EXEC_TOOLS/REASONING/FINAL_TEXT) plus its socket
- * recv and frame helpers. That endpoint was retired (410 Gone) in 0.1.13
- * and the dead orchestration body — together with the frame/stream/tool/
- * memory helper modules — was physically removed in 0.1.16 (B6).
+ * recv and frame helpers. That endpoint was retired (410 Gone) and the
+ * dead orchestration body — together with the frame/stream/tool/memory
+ * helper modules — was physically removed.
  *
  * Only the shared gw_sse_send_json_error() responder remains; it is used by
  * the live streaming endpoints (gateway_sse_run_stream.c and

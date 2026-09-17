@@ -3,7 +3,7 @@
 
 /**
  * @file gateway_biz_tools.c
- * @brief Gateway MCP 工具目录注册域（M1-1a 工具目录 SSoT 收敛）。
+ * @brief Gateway MCP 工具目录注册域。
  *
  * 内置工具目录的唯一权威在 tool_d（registry + service_builtin.c 注册，
  * list_tools 输出 input_schema）；gateway 不再本地硬编码任何工具 schema，

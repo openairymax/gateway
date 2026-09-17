@@ -3,7 +3,7 @@
 
 /**
  * @file test_svcdispatch_e2e.c
- * @brief E2E-1（0.1.16）：svcdispatch 注入驱动的 gateway 翻译层端到端测试。
+ * @brief E2E-1：svcdispatch 注入驱动的 gateway 翻译层端到端测试。
  *
  * 全链路（进程内跨层）：airy_sys_svc_call()（SYS_SVC_CALL 系统调用）
  *   -> gw_sys_svc_dispatch_init() 注入的派发钩子（gateway_biz_svcdispatch.c）
@@ -26,6 +26,7 @@
 
 #include "gateway_biz_internal.h"
 
+#include "svc_model_defaults.h"
 #include "syscalls.h"
 
 #include <cjson/cJSON.h>
@@ -37,6 +38,7 @@
 #include <unistd.h>
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,14 +83,14 @@ static int g_tests_passed = 0;
 
 static char g_mock_sock[256];
 static int g_mock_listen_fd = -1;
-static volatile int g_mock_running = 0;
+static _Atomic int g_mock_running = 0;
 static pthread_t g_mock_thread;
 static pthread_mutex_t g_mock_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static char g_mock_last_method[128];
 static char g_mock_last_params[1024];
-static int g_mock_last_id = -1;
-static int g_mock_hits = 0;
+static _Atomic int g_mock_last_id = -1;
+static _Atomic int g_mock_hits = 0;
 
 static void mock_handle_conn(int fd)
 {
@@ -329,7 +331,7 @@ static void test_legacy_plugin_prefix(void)
 {
     TEST_BEGIN("svc_call_legacy_plugin_prefix");
     mock_reset();
-    /* 0.1.9 M4 整编：plugin.* → tool 端点 + "plugin_" wire 前缀（l2_pass=0） */
+    /* legacy 整编：plugin.* → tool 端点 + "plugin_" wire 前缀（l2_pass=0） */
     call_expect_ok("plugin", "load", "{\"name\":\"demo\"}", "plugin_load");
 }
 
@@ -337,7 +339,7 @@ static void test_legacy_info_l2_pass(void)
 {
     TEST_BEGIN("svc_call_legacy_info_l2_pass");
     mock_reset();
-    /* 0.1.9 M4 整编：info.* → monit 端点；L2 三件套（health_check）透传不加前缀 */
+    /* legacy 整编：info.* → monit 端点；L2 三件套（health_check）透传不加前缀 */
     call_expect_ok("info", "health_check", "{}", "health_check");
 }
 
@@ -345,7 +347,7 @@ static void test_legacy_info_prefix(void)
 {
     TEST_BEGIN("svc_call_legacy_info_prefix");
     mock_reset();
-    /* 0.1.9 M4 整编：info.* 非三件套 → "info_" wire 前缀 */
+    /* legacy 整编：info.* 非三件套 → "info_" wire 前缀 */
     call_expect_ok("info", "system", "{}", "info_system");
 }
 
@@ -413,7 +415,7 @@ int main(void)
     snprintf(ctx.tool_sock_path, sizeof(ctx.tool_sock_path), "%s", g_path_tool);
     snprintf(ctx.monit_sock_path, sizeof(ctx.monit_sock_path), "%s", g_path_monit);
     snprintf(ctx.sched_sock_path, sizeof(ctx.sched_sock_path), "%s", g_path_sched);
-    snprintf(ctx.default_model, sizeof(ctx.default_model), "%s", GW_LLM_DEFAULT_MODEL);
+    snprintf(ctx.default_model, sizeof(ctx.default_model), "%s", SVC_MODEL_DEFAULT_FALLBACK);
 
     if (gw_sys_svc_dispatch_init(&ctx) != 0) {
         printf("FATAL: svc dispatch hook inject failed\n");

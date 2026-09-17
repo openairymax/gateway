@@ -3,13 +3,13 @@
 
 /**
  * @file gateway_auth.h
- * @brief HTTP 网关入口鉴权纯策略（0.1.15 WS-2 T-11a/T-17）。
+ * @brief HTTP 网关入口鉴权纯策略。
  *
  * 职责边界（K-1）：本模块只做策略判定，不触碰 MHD 连接对象——
  * 请求侧的头部/参数/对端地址提取由 http_gateway_routes.c 完成，
  * 本模块只接收字符串输入，保证全部策略可脱离 libmicrohttpd 单测。
  *
- * fail-closed 语义（WS-2 出口 DoD）：
+ * fail-closed 语义（出口 DoD）：
  *   - GATEWAY_API_KEY 已配置：敏感路由一律要求有效凭证（回环不豁免）；
  *   - 未配置：仅放行回环对端（单机形态开箱可用），非回环一律拒绝；
  *     bind 侧由 gateway_d 强制回环绑定（见 daemons/gateway_d/src/service.c）。

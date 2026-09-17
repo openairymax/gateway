@@ -17,7 +17,7 @@
 #ifndef HTTP_GATEWAY_ROUTES_H
 #define HTTP_GATEWAY_ROUTES_H
 
-/* M1-1d：agent.run_stream SSE 纯翻译端点（§2.4 v1 事件帧协议） */
+/* agent.run_stream SSE 纯翻译端点（§2.4 v1 事件帧协议） */
 #define GW_SSE_RUN_STREAM_PATH "/api/v1/agent/run/stream"
 
 #include <stdlib.h>
@@ -76,7 +76,7 @@ int handle_hall_watch_sse(http_gateway_t *gateway, struct MHD_Connection *connec
   *
   * Pure translation (K-1): connects to agent.sock, issues agent.run_stream,
   * wraps each engine event frame as an SSE "data: <json>\n\n" frame. No
-  * business logic in the gateway (M1-1d §2.4.5).
+  * business logic in the gateway (§2.4.5).
  */
 int handle_run_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connection,
                           http_request_context_t *context);
@@ -110,7 +110,7 @@ typedef struct {
     /* streaming=1：SSE 长连接端点，绕过 JSON-RPC 聚合分发直接走路由（SSoT：
      * 分发逻辑不再硬编码流式路径，由路由表自身表达） */
     int streaming;
-    /* auth_required=1：敏感面（0.1.15 WS-2 T-11a）——入口鉴权门禁依据本字段
+    /* auth_required=1：敏感面——入口鉴权门禁依据本字段
      * 判定（SSoT：敏感路径清单只在路由表维护一处，防两处漂移）。公开面
      * （OPTIONS 预检、/health）为 0；未登记路由按 0 处理（404 兜底）。 */
     int auth_required;
@@ -120,7 +120,7 @@ typedef int (*http_route_handler_t)(http_gateway_t *, struct MHD_Connection *,
                                     http_request_context_t *);
 
 /**
-  * @brief 路由敏感性分类器（0.1.15 WS-2 T-11a，SSoT：http_routes 表）
+  * @brief 路由敏感性分类器（SSoT：http_routes 表）
   *
   * @param method HTTP 方法（NULL 安全）
   * @param url 请求 URL 路径（NULL 安全）

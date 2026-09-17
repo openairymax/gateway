@@ -3,9 +3,9 @@
 
 /**
  * @file gateway_sse_run_stream.c
- * @brief agent.run_stream SSE 纯翻译端点（M1-1d 协议先行）。
+ * @brief agent.run_stream SSE 纯翻译端点（协议先行）。
  *
- * 依据 0.1.9 架构改进方案 §2.4.5：agent_d 引擎以流式事件帧（单行 JSON，
+ * agent_d 引擎以流式事件帧（单行 JSON，
  * \n 收尾）向 gateway 推送，gateway 仅做帧封装翻译为 SSE data: 帧，
  * 零业务逻辑（K-1 纯翻译）。
  *
@@ -17,7 +17,7 @@
 
 #include "http_gateway_sse_internal.h"
 
-/* 0.1.16 B3: southbound A-IPC unified client face */
+/* southbound A-IPC unified client face */
 #include "biz/gateway_aipc_client.h"
 
 #include "airy_memory.h"
@@ -81,7 +81,7 @@ static char *rs_build_request(const cJSON *params)
 }
 
 /* 连接 agent.sock 并发送 run_stream 请求；返回 fd（-1 失败）。
- * 0.1.16 B3：连接 + 请求下发收口到统一 A-IPC 客户端面
+ * 连接 + 请求下发收口到统一 A-IPC 客户端面
  * （gw_aipc_stream 过渡态，poll_timeout 0 = 保持阻塞 recv 语义）。 */
 static int rs_connect(const char *sock_path, const char *req_json)
 {
@@ -277,7 +277,7 @@ int handle_run_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connec
 #else /* _WIN32 */
 
 /*
- * Windows stub for POST /api/v1/agent/run/stream (M1-1d).
+ * Windows stub for POST /api/v1/agent/run/stream.
  *
  * The full streaming endpoint relays agent_d stream frames over a POSIX
  * Unix-domain socket; Windows has no equivalent UDS transport yet, so the

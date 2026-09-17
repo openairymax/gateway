@@ -3,7 +3,7 @@
 
 /**
  * @file gateway_pep_cache.h
- * @brief Gateway PEP（策略执行点）裁定缓存（M2-S5，0.1.9 §3.2）。
+ * @brief Gateway PEP（策略执行点）裁定缓存。
  *
  * gateway 工具调用热路径的权限裁定缓存：
  *   - 命中（三元组 key + epoch 一致）直接返回，零 RPC 延迟
@@ -33,7 +33,7 @@ int gw_pep_check(const gateway_business_ctx_t *ctx, const char *agent, const cha
 /* 当前已对齐的权威 epoch（0 = 尚未对齐） */
 uint64_t gw_pep_epoch(void);
 
-/* M2-S4（0.1.9 §3.3.1）：订阅 notify_d topic=airy.cupolas.epoch 主动失效
+/* 订阅 notify_d topic=airy.cupolas.epoch 主动失效
  * 缓存（SSE 长连接 + 自动重连）。进程级单次启动；fail-open——notify_d
  * 不可达仅告警重试，不影响懒对齐路径（miss RPC 携带权威 epoch 兜底）。 */
 void gw_pep_epoch_observe(const gateway_business_ctx_t *ctx);

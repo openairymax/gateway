@@ -103,7 +103,7 @@ int handle_options_preflight(http_gateway_t *gateway, struct MHD_Connection *con
     return ret;
 }
 
-/* ================= 入口鉴权（0.1.15 WS-2 T-11a） =================
+/* ================= 入口鉴权 =================
  * 纯判定逻辑在 gateway_auth.c（可独立单测），此处仅做 MHD 桥接（K-1）：
  * 提取凭证与对端地址 → 调用策略 → 拒绝时经统一工厂出 401。 */
 
@@ -321,7 +321,7 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
 /**
   * @brief HTTP route table (priority-ordered)
   *
-  * auth_required（0.1.15 WS-2 T-11a）：1=敏感面（入口鉴权门禁强制），
+  * auth_required：1=敏感面（入口鉴权门禁强制），
   * 0=公开面（OPTIONS 预检、/health 健康探针）或 404 兜底行。
   *
   * Route matching rules:
