@@ -4,20 +4,20 @@
 /* @owner: team-B */
 /**
  * @file gateway_aipc_client.h
- * @brief Gateway southbound A-IPC unified client face (0.1.16 B3, design §4).
+ * @brief Gateway southbound A-IPC unified client face.
  *
  * Gateway has exactly ONE southbound client face toward the daemon plane.
  * Every socket(AF_UNIX) creation under gateway/src is funneled here; the
  * per-site handwritten UDS clients (sse_tool / sse_stream / sse_run_stream /
- * pep_cache) were deleted in the B3 migration and now consume this face.
+ * pep_cache) were deleted and now consume this face.
  *
- * Wire contract (0.1.16 A-IPC 架构收口设计 §4):
+ * Wire contract:
  *   - gw_aipc_call      REQUEST/RESPONSE: L2-first (channel_for_socket +
  *     daemon_l2_rpc_call_resp, blueprint 8.3.3 grey norm) with the UDS/TCP
  *     fallback path; misses fail fast, never silently downgrade.
  *   - gw_aipc_stream    STREAM: connect + send request, returns the fd; the
  *     caller owns the chunked read loop (MHD pull model keeps idle-deadline
- *     supervision). L2 STREAM client mapping lands with the B5/B6 era;
+ *     supervision). L2 STREAM client mapping is pending;
  *     today this is the fallback transport, centralized.
  *   - gw_aipc_subscribe EVENT: connect + send the subscription handshake,
  *     returns the fd; the caller owns the frame loop and reconnect policy.

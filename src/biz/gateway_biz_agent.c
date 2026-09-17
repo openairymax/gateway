@@ -4,7 +4,7 @@
 // @owner: team-B
 /**
  * @file gateway_biz_agent.c
- * @brief Gateway agent.run / agent.cancel 转发域（M1-1a 引擎下沉）。
+ * @brief Gateway agent.run / agent.cancel 转发域。
  *
  * agent.run 进程内引擎（会话注册表 / GCCP 双思考 / 编排 / ReAct 工具循环 /
  * mem 持久化 / hall 事件）已迁入 agent_d（agent_run_engine.c +

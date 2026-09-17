@@ -391,12 +391,12 @@ static void http_req_complete_cb(
 }
 
 /*
- * libmicrohttpd 轮询后端选择与版本错位防御（G4b 实证教训）：
+ * libmicrohttpd 轮询后端选择与版本错位防御：
  *
  * MHD_USE_* 宏值在 0.9.x 系列内多次重排（1.0.0 再次重排：EPOLL=512、
  * INTERNAL_POLLING_THREAD=8、AUTO=65536、TURBO=4096）。一旦编译期头与
  * 运行时库版本错位（如构建机 1.0.x 头、干净部署机 0.9.x 库），flags
- * 位语义全乱。G4b 干净 macOS 主机三轮实证：MHD_start_daemon 返回非空、
+ * 位语义全乱。干净 macOS 主机实测：MHD_start_daemon 返回非空、
  * 日志打 "started successfully"，但 lsof/netstat 无任何 8080 LISTEN
  * socket——daemon 假活，HTTP 端口从未监听。因此：
  *   a) 不硬编码 epoll 组合（epoll 仅 Linux 存在），改用

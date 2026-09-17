@@ -6,14 +6,13 @@
  * @brief Shared includes and declarations for the gateway SSE streaming
  *        subsystem.
  *
- * After 0.1.16 (B6) the subsystem consists of three translation units:
+ * The subsystem consists of three translation units:
  *   http_gateway_sse.c        — shared gw_sse_send_json_error() responder
  *   gateway_sse_hall_watch.c  — long-lived SSE subscription over hall store
  *   gateway_sse_run_stream.c  — agent.run_stream event-frame translator
  *
  * The legacy /api/v1/chat/stream orchestration modules (frame/stream/tool/
- * memory) were physically removed in 0.1.16 (B6); the endpoint was retired
- * (410 Gone) back in 0.1.13.
+ * memory) were physically removed; the endpoint was retired (410 Gone).
  *
  * This header is PRIVATE to the SSE subsystem — never install or expose it
  * outside the gateway translation unit.

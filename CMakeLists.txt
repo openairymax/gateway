@@ -261,14 +261,14 @@ install(FILES
 # ========== 测试 ==========
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_BENCHMARK "Build performance benchmark tool (PERF-001~003)" ON)
-# Windows 排除（windows-build #128 实证 LNK1181）：gateway 链 svc_common
+# Windows 排除（LNK1181）：gateway 链 svc_common
 # （daemons/common，jsonrpc_get_error_message），Windows 支持矩阵排除
 # daemons → 目标缺席 → 测试 exe 链接裸库名失败。与 daemons/CLI 同批，
-# 随 0.1.12/13 Windows 移植里程碑回归。
+# 随 Windows 移植里程碑回归。
 if(BUILD_TESTS AND NOT WIN32)
     enable_testing()
 
-    # 主网关测试 (7个用例) - 2026-08-20 重写匹配当前公共 API
+    # 主网关测试 (7个用例) - 匹配当前公共 API
     # （旧测试引用已移除的 gateway_create/gateway_create_interface 符号，
     #  原 "dual-header conflict" 实为测试过时；include/gateway.h 为公共头，
     #  src/gateway/gateway.h 为内部实现头，各自独立编译链接。）
@@ -295,14 +295,14 @@ if(BUILD_TESTS AND NOT WIN32)
     target_link_libraries(test_rpc_handler gateway)
     add_test(NAME rpc_handler_test COMMAND test_rpc_handler)
 
-    # 网关入口鉴权测试（0.1.15 WS-2 T-24/T-11a/T-17）：
+    # 网关入口鉴权测试：
     # deny 行为测试先行（必红），随后 gateway_auth.c 落地转绿
     add_executable(test_gateway_auth tests/test_gateway_auth.c)
     target_compile_definitions(test_gateway_auth PRIVATE AIRY_COMPLIANCE_IMPL)
     target_link_libraries(test_gateway_auth gateway)
     add_test(NAME gateway_auth_test COMMAND test_gateway_auth)
 
-    # 0.1.16 审计 E2E：网关翻译层经注入钩子派发至 mock daemon socket，
+    # 审计 E2E：网关翻译层经注入钩子派发至 mock daemon socket，
     # 校验 ns→端点映射、legacy wire 前缀改写与响应原文回传（10 用例）。
     # 链接 airy_gateway_service（biz 派发实现：gw_sys_svc_dispatch_* /
     # gw_svc_call，归 daemons/gateway_d 消费，不进纯 gateway 库）+ gateway
@@ -313,6 +313,7 @@ if(BUILD_TESTS AND NOT WIN32)
     target_compile_definitions(test_svcdispatch_e2e PRIVATE AIRY_COMPLIANCE_IMPL)
     target_include_directories(test_svcdispatch_e2e PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/biz
+        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/gateway_d/src/protocol
         ${COREKERN_DIR}/include
         ${SYSCALL_DIR}/include
@@ -326,7 +327,7 @@ if(BUILD_TESTS AND NOT WIN32)
     )
     add_test(NAME svcdispatch_e2e COMMAND test_svcdispatch_e2e)
 
-    # 0.1.16 审计 E2E：gateway↔daemon 双 transport 往返（Blueprint 8.3.3
+    # 审计 E2E：gateway↔daemon 双 transport 往返（Blueprint 8.3.3
     # 灰度矩阵：socket / corekern L2 优先 / 卸载回落，3 Case）。
     add_executable(test_gw_daemon_roundtrip tests/test_gw_daemon_roundtrip.c)
     target_compile_definitions(test_gw_daemon_roundtrip PRIVATE AIRY_COMPLIANCE_IMPL)
@@ -347,7 +348,7 @@ if(BUILD_TESTS AND NOT WIN32)
     )
     add_test(NAME gw_daemon_roundtrip COMMAND test_gw_daemon_roundtrip)
 
-    # 0.1.16 B3 E2E：南向 A-IPC 统一客户端面往返（gw_aipc_call 分片聚合 /
+    # E2E：南向 A-IPC 统一客户端面往返（gw_aipc_call 分片聚合 /
     # gw_aipc_stream 连接下发 / gw_aipc_subscribe 握手 / 不可达快速失败）。
     # mock daemon 走真实 UDS accept/往返；socket 位于 /tmp（pid 后缀）。
     add_executable(test_gw_aipc_client_e2e tests/test_gw_aipc_client_e2e.c)
@@ -415,8 +416,8 @@ if(CPPCHECK)
     )
 endif()
 
-# ========== M1-1b 链接白名单 ==========
-# "认知引擎只对 think_d 暴露服务面"（0.1.9 §2.2）：gateway 库禁链
+# ========== 链接白名单 ==========
+# "认知引擎只对 think_d 暴露服务面"：gateway 库禁链
 # coreloopthree/cognition。实际链接经 airy_depgraph --links 校验。
 airy_linkgate_collect(gateway "${CMAKE_CURRENT_SOURCE_DIR}/../link-whitelist.txt")
 endif()

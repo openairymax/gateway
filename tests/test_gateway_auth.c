@@ -3,14 +3,14 @@
 
 /**
  * @file test_gateway_auth.c
- * @brief 网关入口鉴权测试（0.1.15 WS-2 T-24 deny 行为先行 + T-11a/T-17 钉子）。
+ * @brief 网关入口鉴权测试（deny 行为先行 + 钉子用例）。
  *
- * T-24 三条 deny 行为（本文件命名对齐，先写必红、实现后转绿）：
+ * 三条 deny 行为（本文件命名对齐，先写必红、实现后转绿）：
  *   1. t24_post_root_unauthorized_denied —— 未授权 POST / 拒绝；
- *   2. （agent.run PEP 拒绝在 T-11b 落地时补入 cap_registry 测试面）
+ *   2. （agent.run PEP 拒绝补入 cap_registry 测试面）
  *   3. t24_hall_watch_no_credential_denied —— hall/watch 无凭证拒绝。
  *
- * 另钉死：路由敏感性 SSoT 分类、凭证恒定时间比较（T-17）、
+ * 另钉死：路由敏感性 SSoT 分类、凭证恒定时间比较、
  * 回环判定、裁定真值表（fail-closed 语义）。
  */
 
@@ -61,7 +61,7 @@ static void auth_route_sensitive_matrix(void)
     CHECK(http_gateway_route_auth_required("OPTIONS", "/") == 0, "OPTIONS preflight is public");
     CHECK(http_gateway_route_auth_required("GET", "/health") == 0, "GET /health is public");
 
-    /* 0.1.16 B6：legacy /api/v1/chat/stream 路由已物理移除（退役端点），
+    /* legacy /api/v1/chat/stream 路由已物理移除（退役端点），
      * 不再登记于 http_routes 表 → 分类器按未登记路由返回 0；防止无声再生。 */
     CHECK(http_gateway_route_auth_required("POST", "/api/v1/chat/stream") == 0,
           "retired chat/stream route not registered");

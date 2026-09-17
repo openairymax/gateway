@@ -3,7 +3,7 @@
 
 /**
  * @file test_gw_daemon_roundtrip.c
- * @brief E2E-2（0.1.16）：gateway -> daemon 双 transport 往返（Blueprint 8.3.3）。
+ * @brief E2E-2：gateway -> daemon 双 transport 往返（Blueprint 8.3.3）。
  *
  * 全链路：gw_svc_call()（gateway L2 协议客户端）按 ns 传输开关二选一：
  *   - socket 路径：Unix socket JSON-RPC -> mock daemon（真实 accept/往返）
@@ -32,6 +32,7 @@
 #include "airy_memory.h"
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -79,10 +80,10 @@ static int g_tests_passed = 0;
 struct mock_daemon {
     char sock[256];
     int listen_fd;
-    volatile int running;
+    _Atomic int running;
     pthread_t thread;
     pthread_mutex_t mtx;
-    int hits;
+    _Atomic int hits;
     char last_method[128];
 };
 
@@ -196,9 +197,10 @@ static void mock_stop(struct mock_daemon *m)
         /* Linux 下 close() 不保证唤醒阻塞在 accept() 的线程，须先 shutdown */
         shutdown(m->listen_fd, SHUT_RDWR);
         close(m->listen_fd); /* 唤醒阻塞在 accept 的线程 */
-        m->listen_fd = -1;
     }
+    /* join 建立同步边沿后再置 -1，避免与 accept(m->listen_fd) 竞态 */
     pthread_join(m->thread, NULL);
+    m->listen_fd = -1;
     unlink(m->sock);
     pthread_mutex_destroy(&m->mtx);
 }

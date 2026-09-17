@@ -3,7 +3,7 @@
 
 /*
  * @file gateway_auth.c
- * @brief 网关入口鉴权纯策略实现（0.1.15 WS-2 T-11a/T-17）。
+ * @brief 网关入口鉴权纯策略实现。
  *
  * fail-closed 双层语义（与 gateway_auth.h 约定一致）：
  *   1. 请求侧：GATEWAY_API_KEY 已配置 → 敏感路由强制凭证（回环对端不豁免）；

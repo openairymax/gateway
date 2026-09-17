@@ -5,7 +5,7 @@
 
 /**
  * @file test_gw_aipc_client_e2e.c
- * @brief E2E-3（0.1.16 B3）：gateway 南向统一 A-IPC 客户端面往返。
+ * @brief E2E-3：gateway 南向统一 A-IPC 客户端面往返。
  *
  * mock daemon（真实 UDS accept/往返）× 三个入口：
  *   A. gw_aipc_call：mock 分片回包（3 片，usleep 强制多次 recv）→
@@ -28,6 +28,7 @@
 #include <cjson/cJSON.h>
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -74,7 +75,7 @@ static int g_tests_passed = 0;
 struct mock_server {
     char sock[256];
     int listen_fd;
-    volatile int running;
+    _Atomic int running;
     pthread_t thread;
     void (*handler)(int fd, void *arg);
     void *arg;
@@ -164,9 +165,10 @@ static void mock_stop(struct mock_server *m)
         /* Linux 下 close() 不保证唤醒阻塞在 accept() 的线程，须先 shutdown */
         shutdown(m->listen_fd, SHUT_RDWR);
         close(m->listen_fd);
-        m->listen_fd = -1;
     }
+    /* join 建立同步边沿后再置 -1，避免与 accept(m->listen_fd) 竞态 */
     pthread_join(m->thread, NULL);
+    m->listen_fd = -1;
     unlink(m->sock);
 }
 
@@ -229,6 +231,7 @@ static void test_a_call_chunked_aggregation(void)
 
 struct stream_arg {
     char last_req[4096];
+    _Atomic int ready; /* mock 线程写回 last_req 完成后的发布标志 */
 };
 
 static void stream_handler(int fd, void *arg)
@@ -236,6 +239,7 @@ static void stream_handler(int fd, void *arg)
     struct stream_arg *sa = (struct stream_arg *)arg;
     if (mock_read_request(fd, sa->last_req, sizeof(sa->last_req)) != 0)
         return;
+    atomic_store(&sa->ready, 1);
     /* 分 2 片回推流式数据（调用方 fd 消费） */
     mock_send_all(fd, "chunk-1;", 8);
     usleep(20000);
@@ -248,14 +252,15 @@ static void test_b_stream_open_and_ship(void)
 
     struct stream_arg sa;
     memset(&sa, 0, sizeof(sa));
+    atomic_init(&sa.ready, 0);
     struct mock_server m;
     ASSERT_TRUE(mock_start(&m, g_sock_stream, stream_handler, &sa) == 0);
 
     int fd = gw_aipc_stream(m.sock, "{\"method\":\"agent.run_stream\"}", 0);
     ASSERT_TRUE(fd >= 0);
 
-    /* mock 侧必须收到完整请求（连接 + 下发归一） */
-    for (int i = 0; i < 100 && sa.last_req[0] == '\0'; i++)
+    /* mock 侧必须收到完整请求（连接 + 下发归一），以 ready 发布为同步边沿 */
+    for (int i = 0; i < 100 && !atomic_load(&sa.ready); i++)
         usleep(10000);
     ASSERT_STREQ(sa.last_req, "{\"method\":\"agent.run_stream\"}");
 
@@ -366,7 +371,7 @@ int main(void)
     snprintf(g_sock_sub, sizeof(g_sock_sub), "%s/sub.sock", g_dir);
     snprintf(g_sock_missing, sizeof(g_sock_missing), "%s/missing.sock", g_dir);
 
-    printf("== gateway southbound A-IPC unified client face (B3 E2E) ==\n");
+    printf("== gateway southbound A-IPC unified client face (E2E) ==\n");
 
     test_a_call_chunked_aggregation();
     test_b_stream_open_and_ship();

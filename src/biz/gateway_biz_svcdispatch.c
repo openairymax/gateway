@@ -67,11 +67,11 @@ static const char *gw_svc_sock_for_ns(const char *ns)
         return g_svc_ctx->think_sock_path;
     if (strcmp(buf, "a2a") == 0)
         return g_svc_ctx->a2a_sock_path;
-    /* 0.1.9 M4：plugin_d → tool_d 整编——旧 plugin ns 解析到 tool.sock，
+    /* plugin_d → tool_d 整编——旧 plugin ns 解析到 tool.sock，
      * 方法名在 gw_wire_method 内加 "plugin_" 前缀（见下） */
     if (strcmp(buf, "plugin") == 0)
         return g_svc_ctx->tool_sock_path;
-    /* 0.1.9 M4：info_d / observe_d → monit_d 整编——旧 ns 解析到 monit.sock，
+    /* info_d / observe_d → monit_d 整编——旧 ns 解析到 monit.sock，
      * 方法名在 gw_wire_method 内加 "info_" / "observe_" 前缀（见下） */
     if (strcmp(buf, "info") == 0)
         return g_svc_ctx->monit_sock_path;
@@ -94,7 +94,7 @@ static const char *gw_svc_sock_for_ns(const char *ns)
     return NULL;
 }
 
-/* 0.1.9 M4：daemon 整编命名空间路由表（plugin→tool、info/observe→monit）。
+/* daemon 整编命名空间路由表（plugin→tool、info/observe→monit）。
  * 旧 ns 的 syscall 调用在 wire 方法名上加 "<legacy_ns>_" 前缀；l2_pass=1
  * 表示宿主未登记带前缀的 L2 变体（info / observe 整编情形），shutdown /
  * get_stats / health_check 三件套透传宿主自身语义；l2_pass=0 保持整编前
@@ -162,7 +162,7 @@ static int gw_sys_svc_dispatch(const char *ns, const char *method, const char *p
         return -1;
     }
 
-    /* 0.1.9 M4：legacy ns（plugin / info / observe）→ 宿主 wire 方法名前缀转换
+    /* legacy ns（plugin / info / observe）→ 宿主 wire 方法名前缀转换
      * （"load" → "plugin_load"、"system" → "info_system"）。兼容直接以旧 ns
      * 发起 syscall 的客户端；宿主侧带前缀方法与原生方法同表登记，前缀即消歧。 */
     char wire_buf[64];

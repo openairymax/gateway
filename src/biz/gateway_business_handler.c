@@ -133,62 +133,17 @@ gateway_business_ctx_t *gateway_business_ctx_create(void)
     ctx->llm_tcp_port =
         (port_env && *port_env) ? (uint16_t)atoi(port_env) : GW_LLM_DEFAULT_TCP_PORT;
 
-    /* Default model: env AIRY_AGENT_MODEL > user override
-     * $AIRY_CONFIG_DIR/model.yaml global.default_model > built-in default
-     * (aligned with model.yaml). Users need not touch the repo SSoT; overriding
-     * the global section in $AIRY_HOME/config/model.yaml applies to both
-     * gateway and llm_d (same resolution path). */
-    const char *model_env = getenv("AIRY_AGENT_MODEL");
-    if (model_env && *model_env) {
-        AIRY_STRNCPY_TERM(ctx->default_model, model_env, sizeof(ctx->default_model));
-    } else {
-        char um[128] = {0};
-        const char *cfg_dir = airy_config_dir();
-        int has_user_cfg = 0;
-        if (cfg_dir) {
-            char user_path[1024];
-            int plen = snprintf(user_path, sizeof(user_path), "%s/model.yaml", cfg_dir);
-            if (plen > 0 && plen < (int)sizeof(user_path)) {
-                FILE *uf = fopen(user_path, "rb");
-                if (uf) {
-                    fclose(uf);
-                    if (svc_model_defaults_from_yaml(user_path, um, sizeof(um), NULL, 0) == 0 &&
-                        um[0])
-                        has_user_cfg = 1;
-                    else {
-                        /* No global section: fall back to the simple llm
-                         * section model (same semantics as llm_d; the default
-                         * model configured under llm: also applies to gateway) */
-                        svc_model_llm_config_t llm_cfg;
-                        AIRY_MEMSET(&llm_cfg, 0, sizeof(llm_cfg));
-                        if (svc_model_defaults_llm_from_yaml(user_path, &llm_cfg) == 0 &&
-                            llm_cfg.model[0]) {
-                            AIRY_STRNCPY_TERM(um, llm_cfg.model, sizeof(um));
-                            has_user_cfg = 1;
-                        } else {
-                            /* v2 表格格式（2026-08-26）：llm 段缺省时回退
-                             * models 表首个条目 */
-                            AIRY_MEMSET(&llm_cfg, 0, sizeof(llm_cfg));
-                            if (svc_model_defaults_models0_from_yaml(user_path, &llm_cfg) == 0 &&
-                                llm_cfg.model[0]) {
-                                AIRY_STRNCPY_TERM(um, llm_cfg.model, sizeof(um));
-                                has_user_cfg = 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        AIRY_STRNCPY_TERM(ctx->default_model, has_user_cfg ? um : GW_LLM_DEFAULT_MODEL,
-                          sizeof(ctx->default_model));
-    }
+    /* 默认模型经 svc_model_defaults_resolve() 解析（唯一入口）：env
+     * AIRY_AGENT_MODEL > 用户覆盖 $AIRY_CONFIG_DIR/model.yaml > 内建兜底。
+     * gateway 不再自行扫描 model.yaml，与 llm_d / agent_d runner 同源。 */
+    svc_model_defaults_resolve(NULL, NULL, ctx->default_model, sizeof(ctx->default_model), NULL, 0);
 
     /* 架构约束 2026-08-25 "必须走 syscall": 注入微核心服务统一派发钩子，
      * gateway 对 daemon 的所有派发经 airy_sys_svc_call() (SYS_SVC_CALL)
      * 完成（见 gateway_biz_svcdispatch.c）。 */
     gw_sys_svc_dispatch_init(ctx);
 
-    /* M2-S4（0.1.9 §3.3.1）：PEP 订阅 airy.cupolas.epoch → 策略热更新
+    /* PEP 订阅 airy.cupolas.epoch → 策略热更新
      * 主动失效缓存（<1s 生效）。fail-open：notify_d 不在线仅重连。 */
     gw_pep_epoch_observe(ctx);
 

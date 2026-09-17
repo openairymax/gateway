@@ -63,11 +63,11 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"think.orchestrate", "think", "orchestrate", GW_CAP_KIND_FWD},
     {"think.health_check", "think", "health_check", GW_CAP_KIND_FWD},
     {"think.get_stats", "think", "get_stats", GW_CAP_KIND_FWD},
-    /* M1-1c：推理语言网关服务面（CLI 经 gateway 消费，禁直连内核） */
+    /* 推理语言网关服务面（CLI 经 gateway 消费，禁直连内核） */
     {"think.lang_process", "think", "lang_process", GW_CAP_KIND_FWD},
     {"think.lang_postprocess", "think", "lang_postprocess", GW_CAP_KIND_FWD},
     {"think.lang_stats", "think", "lang_stats", GW_CAP_KIND_FWD},
-    /* M1-1c：执行复核服务面（t2/t1-f 语义判断策略收拢到 think_d） */
+    /* 执行复核服务面（t2/t1-f 语义判断策略收拢到 think_d） */
     {"think.review", "think", "review", GW_CAP_KIND_FWD},
 
     /* ── agent（编排特殊 + 转发） ───────────────────────────────── */
@@ -134,7 +134,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"a2a.health_check", "a2a", "health_check", GW_CAP_KIND_FWD},
     {"a2a.get_stats", "a2a", "get_stats", GW_CAP_KIND_FWD},
 
-    /* ── plugin（0.1.9 M4：plugin_d → tool_d 整编，旧 plugin.* 保留
+    /* ── plugin（plugin_d → tool_d 整编，旧 plugin.* 保留
      *    转发：目标 daemon=tool，方法=plugin_* 前缀，tool_d 登记） ── */
     {"plugin.load", "tool", "plugin_load", GW_CAP_KIND_FWD},
     {"plugin.unload", "tool", "plugin_unload", GW_CAP_KIND_FWD},
@@ -149,7 +149,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"plugin.uninstall", "tool", "plugin_uninstall", GW_CAP_KIND_FWD},
     {"plugin.health_check", "tool", "plugin_health_check", GW_CAP_KIND_FWD},
 
-    /* ── info（0.1.9 M4：info_d → monit_d 整编，旧 info.* 保留转发：
+    /* ── info（info_d → monit_d 整编，旧 info.* 保留转发：
      *    目标 daemon=monit、方法=info_* 前缀；L2 标准方法透传 monit 宿主） ── */
     {"info.system", "monit", "info_system", GW_CAP_KIND_FWD},
     {"info.history", "monit", "info_history", GW_CAP_KIND_FWD},
@@ -167,7 +167,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"notify.health_check", "notify", "health_check", GW_CAP_KIND_FWD},
     {"notify.get_stats", "notify", "get_stats", GW_CAP_KIND_FWD},
 
-    /* ── observe（0.1.9 M4：observe_d → monit_d 整编，双 Prometheus
+    /* ── observe（observe_d → monit_d 整编，双 Prometheus
      *    /metrics 收敛；旧 observe.* 保留转发：方法=observe_* 前缀） ── */
     {"observe.record_metric", "monit", "observe_record_metric", GW_CAP_KIND_FWD},
     {"observe.query_metrics", "monit", "observe_query_metrics", GW_CAP_KIND_FWD},
@@ -207,7 +207,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"sched.cancel", "sched", "cancel", GW_CAP_KIND_FWD},
     {"sched.dag_submit", "sched", "dag_submit", GW_CAP_KIND_FWD},
     {"sched.dag_status", "sched", "dag_status", GW_CAP_KIND_FWD},
-    /* 0.1.9 M1-1c（CLI 引擎壳化）：DAG 轻量看板列表，CLI /status 与
+    /* DAG 轻量看板列表：CLI /status 与
      * TUI board 面板经此访问 sched_d 唯一实例，不再进程内嵌执行引擎 */
     {"sched.dag_list", "sched", "dag_list", GW_CAP_KIND_FWD},
     {"sched.dag_cancel", "sched", "dag_cancel", GW_CAP_KIND_FWD},
@@ -216,7 +216,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"sched.query", "sched", "query", GW_CAP_KIND_FWD},
     {"sched.get_stats", "sched", "get_stats", GW_CAP_KIND_FWD},
     {"sched.health_check", "sched", "health_check", GW_CAP_KIND_FWD},
-    /* 0.1.9 M3（roadmap CLI 切断）：蓝图三级路由与吸收回灌，
+    /* 蓝图三级路由与吸收回灌，
      * CLI 不再本地持有 roadmap，经本组方法访问 sched_d 唯一实例 */
     {"sched.plan", "sched", "plan", GW_CAP_KIND_FWD},
     {"sched.absorb", "sched", "absorb", GW_CAP_KIND_FWD},
@@ -264,7 +264,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"cupolas.entitlements_load", "cupolas", "entitlements_load", GW_CAP_KIND_FWD},
     {"cupolas.entitlements_check", "cupolas", "entitlements_check", GW_CAP_KIND_FWD},
 
-    /* ── policy（0.1.9 M2-S3：PDP 策略演化统一 RPC 面——cupolas_d 唯一
+    /* ── policy（PDP 策略演化统一 RPC 面——cupolas_d 唯一
      *    策略持有者；cap_key 用外部 namespace "policy"，转发目标为
      *    cupolas（GW_NS_OWNER policy→cupolas），wire 方法为 daemon 侧
      *    policy_* 裸名，与 cupolas_d 注册一致） ──────────────────── */
@@ -273,7 +273,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
     {"policy.rollback", "cupolas", "policy_rollback", GW_CAP_KIND_FWD},
     {"policy.status", "cupolas", "policy_status", GW_CAP_KIND_FWD},
 
-    /* ── maths（0.1.9 M4 maths_d 路由补全：GW_NS_OWNER 已登记归属，
+    /* ── maths（maths_d 路由：GW_NS_OWNER 已登记归属，
      *    此前无 cap 注册 → 经 gateway 完全不可达（fail-closed -32601）；
      *    先补 /daemons 探测面，业务方法按需后续登记） ───────────── */
     {"maths.health_check", "maths", "health_check", GW_CAP_KIND_FWD},
@@ -287,7 +287,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
 
 #define GW_CAP_COUNT (sizeof(GW_CAP_REGISTRY) / sizeof(GW_CAP_REGISTRY[0]))
 
-/* namespace 独占归属表（0.1.9 §5.1 15 daemon 边界契约表登记）：
+/* namespace 独占归属表（15 daemon 边界契约表登记）：
  * 每个对外命名空间（cap_key 首段）唯一归属一个 daemon（owner 为 daemon
  * 短名，与 GW_CAP_REGISTRY 的 ns 字段同格式）；"gateway" = 网关内实现域
  * （无独立进程）。登记即断言：新 namespace 必须先声明归属，FWD 转发
@@ -299,15 +299,15 @@ static const struct {
     {"agent", "agent"},
     {"llm", "llm"},
     {"tool", "tool"},
-    {"plugin", "tool"},   /* M4 整编：插件域归 tool_d 独占 */
+    {"plugin", "tool"},   /* 整编：插件域归 tool_d 独占 */
     {"sched", "sched"},
-    {"roadmap", "sched"}, /* M3：蓝图路由收拢 sched_d（预留 namespace） */
+    {"roadmap", "sched"}, /* 蓝图路由收拢 sched_d（预留 namespace） */
     {"think", "think"},
     {"mem", "mem"},
     {"market", "market"},
     {"monit", "monit"},
-    {"observe", "monit"}, /* M4 整编 */
-    {"info", "monit"},    /* M4 整编 */
+    {"observe", "monit"}, /* 整编 */
+    {"info", "monit"},    /* 整编 */
     {"notify", "notify"},
     {"channel", "channel"},
     {"a2a", "a2a"},
@@ -318,7 +318,7 @@ static const struct {
     {"hall", "gateway"}, /* 网关内实现域（任务看板/事件流/决策链） */
 };
 
-/* namespace 独占性门禁（0.1.9 §5.1 边界深化执行机制第 1 条）：
+/* namespace 独占性门禁（边界契约执行机制）：
  *   - 每个注册 cap_key 的命名空间前缀必须已登记归属（未登记 = 新
  *     namespace 未声明独占，fail-closed）
  *   - FWD 转发目标必须与归属 daemon 一致（namespace 归 A 独占却转发
@@ -388,12 +388,12 @@ static const struct {
     {"plugin.execute", 1},
 };
 
-/* 高敏能力所需权限（0.1.6 P1-4 SSoT 权限校验维度）。
+/* 高敏能力所需权限（SSoT 权限校验维度）。
  * 仅此表列出的能力在分发时做 ACL 授权检查（fail-closed：未注册规则拒绝，
  * 管理员在 permission_rules.yaml / daemon_security_add_acl_rule 显式授权）。
  * 日常核心链路能力（llm/think/mem 读等）不在表中 → 默认放行，
  * 保持现有调用行为不变。
- * 0.1.15 WS-2 T-11b：agent.run 收入权限模型（默认拒绝）——外部主体经
+ * agent.run 收入权限模型（默认拒绝）——外部主体经
  * 网关驱动的最高敏执行入口，独立权限 cap:agent.run；agent.cancel 归
  * 既有 cap:agent.control。本地模板 permission_rules.yaml v1.2.0 对
  * external 主体显式授权，保持单机开箱即用；生产环境默认拒绝。 */
