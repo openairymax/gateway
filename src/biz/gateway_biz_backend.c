@@ -21,6 +21,7 @@
 #include "logging.h"
 #include "platform.h"
 
+#include "llm_service_types.h"
 #include "syscalls.h"
 
 #include <stdio.h>
@@ -203,7 +204,10 @@ int gw_biz_llm_complete(const char *model, const char *messages_json, const char
             cJSON_AddItemToObject(params, "tools", cJSON_CreateArray());
         }
     }
-    cJSON_AddNumberToObject(params, "max_tokens", max_tokens > 0 ? max_tokens : 2048);
+    /* 仅在调用方显式给出上限时透传（显式意图必须尊重）；未给出则不写，
+     * 交由 llm_d 依配置面的 max_output 与模型声明上限裁决。 */
+    if (max_tokens > 0)
+        cJSON_AddNumberToObject(params, "max_tokens", max_tokens);
     cJSON_AddNumberToObject(params, "temperature", temperature);
     char *params_str = cJSON_PrintUnformatted(params);
     cJSON_Delete(params);
@@ -258,10 +262,10 @@ int gw_biz_llm_complete(const char *model, const char *messages_json, const char
         }
         cJSON *reason = cJSON_GetObjectItem(choice0, "finish_reason");
         cJSON_AddStringToObject(choice, "finish_reason",
-                                cJSON_IsString(reason) ? reason->valuestring : "stop");
+                                cJSON_IsString(reason) ? reason->valuestring : LLM_FINISH_STOP);
     } else {
         cJSON_AddStringToObject(message, "content", "");
-        cJSON_AddStringToObject(choice, "finish_reason", "stop");
+        cJSON_AddStringToObject(choice, "finish_reason", LLM_FINISH_STOP);
     }
     cJSON_AddItemToObject(choice, "message", message);
     cJSON_AddItemToArray(choices_out, choice);
