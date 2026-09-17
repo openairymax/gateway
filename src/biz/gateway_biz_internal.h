@@ -35,7 +35,6 @@
 extern "C" {
 #endif
 
-#define GW_LLM_DEFAULT_MODEL "deepseek-flash"
 /* LLM full-response timeout 90s: long-thinking / multi-tool_call rounds can
  * exceed 30s; the old 30s value made the gateway hit recv timeout while the
  * LLM had not yet returned, breaking the tool chain. */
@@ -85,7 +84,7 @@ struct gateway_business_ctx_s {
  * 0.1.6 P1-4 收敛：能力存在性校验统一走能力注册表（gateway_cap_registry.h，
  * cap_key 单一权威源）。daemon 端点由 svc dispatch 钩子按命名空间解析
  * （gw_svc_sock_for_ns），无需在此维护。
- * 0.1.9 M4：wire 方法名取自注册表（method 字段）——请求前缀与目标命名空间
+ * wire 方法名取自注册表（method 字段）——请求前缀与目标命名空间
  * 可不一致（plugin.* → tool 命名空间 plugin_* 方法），字符串截取不再成立。 */
 typedef struct {
     const char *ns;      /* 目标 daemon 命名空间（裸名，无尾点） */
@@ -118,7 +117,7 @@ void gw_sys_svc_dispatch_cleanup(void);
 /* ---- gateway_biz_hall.c (hall.* — task board / event stream / chain) ---- */
 char *handle_hall_call(cJSON *root, gateway_business_ctx_t *ctx);
 
-/* ---- gateway_biz_agent.c (agent.run / agent.cancel 转发, M1-1a 引擎下沉) ----
+/* ---- gateway_biz_agent.c (agent.run / agent.cancel 转发) ----
  * agent.run 引擎（会话注册表/编排/工具循环）已迁 agent_d；gateway 仅转发。 */
 char *handle_agent_run(cJSON *root, gateway_business_ctx_t *ctx);
 char *handle_agent_cancel(cJSON *root, gateway_business_ctx_t *ctx);
