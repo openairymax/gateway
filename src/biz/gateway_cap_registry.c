@@ -220,7 +220,7 @@ static const gw_cap_t GW_CAP_REGISTRY[] = {
      * CLI 不再本地持有 roadmap，经本组方法访问 sched_d 唯一实例 */
     {"sched.plan", "sched", "plan", GW_CAP_KIND_FWD},
     {"sched.absorb", "sched", "absorb", GW_CAP_KIND_FWD},
-    {"sched.roadmap_stats", "sched", "roadmap_stats", GW_CAP_KIND_FWD},
+    {"sched.roadmap_status", "sched", "roadmap_status", GW_CAP_KIND_FWD},
 
     /* ── monit ──────────────────────────────────────────────────── */
     {"monit.record_metric", "monit", "record_metric", GW_CAP_KIND_FWD},
