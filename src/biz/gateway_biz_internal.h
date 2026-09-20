@@ -82,8 +82,8 @@ struct gateway_business_ctx_s {
 /* @brief Namespace forwarding rule: <ns>.<method> -> target daemon <method>
  *
  * 0.1.6 P1-4 收敛：能力存在性校验统一走能力注册表（gateway_cap_registry.h，
- * cap_key 单一权威源）。daemon 端点由 svc dispatch 钩子按命名空间解析
- * （gw_svc_sock_for_ns），无需在此维护。
+ * cap_key 单一权威源）。daemon 端点由 svc dispatch 钩子按命名空间路由表
+ * 解析（gateway_biz_svcdispatch.c），无需在此维护。
  * wire 方法名取自注册表（method 字段）——请求前缀与目标命名空间
  * 可不一致（plugin.* → tool 命名空间 plugin_* 方法），字符串截取不再成立。 */
 typedef struct {
@@ -113,6 +113,9 @@ char *handle_tool_approval_call(cJSON *root, const gateway_business_ctx_t *ctx,
 /* ---- gateway_biz_svcdispatch.c (微核心服务统一派发钩子, 2026-08-25) ---- */
 int gw_sys_svc_dispatch_init(gateway_business_ctx_t *ctx);
 void gw_sys_svc_dispatch_cleanup(void);
+
+/* ---- gateway_biz_supactivate.c (V13.2 按需激活单向通知) ---- */
+#include "gateway_biz_supactivate.h"
 
 /* ---- gateway_biz_hall.c (hall.* — task board / event stream / chain) ---- */
 char *handle_hall_call(cJSON *root, gateway_business_ctx_t *ctx);
