@@ -85,6 +85,8 @@ set(GATEWAY_BIZ_SOURCES
     ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_forward.c
     ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_hall.c
     ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_svcdispatch.c
+    # V13.2 按需激活单向通知（supervisor.activate fire-and-forget）
+    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_supactivate.c
     ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_tools.c
     ${GATEWAY_SRC_BASE}/src/biz/gateway_business_handler.c
     ${GATEWAY_SRC_BASE}/src/biz/gateway_cap_registry.c

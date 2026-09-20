@@ -12,8 +12,9 @@
  * 本钩子：
  *
  *   airy_sys_svc_call(ns, method, params, timeout) -> g_svc_dispatch 钩子
- *     -> 按命名空间映射到 ctx 中已解析的 daemon 端点（环境变量覆盖优先）
+ *     -> 按命名空间路由表映射到 ctx 中已解析的 daemon 端点（环境变量覆盖优先）
  *     -> gw_svc_call()（L2 socket 客户端）传输
+ *     -> 不可达时按 V13.2 单向请求 supervisor 激活（限频 fire-and-forget）
  *
  * syscall 层（atoms/syscall/src/svc/svc_dispatch.c）保持与 daemon 层解耦
  * （IRON-6 跨层耦合禁令），本文件是 gateway 侧唯一的 ns -> 端点映射点。
@@ -25,6 +26,8 @@
 
 #include "logging.h"
 
+#include "airy_time.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -32,13 +35,45 @@
  * 单 gateway 进程内仅一个 ctx 实例，生命周期由 ctx_create/destroy 管理）。 */
 static gateway_business_ctx_t *g_svc_ctx = NULL;
 
+/* 命名空间路由表（本文件是 gateway 侧唯一的 ns -> 端点映射点）：
+ * ns -> 宿主 daemon 端点字段（ctx 内偏移）+ supervisor 登记名（V13.2
+ * 按需激活用；<x>_d 与 sock 文件 <x>.sock 同源命名）。plugin→tool、
+ * info/observe→monit 为整编行：方法名经 gw_wire_method 加前缀消歧。 */
+typedef struct {
+    const char *ns;
+    const char *daemon;
+    size_t sock_off;
+} gw_ns_route_t;
+
+#define GW_SOCK_FIELD(f) offsetof(gateway_business_ctx_t, f##_sock_path)
+
+static const gw_ns_route_t GW_NS_ROUTES[] = {
+    {"llm", "llm_d", GW_SOCK_FIELD(llm)},
+    {"tool", "tool_d", GW_SOCK_FIELD(tool)},
+    {"agent", "agent_d", GW_SOCK_FIELD(agent)},
+    {"mem", "mem_d", GW_SOCK_FIELD(mem)},
+    {"sched", "sched_d", GW_SOCK_FIELD(sched)},
+    {"think", "think_d", GW_SOCK_FIELD(think)},
+    {"a2a", "a2a_d", GW_SOCK_FIELD(a2a)},
+    {"plugin", "tool_d", GW_SOCK_FIELD(tool)},
+    {"info", "monit_d", GW_SOCK_FIELD(monit)},
+    {"notify", "notify_d", GW_SOCK_FIELD(notify)},
+    {"observe", "monit_d", GW_SOCK_FIELD(monit)},
+    {"market", "market_d", GW_SOCK_FIELD(market)},
+    {"hook", "hook_d", GW_SOCK_FIELD(hook)},
+    {"monit", "monit_d", GW_SOCK_FIELD(monit)},
+    {"channel", "channel_d", GW_SOCK_FIELD(channel)},
+    {"cupolas", "cupolas_d", GW_SOCK_FIELD(cupolas)},
+    {"maths", "maths_d", GW_SOCK_FIELD(maths)},
+};
+
+#define GW_NS_ROUTES_N (sizeof(GW_NS_ROUTES) / sizeof(GW_NS_ROUTES[0]))
+
 /**
- * @brief 命名空间 -> daemon 端点映射（端点已在 ctx 创建时解析，
- *        支持 AIRY_<NS>_SOCK 环境变量覆盖与 Windows TCP 回环约定）。
- * @param ns 命名空间（可带尾点，如 "llm." 与 "llm" 等价）
- * @return 端点字符串（ctx 内存储，非 OWNER）；未知命名空间返回 NULL
+ * @brief 命名空间 -> 路由表项（可带尾点，如 "llm." 与 "llm" 等价）。
+ * @return 表项指针（静态存储，非 OWNER）；未知命名空间返回 NULL
  */
-static const char *gw_svc_sock_for_ns(const char *ns)
+static const gw_ns_route_t *gw_route_for_ns(const char *ns)
 {
     if (!ns || !g_svc_ctx)
         return NULL;
@@ -48,50 +83,33 @@ static const char *gw_svc_sock_for_ns(const char *ns)
     if (n == 0 || n >= sizeof(buf))
         return NULL;
     AIRY_MEMCPY(buf, ns, n);
-    if (buf[n - 1] == '.')
+    buf[n] = '\0';
+    if (buf[n - 1] == '.') {
         buf[--n] = '\0';
-    else
-        buf[n] = '\0';
+        if (n == 0)
+            return NULL;
+    }
 
-    if (strcmp(buf, "llm") == 0)
-        return g_svc_ctx->llm_sock_path;
-    if (strcmp(buf, "tool") == 0)
-        return g_svc_ctx->tool_sock_path;
-    if (strcmp(buf, "agent") == 0)
-        return g_svc_ctx->agent_sock_path;
-    if (strcmp(buf, "mem") == 0)
-        return g_svc_ctx->mem_sock_path;
-    if (strcmp(buf, "sched") == 0)
-        return g_svc_ctx->sched_sock_path;
-    if (strcmp(buf, "think") == 0)
-        return g_svc_ctx->think_sock_path;
-    if (strcmp(buf, "a2a") == 0)
-        return g_svc_ctx->a2a_sock_path;
-    /* plugin_d → tool_d 整编——旧 plugin ns 解析到 tool.sock，
-     * 方法名在 gw_wire_method 内加 "plugin_" 前缀（见下） */
-    if (strcmp(buf, "plugin") == 0)
-        return g_svc_ctx->tool_sock_path;
-    /* info_d / observe_d → monit_d 整编——旧 ns 解析到 monit.sock，
-     * 方法名在 gw_wire_method 内加 "info_" / "observe_" 前缀（见下） */
-    if (strcmp(buf, "info") == 0)
-        return g_svc_ctx->monit_sock_path;
-    if (strcmp(buf, "notify") == 0)
-        return g_svc_ctx->notify_sock_path;
-    if (strcmp(buf, "observe") == 0)
-        return g_svc_ctx->monit_sock_path;
-    if (strcmp(buf, "market") == 0)
-        return g_svc_ctx->market_sock_path;
-    if (strcmp(buf, "hook") == 0)
-        return g_svc_ctx->hook_sock_path;
-    if (strcmp(buf, "monit") == 0)
-        return g_svc_ctx->monit_sock_path;
-    if (strcmp(buf, "channel") == 0)
-        return g_svc_ctx->channel_sock_path;
-    if (strcmp(buf, "cupolas") == 0)
-        return g_svc_ctx->cupolas_sock_path;
-    if (strcmp(buf, "maths") == 0)
-        return g_svc_ctx->maths_sock_path;
+    for (size_t i = 0; i < GW_NS_ROUTES_N; i++) {
+        if (strcmp(buf, GW_NS_ROUTES[i].ns) == 0)
+            return &GW_NS_ROUTES[i];
+    }
     return NULL;
+}
+
+/* V13.2 按需激活限频：per-ns 单向通知最小间隔，保护 supervisor 串行控制口
+ * （supervisor 侧 activate 幂等且不绕过退避；首写竞态最多多发一次，无害）。 */
+#define GW_ACT_MIN_INTERVAL_MS 1000
+static atomic_uint64_t g_act_last_ms[GW_NS_ROUTES_N];
+
+static int gw_act_throttled(size_t idx)
+{
+    uint64_t now = airy_time_monotonic_ms();
+    uint64_t last = atomic_load(&g_act_last_ms[idx]);
+    if (now < last + (uint64_t)GW_ACT_MIN_INTERVAL_MS)
+        return 1;
+    atomic_store(&g_act_last_ms[idx], now);
+    return 0;
 }
 
 /* daemon 整编命名空间路由表（plugin→tool、info/observe→monit）。
@@ -156,11 +174,12 @@ static int gw_sys_svc_dispatch(const char *ns, const char *method, const char *p
     }
     *out_result = NULL;
 
-    const char *sock = gw_svc_sock_for_ns(ns);
-    if (!sock) {
+    const gw_ns_route_t *route = gw_route_for_ns(ns);
+    if (!route) {
         AIRY_LOG_WARN("gateway svc_dispatch: unknown namespace '%s' (method=%s)", ns, method);
         return -1;
     }
+    const char *sock = (const char *)(const void *)g_svc_ctx + route->sock_off;
 
     /* legacy ns（plugin / info / observe）→ 宿主 wire 方法名前缀转换
      * （"load" → "plugin_load"、"system" → "info_system"）。兼容直接以旧 ns
@@ -176,6 +195,10 @@ static int gw_sys_svc_dispatch(const char *ns, const char *method, const char *p
     if (!resp) {
         AIRY_LOG_WARN("gateway svc_dispatch: service unreachable ns=%s method=%s sock=%s", ns,
                       wire_method, sock);
+        /* V13.2 按需激活：不可达即单向请求 supervisor 拉起（限频 +
+         * fire-and-forget，不改写客户端可见错误；重试责任在客户端）。 */
+        if (!gw_act_throttled((size_t)(route - GW_NS_ROUTES)))
+            gw_sup_notify_activate(route->daemon);
         return -1;
     }
     *out_result = resp;
