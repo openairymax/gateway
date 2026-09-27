@@ -25,7 +25,7 @@
 #include "gateway_biz_internal.h"
 #include "daemon_l1_server.h"
 
-#include "ipc.h"
+#include "kern_ipc.h"
 
 #include <cjson/cJSON.h>
 

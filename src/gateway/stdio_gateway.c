@@ -295,7 +295,7 @@ static void stdio_gateway_destroy(void *gateway_impl)
     AIRY_FREE(gateway);
 }
 
-static const char *stdio_gateway_get_name(void *gateway_impl __attribute__((unused)))
+static const char *stdio_gateway_get_name(void *gateway_impl)
 {
     return "Stdio Gateway";
 }
