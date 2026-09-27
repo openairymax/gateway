@@ -10,16 +10,17 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/* 版本 SSoT：网关仓对外报告版本，与 agentrt 全系统版本（VERSION 文件 /
- * CMakeLists project() / gateway_d AIRYRT_VERSION）保持一致。构建期由
- * gateway/CMakeLists.txt 与 daemons/gateway_d/CMakeLists.txt 从 VERSION
- * 文件注入 -DGATEWAY_VERSION；此处仅作缺省回退——优先取 C 侧 SSoT
- * AIRYRT_VERSION（airyrt_version.h），未定义时回退当前发布版本。 */
+/* 版本 SSoT：网关对外报告版本与 agentrt 全系统版本一致，唯一权威为
+ * VERSION 文件 → 顶层 CMakeLists.txt 注入的 AIRYRT_VERSION。构建期
+ * gateway/CMakeLists.txt 与 daemons/gateway_d/CMakeLists.txt 亦从 VERSION
+ * 注入 GATEWAY_VERSION。此处按优先级取 AIRYRT_VERSION（C 侧 SSoT）；若
+ * 两者均未定义（未走 CMake 的独立语法检查），回退 "0.0.0-dev" 明确标识
+ * "非发布构建"，不在源码内保留任何真实发布号副本（漂移免疫）。 */
 #ifndef GATEWAY_VERSION
 #ifdef AIRYRT_VERSION
 #define GATEWAY_VERSION AIRYRT_VERSION
 #else
-#define GATEWAY_VERSION "0.1.7"
+#define GATEWAY_VERSION "0.0.0-dev"
 #endif
 #endif
 
