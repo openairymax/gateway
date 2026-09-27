@@ -142,7 +142,7 @@ void gateway_apply_cors_headers(http_gateway_t *gateway, struct MHD_Connection *
  */
 struct MHD_Response *create_http_response_ex(http_gateway_t *gateway,
                                              struct MHD_Connection *connection,
-                                             int status_code __attribute__((unused)),
+                                             int status_code,
                                              const char *content, size_t content_len)
 {
 
@@ -372,8 +372,8 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
 }
 
 static void http_req_complete_cb(
-    void *cls __attribute__((unused)), struct MHD_Connection *connection __attribute__((unused)),
-    void **con_cls, enum MHD_RequestTerminationCode toe __attribute__((unused)))
+    void *cls, struct MHD_Connection *connection,
+    void **con_cls, enum MHD_RequestTerminationCode toe)
 {
     if (con_cls && *con_cls) {
         http_request_context_t *ctx = (http_request_context_t *)*con_cls;
@@ -649,7 +649,7 @@ static void http_gateway_destroy(void *gateway_impl)
 
     AIRY_FREE(gateway);
 }
-static const char *http_gateway_get_name(void *gateway_impl __attribute__((unused)))
+static const char *http_gateway_get_name(void *gateway_impl)
 {
     return "HTTP Gateway";
 }
@@ -901,8 +901,8 @@ int http_gateway_register_endpoint(http_gateway_t *gateway, const char *method, 
 #endif /* GATEWAY_HAS_HTTP */
 #ifndef GATEWAY_HAS_HTTP
 
-gateway_t *http_gateway_create(const char *host __attribute__((unused)),
-                               uint16_t port __attribute__((unused)))
+gateway_t *http_gateway_create(const char *host,
+                               uint16_t port)
 {
     return NULL;
 }

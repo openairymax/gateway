@@ -562,7 +562,6 @@ static int parse_args(int argc, char *argv[])
         } else if (strcmp(argv[i], "--method") == 0 && i + 1 < argc) {
             strncpy((g_config.method), (argv[++i]), (sizeof(g_config.method)) - 1);
             (g_config.method)[(sizeof(g_config.method)) - 1] = '\0';
-            ;
         } else if (strcmp(argv[i], "--payload") == 0 && i + 1 < argc) {
             FILE *pf = fopen(argv[++i], "rb");
             if (pf) {
@@ -570,9 +569,14 @@ static int parse_args(int argc, char *argv[])
                 g_config.payload_size = ftell(pf);
                 fseek(pf, 0, SEEK_SET);
                 g_config.payload = (char *)AIRY_MALLOC(g_config.payload_size + 1);
-                {
-                    size_t __attribute__((unused)) _fr;
-                    _fr = fread(g_config.payload, 1, g_config.payload_size, pf);
+                if (fread(g_config.payload, 1, g_config.payload_size, pf) !=
+                    (size_t)g_config.payload_size) {
+                    fprintf(stderr, "Failed to read payload file\n");
+                    AIRY_FREE(g_config.payload);
+                    g_config.payload = NULL;
+                    g_config.payload_size = 0;
+                    fclose(pf);
+                    return AIRY_ERR_UNKNOWN;
                 }
                 g_config.payload[g_config.payload_size] = '\0';
                 fclose(pf);

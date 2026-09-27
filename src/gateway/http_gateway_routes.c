@@ -88,7 +88,7 @@ int handle_post_jsonrpc(http_gateway_t *gateway, struct MHD_Connection *connecti
   * @brief Handle OPTIONS requests (CORS preflight) (CC=2)
  */
 int handle_options_preflight(http_gateway_t *gateway, struct MHD_Connection *connection,
-                             http_request_context_t *context __attribute__((unused)))
+                             http_request_context_t *context)
 {
 
     struct MHD_Response *response =
@@ -210,7 +210,7 @@ static bool gateway_is_url_safe(const char *url)
   * @brief Handle GET /health (CC=2)
  */
 int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connection,
-                        http_request_context_t *context __attribute__((unused)))
+                        http_request_context_t *context)
 {
 
     const char *health_json =
@@ -234,7 +234,7 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
   * 比较由 gw_auth_key_matches 兼收）。
  */
 int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connection,
-                          http_request_context_t *context __attribute__((unused)))
+                          http_request_context_t *context)
 {
     char *metrics_json = NULL;
     airy_err_t err = airy_sys_telemetry_metrics(&metrics_json);
@@ -279,7 +279,7 @@ int handle_not_found(http_gateway_t *gateway, struct MHD_Connection *connection,
   * @brief Handle request-size-limit errors (CC=2)
  */
 int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *connection,
-                             http_request_context_t *context __attribute__((unused)),
+                             http_request_context_t *context,
                              size_t data_size)
 {
 
@@ -301,7 +301,7 @@ int handle_request_too_large(http_gateway_t *gateway, struct MHD_Connection *con
   * @brief Handle JSON parse errors (CC=2)
  */
 int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connection,
-                       http_request_context_t *context __attribute__((unused)), size_t data_size)
+                       http_request_context_t *context, size_t data_size)
 {
 
     char *error_response = jsonrpc_create_error_response(NULL, -32700, "Parse error", NULL);
@@ -482,7 +482,7 @@ static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Con
   * Phase 4: route to other endpoints (OPTIONS/GET, etc.)
  */
 int handle_http_request(void *cls, struct MHD_Connection *connection, const char *url,
-                        const char *method, const char *version __attribute__((unused)),
+                        const char *method, const char *version,
                         const char *upload_data, size_t *upload_data_size, void **con_cls)
 {
     http_gateway_t *gateway = (http_gateway_t *)cls;

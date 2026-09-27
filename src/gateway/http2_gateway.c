@@ -511,19 +511,19 @@ int http2_gateway_stop(http2_gateway_t *gw)
 #endif /* AIRY_HAS_HTTP2 */
 #ifndef AIRY_HAS_HTTP2
 
-gateway_t *http2_gateway_create(const char *host __attribute__((unused)),
-                                uint16_t port __attribute__((unused)))
+gateway_t *http2_gateway_create(const char *host,
+                                uint16_t port)
 {
     AIRY_LOG_WARN("HTTP/2 gateway not available: nghttp2 not compiled in");
     return NULL;
 }
 
-int http2_gateway_start(http2_gateway_t *gw __attribute__((unused)))
+int http2_gateway_start(http2_gateway_t *gw)
 {
     return AIRY_ENOSYS;
 }
 
-int http2_gateway_stop(http2_gateway_t *gw __attribute__((unused)))
+int http2_gateway_stop(http2_gateway_t *gw)
 {
     return AIRY_ENOSYS;
 }
