@@ -174,7 +174,8 @@ target_include_directories(gateway
         ${COMMONS_DIR}/include/third_party
         # 8.3.3 灰度：gw_svc_call 的 L2 先行路（daemon_l2_channel_for_socket
         # / daemon_l2_rpc_call_resp，daemon_l1_server.h）。置于 commons 路径
-        # 之后——daemons/common/include 是兼容层，顺序约束见根 CMakeLists。
+        # 之后——daemons/common/include 是兼容层，顺序约束见
+        # daemons/common/CMakeLists（svc_common PUBLIC 末位）。
         ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
 )
 
