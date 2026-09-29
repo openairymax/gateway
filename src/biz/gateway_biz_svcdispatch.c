@@ -60,7 +60,7 @@ static const gw_ns_route_t GW_NS_ROUTES[] = {
     {"notify", "notify_d", GW_SOCK_FIELD(notify)},
     {"observe", "monit_d", GW_SOCK_FIELD(monit)},
     {"market", "market_d", GW_SOCK_FIELD(market)},
-    {"hook", "hook_d", GW_SOCK_FIELD(hook)},
+    {"hook", "notify_d", GW_SOCK_FIELD(hook)}, /* R7 并户：hook 面由 notify_d 承载 */
     {"monit", "monit_d", GW_SOCK_FIELD(monit)},
     {"channel", "channel_d", GW_SOCK_FIELD(channel)},
     {"cupolas", "cupolas_d", GW_SOCK_FIELD(cupolas)},
