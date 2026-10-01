@@ -51,8 +51,9 @@
  * daemon-side single source of truth: airy_runtime_dir() resolves $AIRY_HOME/run,
  * defaulting to ~/.airymaxrt/run.
  *
- * Windows: daemon IPC 走 TCP 回环（daemon_main.h parse_args 强制），
- * 端点约定为 "host:port"，端口与各 daemon DEFAULT_TCP_PORT 对齐。 */
+ * Windows: daemon IPC 走 TCP 回环（daemon_main.h parse_args 平台分支强制），
+ * 端点约定为 "host:port"，主机恒为 127.0.0.1，端口取自 airy_defaults.h
+ * 私有端口带 SSoT（唯一权威定义，此处禁止复刻字面量）。 */
 static void gw_resolve_daemon_sock(char *out, size_t out_size, const char *env_name,
                                    const char *sock_name)
 {
@@ -62,18 +63,18 @@ static void gw_resolve_daemon_sock(char *out, size_t out_size, const char *env_n
         return;
     }
 #ifdef _WIN32
-    static const struct { const char *ns; const char *ep; } WIN_SOCK_TCP[] = {
-        {"llm.sock", "127.0.0.1:8080"},     {"tool.sock", "127.0.0.1:8081"},
-        {"market.sock", "127.0.0.1:8082"},   {"sched.sock", "127.0.0.1:8083"},
-        {"notify.sock", "127.0.0.1:8084"},   {"mem.sock", "127.0.0.1:8085"},
-        {"agent.sock", "127.0.0.1:8086"},    {"a2a.sock", "127.0.0.1:8087"},
-        {"cupolas.sock", "127.0.0.1:8089"},  {"think.sock", "127.0.0.1:8090"},
-        {"hook.sock", "127.0.0.1:8093"},
-        {"channel.sock", "127.0.0.1:8094"},  {"monit.sock", "127.0.0.1:9090"},
+    static const struct { const char *ns; unsigned port; } WIN_SOCK_TCP[] = {
+        {"llm.sock", AIRY_PORT_LLM_D},         {"tool.sock", AIRY_PORT_TOOL_D},
+        {"market.sock", AIRY_PORT_MARKET_D},   {"sched.sock", AIRY_PORT_SCHED_D},
+        {"mem.sock", AIRY_PORT_MEM_D},         {"agent.sock", AIRY_PORT_AGENT_D},
+        {"a2a.sock", AIRY_PORT_A2A_D},         {"maths.sock", AIRY_PORT_MATHS_D},
+        {"cupolas.sock", AIRY_PORT_CUPOLAS_D}, {"think.sock", AIRY_PORT_THINK_D},
+        {"hook.sock", AIRY_PORT_HOOK},         {"channel.sock", AIRY_PORT_CHANNEL_D},
+        {"monit.sock", AIRY_PORT_MONIT_D},     {"notify.sock", AIRY_PORT_NOTIFY_D},
     };
     for (size_t i = 0; i < sizeof(WIN_SOCK_TCP) / sizeof(WIN_SOCK_TCP[0]); i++) {
         if (strcmp(sock_name, WIN_SOCK_TCP[i].ns) == 0) {
-            AIRY_STRNCPY_TERM(out, WIN_SOCK_TCP[i].ep, out_size);
+            snprintf(out, out_size, "127.0.0.1:%u", WIN_SOCK_TCP[i].port);
             return;
         }
     }

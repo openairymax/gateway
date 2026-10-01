@@ -28,6 +28,7 @@
 #include "gateway_business_handler.h"
 #include "gateway_mcp_server.h"
 
+#include "airy_defaults.h"
 #include "airy_memory.h"
 #include "atomic_compat.h"
 
@@ -44,7 +45,8 @@ extern "C" {
  * 15-25s; 120s covers the worst case. */
 #define GW_THINK_TIMEOUT_MS 120000
 #define GW_LLM_MAX_RESP 1048576
-#define GW_LLM_DEFAULT_TCP_PORT 8080
+/* LLM daemon 端点缺省端口：SSoT 引用，真值唯一定义于 commons/include/airy_defaults.h */
+#define GW_LLM_DEFAULT_TCP_PORT AIRY_PORT_LLM_D
 #define GW_EXTERNAL_AGENT_ID "external"
 
 /* Tool execution timeout 90s: shell_run itself times out at 60s; the old 30s
