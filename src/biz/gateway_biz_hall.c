@@ -32,6 +32,7 @@
 #include "gateway/gateway_hall_store.h"
 #include "syscalls.h"
 
+#include "hall_event.h"
 #include "logging.h"
 #include "platform.h"
 #include "airy_dirent.h"
@@ -41,12 +42,9 @@
 #include <string.h>
 
 #define GW_HALL_STATE_REL "agentrt/state/work_hall_state.json"
-#define GW_HALL_ROOT_REL "agentrt/hall"
 #define GW_HALL_DEFAULT_STREAM_LIMIT 512
 #define GW_HALL_MAX_LIMIT 8192
 #define GW_HALL_PATH_MAX 1024
-#define GW_HALL_FILE_ID_MAX 192
-#define GW_HALL_TS_LEN 32
 
 /* ── file I/O helpers ─────────────────────────────────────────────── */
 
@@ -95,75 +93,17 @@ static void gw_hall_root(char *buf, size_t cap)
 {
     const char *data = airy_data_dir();
     if (data && data[0])
-        snprintf(buf, cap, "%s/%s", data, GW_HALL_ROOT_REL);
+        snprintf(buf, cap, "%s/%s", data, HALL_EVT_ROOT_REL);
     else
-        snprintf(buf, cap, "%s", GW_HALL_ROOT_REL);
-}
-
-/* ── hall file-name parsing ─────────────────────────────────────────
- * Naming: {tenant}.{task}.{category}.{ts_utc}.{seq:04d}.json
- * BAN-154: sscanf forbidden; split manually on '.' (tenant/task/category
- * never contain '.'; ts_utc is a fixed-width digit string).
- * out fields are filled with the substrings (pointers into name). */
-typedef struct {
-    const char *tenant;
-    size_t tenant_len;
-    const char *task;
-    size_t task_len;
-    const char *category;
-    size_t category_len;
-    const char *ts_utc;
-    size_t ts_utc_len;
-    const char *seq;
-    size_t seq_len;
-} gw_hall_name_parts_t;
-
-static int gw_hall_parse_name(const char *name, gw_hall_name_parts_t *out)
-{
-    if (!name || !out)
-        return -1;
-    size_t len = strlen(name);
-    /* minimum: a.b.c.ts.seq.json -> at least 5 dots */
-    const char *dot[5];
-    int n = 0;
-    for (size_t i = 0; i < len && n < 5; i++) {
-        if (name[i] == '.')
-            dot[n++] = name + i;
-    }
-    if (n != 5)
-        return -1;
-    /* trailing ".json" */
-    if (strcmp(dot[4], ".json") != 0)
-        return -1;
-
-    out->tenant = name;
-    out->tenant_len = (size_t)(dot[0] - name);
-    out->task = dot[0] + 1;
-    out->task_len = (size_t)(dot[1] - dot[0] - 1);
-    out->category = dot[1] + 1;
-    out->category_len = (size_t)(dot[2] - dot[1] - 1);
-    out->ts_utc = dot[2] + 1;
-    out->ts_utc_len = (size_t)(dot[3] - dot[2] - 1);
-    out->seq = dot[3] + 1;
-    out->seq_len = (size_t)(dot[4] - dot[3] - 1);
-    if (!out->tenant_len || !out->task_len || !out->category_len || !out->ts_utc_len ||
-        !out->seq_len)
-        return -1;
-    return 0;
-}
-
-static int gw_hall_ends_with_json(const char *name)
-{
-    size_t l = name ? strlen(name) : 0;
-    return l >= 5 && strcmp(name + l - 5, ".json") == 0;
+        snprintf(buf, cap, "%s", HALL_EVT_ROOT_REL);
 }
 
 /* ── growable event array ─────────────────────────────────────────── */
 
 typedef struct {
-    char ts_utc[GW_HALL_TS_LEN]; /* sort key 1 (fixed width, lexical) */
-    unsigned long seq;           /* sort key 2 */
-    char *json;                  /* compact event JSON (OWNER) */
+    char ts_utc[HALL_EVT_TS_LEN]; /* sort key 1 (fixed width, lexical) */
+    unsigned long seq;            /* sort key 2 */
+    char *json;                   /* compact event JSON (OWNER) */
 } gw_hall_evt_t;
 
 typedef struct {
@@ -235,24 +175,20 @@ static void gw_hall_evt_free_all(gw_hall_evt_list_t *l)
  * file contributed an event, -1 otherwise (skipped). */
 static int gw_hall_collect_file(const char *path, const char *name, gw_hall_evt_list_t *out)
 {
-    gw_hall_name_parts_t parts;
-    if (gw_hall_parse_name(name, &parts) != 0)
+    hall_evt_parts_t parts;
+    if (hall_evt_parse(name, &parts) != 0)
         return -1;
-    char ts_utc[GW_HALL_TS_LEN];
+    char ts_utc[HALL_EVT_TS_LEN];
     size_t tlen = parts.ts_utc_len;
     if (tlen >= sizeof(ts_utc))
         tlen = sizeof(ts_utc) - 1;
     AIRY_MEMCPY(ts_utc, parts.ts_utc, tlen);
     ts_utc[tlen] = '\0';
 
-    unsigned long seq = 0;
-    for (size_t i = 0; i < parts.seq_len; i++)
-        seq = seq * 10 + (unsigned long)(parts.seq[i] - '0');
-
     char *json = hall_event_flatten(path);
     if (!json)
         return -1;
-    gw_hall_evt_push(out, ts_utc, seq, json);
+    gw_hall_evt_push(out, ts_utc, hall_evt_seq(name), json);
     return 0;
 }
 
@@ -272,7 +208,7 @@ static void gw_hall_walk(const char *dir, int depth, const char *tenant_filter,
             continue;
         char sub[GW_HALL_PATH_MAX];
         snprintf(sub, sizeof(sub), "%s/%s", dir, ent->d_name);
-        if (depth == 3 && gw_hall_ends_with_json(ent->d_name)) {
+        if (depth == 3) {
             gw_hall_collect_file(sub, ent->d_name, out);
             continue;
         }
@@ -368,7 +304,7 @@ static char *gw_hall_tasks(const cJSON *params, const cJSON *id)
     typedef struct {
         char task[128];
         char tenant[64];
-        char latest_ts[GW_HALL_TS_LEN];
+        char latest_ts[HALL_EVT_TS_LEN];
         size_t event_count;
     } gw_task_t;
     gw_task_t *tasks = NULL;
@@ -407,10 +343,10 @@ static char *gw_hall_tasks(const cJSON *params, const cJSON *id)
                         continue;
                     struct dirent *f;
                     while ((f = readdir(fd)) != NULL) {
-                        if (f->d_name[0] == '.' || !gw_hall_ends_with_json(f->d_name))
+                        if (f->d_name[0] == '.')
                             continue;
-                        gw_hall_name_parts_t parts;
-                        if (gw_hall_parse_name(f->d_name, &parts) != 0)
+                        hall_evt_parts_t parts;
+                        if (hall_evt_parse(f->d_name, &parts) != 0)
                             continue;
                         /* find or create the task entry */
                         size_t idx = nt;
@@ -443,7 +379,7 @@ static char *gw_hall_tasks(const cJSON *params, const cJSON *id)
                             nt++;
                         }
                         tasks[idx].event_count++;
-                        char ts[GW_HALL_TS_LEN];
+                        char ts[HALL_EVT_TS_LEN];
                         size_t tlen = parts.ts_utc_len;
                         if (tlen >= sizeof(ts))
                             tlen = sizeof(ts) - 1;
