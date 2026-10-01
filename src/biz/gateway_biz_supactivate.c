@@ -7,7 +7,7 @@
  * @brief supervisor.activate 单向通知实现（0.1.18 §12.13 B13 / V13.2）。
  *
  * 端点解析与 supervisor_d 侧 sup_decl_load 保持同构：
- *   AIRY_SUPERVISOR_SOCK 覆盖 -> WIN32 127.0.0.1:8095 ->
+ *   AIRY_SUPERVISOR_SOCK 覆盖 -> WIN32 127.0.0.1:<AIRY_PORT_SUPERVISOR_D> ->
  *   airy_runtime_dir()/supervisor.sock。
  * 传输复用南向唯一客户端面（gate N2）：gw_svc_call -> gw_aipc_call。
  */
@@ -35,7 +35,7 @@ static void sup_ctrl_ep(char *out, size_t out_sz)
         return;
     }
 #ifdef _WIN32
-    AIRY_STRNCPY_TERM(out, "127.0.0.1:8095", out_sz);
+    snprintf(out, out_sz, "127.0.0.1:%d", AIRY_PORT_SUPERVISOR_D);
 #else
     const char *run_dir = airy_runtime_dir();
     if (run_dir && *run_dir)
