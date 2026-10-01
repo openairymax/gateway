@@ -14,16 +14,18 @@
  * visible events (decision chain / board), keeping the invariant "what a
  * client can see is what has been recorded" across all entry points.
  *
- * Event file format is byte-for-byte aligned with hall_store.c:
- *   root:  $AIRY_DATA_DIR/agentrt/hall
+ * Event file format is owned by the SSoT mechanism
+ * (commons/utils/hall/hall_event.c); the writer entry point here is a thin
+ * delegation to it:
+ *   root:  airy_data_dir()/agentrt/hall
  *   file:  {tenant}.{task}.{category}.{ts_utc}.{seq:04u}.json
  *   body:  {"file":{...},"access":{...},"content":{...}}
  * Each event's header prev_file carries the file id of the previous event
  * in the same (task, category) dir ("" for the first one), so the decision
  * chain is reconstructible from the on-disk event flow alone.
- * Cross-process order is (ts_utc, seq) like the read side; gseq is a
- * per-process monotonic counter (it restarts with each process and is
- * only used for in-process audit, never for cross-process ordering).
+ * gseq resumes from the disk maximum across all writer processes, so it is
+ * globally monotonic; the read side still orders (ts_utc, seq) as the
+ * within-directory tie-break.
  */
 
 #ifndef AIRY_RT_GATEWAY_HALL_STORE_H

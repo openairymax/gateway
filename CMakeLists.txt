@@ -154,6 +154,9 @@ target_include_directories(gateway
         # S-2 收敛 (2026-08-14): AIRY_LOG_* 权威宏源
         # commons/utils/observability/logger.h（logging.h 统一入口已引用）
         ${COMMONS_DIR}/utils/observability
+        # 0.1.19 §60: 任务大厅事件磁盘格式 SSoT（hall_event.h），
+        # gateway_hall_store.c 写侧薄委派消费
+        ${COMMONS_DIR}/utils/hall
         ${COMMONS_DIR}/utils/memory
         ${COMMONS_DIR}/utils/sync
         ${COMMONS_DIR}/utils/compat
