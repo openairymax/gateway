@@ -11,48 +11,15 @@
 
 // @owner: team-B
 #include "http_gateway_routes.h"
+#include "http_gateway_deps.h"
 
-#include "gateway_rate_limiter.h"
 #include "gateway_auth.h"
-#include "gateway_rpc_handler.h"
-#include "gateway_utils.h"
-#include "http_gateway.h"
-#include "jsonrpc.h"
-#include "logging.h"
-#include "airy_memory.h"
-#include "platform.h"
-#include "syscall_router.h"
-#include "syscall_router_internal.h"
-#include "syscalls.h"
-
-#include <microhttpd.h>
-#ifdef AIRY_HAS_CJSON
-#include <cjson/cJSON.h>
-#endif
-#include <stdlib.h>
-#include <string.h>
 
 /* OpenAI tools schema shared with gateway_d (SSoT, one-to-one with tool_d) */
 #include "airy_tool_schema.h"
 
 /* Gateway-side hall event recording (write side of the SSoT event flow) */
 #include "gateway_hall_store.h"
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/un.h>
-#include <unistd.h> /* close() */
-#endif
-
-#include "atomic_compat.h"
 
 /**
   * @brief Handle JSON-RPC POST requests (CC=3)

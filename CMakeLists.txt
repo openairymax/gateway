@@ -41,7 +41,6 @@ set(GATEWAY_SOURCES ${GATEWAY_COMMON_SOURCES})
 
 # ========== 头文件 ==========
 set(GATEWAY_HEADERS
-    src/gateway/gateway.h
     src/gateway/gateway_hall_store.h
     src/gateway/http_gateway.h
     src/gateway/http2_gateway.h
@@ -252,7 +251,6 @@ install(FILES
 )
 
 install(FILES
-    src/gateway/gateway.h
     src/gateway/http_gateway.h
     src/gateway/http2_gateway.h
     src/gateway/ws_gateway.h
@@ -273,9 +271,9 @@ if(BUILD_TESTS AND NOT WIN32)
     enable_testing()
 
     # 主网关测试 (7个用例) - 匹配当前公共 API
-    # （旧测试引用已移除的 gateway_create/gateway_create_interface 符号，
-    #  原 "dual-header conflict" 实为测试过时；include/gateway.h 为公共头，
-    #  src/gateway/gateway.h 为内部实现头，各自独立编译链接。）
+    # （旧测试引用已移除的 gateway_create/gateway_create_interface 符号；
+    #  include/gateway.h 为公共 API SSoT，内部实现头为
+    #  src/gateway/gateway_internal.h。）
     add_executable(test_gateway tests/test_gateway.c)
     target_compile_definitions(test_gateway PRIVATE AIRY_COMPLIANCE_IMPL)
     target_link_libraries(test_gateway gateway)
