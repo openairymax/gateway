@@ -75,20 +75,7 @@ char *handle_agent_run(cJSON *root, gateway_business_ctx_t *ctx)
         return jsonrpc_error(-32603, "Agent service returned invalid response", id);
     }
 
-    cJSON *req_id = cJSON_GetObjectItem(root, "id");
-    cJSON *svc_id = cJSON_GetObjectItem(rroot, "id");
-    if (svc_id)
-        cJSON_DeleteItemFromObject(rroot, "id");
-    if (req_id && cJSON_IsString(req_id)) {
-        cJSON_AddStringToObject(rroot, "id", req_id->valuestring);
-    } else if (req_id && cJSON_IsNumber(req_id)) {
-        cJSON_AddNumberToObject(rroot, "id", req_id->valuedouble);
-    } else {
-        cJSON_AddNullToObject(rroot, "id");
-    }
-    char *out = cJSON_PrintUnformatted(rroot);
-    cJSON_Delete(rroot);
-    return out;
+    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
 }
 
 /**
@@ -125,18 +112,5 @@ char *handle_agent_cancel(cJSON *root, gateway_business_ctx_t *ctx)
         return jsonrpc_error(-32603, "Agent service returned invalid response", id);
     }
 
-    cJSON *req_id = cJSON_GetObjectItem(root, "id");
-    cJSON *svc_id = cJSON_GetObjectItem(rroot, "id");
-    if (svc_id)
-        cJSON_DeleteItemFromObject(rroot, "id");
-    if (req_id && cJSON_IsString(req_id)) {
-        cJSON_AddStringToObject(rroot, "id", req_id->valuestring);
-    } else if (req_id && cJSON_IsNumber(req_id)) {
-        cJSON_AddNumberToObject(rroot, "id", req_id->valuedouble);
-    } else {
-        cJSON_AddNullToObject(rroot, "id");
-    }
-    char *out = cJSON_PrintUnformatted(rroot);
-    cJSON_Delete(rroot);
-    return out;
+    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
 }

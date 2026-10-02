@@ -100,6 +100,7 @@ int gw_biz_mcp_register_tools(gw_mcp_server_t *mcp, void *user_data);
 
 /* ---- gateway_biz_forward.c (L2 protocol client + namespace forwarding) ---- */
 char *jsonrpc_error(int code, const char *msg, const cJSON *id);
+char *jsonrpc_emit(cJSON *rroot, const cJSON *req_id);
 char *gw_svc_call(const char *sock_path, const char *method, const char *params_json,
                   int timeout_ms);
 int gw_acl_check_tool(const gateway_business_ctx_t *ctx, const char *tool_name);

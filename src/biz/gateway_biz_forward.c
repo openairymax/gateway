@@ -62,6 +62,28 @@ char *jsonrpc_error(int code, const char *msg, const cJSON *id)
 }
 
 /**
+ * @brief svc 响应回写：将 daemon 响应 id 重写为请求 id（JSON-RPC 2.0 并发
+ *        关联合规，daemon 侧回显内部 id），序列化并释放响应树。
+ * @return Complete response string (AIRY_MALLOC, caller AIRY_FREE)
+ */
+char *jsonrpc_emit(cJSON *rroot, const cJSON *req_id)
+{
+    cJSON *svc_id = cJSON_GetObjectItem(rroot, "id");
+    if (svc_id)
+        cJSON_DeleteItemFromObject(rroot, "id");
+    if (req_id && cJSON_IsString(req_id)) {
+        cJSON_AddStringToObject(rroot, "id", req_id->valuestring);
+    } else if (req_id && cJSON_IsNumber(req_id)) {
+        cJSON_AddNumberToObject(rroot, "id", req_id->valuedouble);
+    } else {
+        cJSON_AddNullToObject(rroot, "id");
+    }
+    char *out = cJSON_PrintUnformatted(rroot);
+    cJSON_Delete(rroot);
+    return out;
+}
+
+/**
  * @brief Generic daemon internal service call (legacy entry)
  *
  * Thin wrapper kept for zero call-site churn: the transport (L2-first per
@@ -144,20 +166,7 @@ char *handle_ns_forward(cJSON *root, const gw_ns_forward_rule_t *rule)
     if (!rroot)
         return jsonrpc_error(-32603, "Service returned invalid response", id);
 
-    cJSON *req_id = cJSON_GetObjectItem(root, "id");
-    cJSON *svc_id = cJSON_GetObjectItem(rroot, "id");
-    if (svc_id)
-        cJSON_DeleteItemFromObject(rroot, "id");
-    if (req_id && cJSON_IsString(req_id)) {
-        cJSON_AddStringToObject(rroot, "id", req_id->valuestring);
-    } else if (req_id && cJSON_IsNumber(req_id)) {
-        cJSON_AddNumberToObject(rroot, "id", req_id->valuedouble);
-    } else {
-        cJSON_AddNullToObject(rroot, "id");
-    }
-    char *out = cJSON_PrintUnformatted(rroot);
-    cJSON_Delete(rroot);
-    return out;
+    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
 }
 
 /**
@@ -211,24 +220,7 @@ char *handle_mem_call(cJSON *root)
     if (!rroot) {
         return jsonrpc_error(-32603, "Memory service returned invalid response", id);
     }
-    /* JSON-RPC 2.0 compliance: the response id must match the request id.
-     * mem_d echoes the internal id=1 used by gw_svc_call; without rewriting,
-     * concurrent requests cannot be correlated to their originals (client id
-     * validation would fail). */
-    cJSON *req_id = cJSON_GetObjectItem(root, "id");
-    cJSON *mem_id = cJSON_GetObjectItem(rroot, "id");
-    if (mem_id)
-        cJSON_DeleteItemFromObject(rroot, "id");
-    if (req_id && cJSON_IsString(req_id)) {
-        cJSON_AddStringToObject(rroot, "id", req_id->valuestring);
-    } else if (req_id && cJSON_IsNumber(req_id)) {
-        cJSON_AddNumberToObject(rroot, "id", req_id->valuedouble);
-    } else {
-        cJSON_AddNullToObject(rroot, "id");
-    }
-    char *out = cJSON_PrintUnformatted(rroot);
-    cJSON_Delete(rroot);
-    return out;
+    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
 }
 
 /**
@@ -258,20 +250,7 @@ char *handle_llm_list_models(cJSON *root, const gateway_business_ctx_t *ctx)
         return jsonrpc_error(-32603, "LLM service returned invalid response", id);
     }
 
-    cJSON *req_id = cJSON_GetObjectItem(root, "id");
-    cJSON *llm_id = cJSON_GetObjectItem(rroot, "id");
-    if (llm_id)
-        cJSON_DeleteItemFromObject(rroot, "id");
-    if (req_id && cJSON_IsString(req_id)) {
-        cJSON_AddStringToObject(rroot, "id", req_id->valuestring);
-    } else if (req_id && cJSON_IsNumber(req_id)) {
-        cJSON_AddNumberToObject(rroot, "id", req_id->valuedouble);
-    } else {
-        cJSON_AddNullToObject(rroot, "id");
-    }
-    char *out = cJSON_PrintUnformatted(rroot);
-    cJSON_Delete(rroot);
-    return out;
+    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
 }
 
 /**
@@ -322,18 +301,5 @@ char *handle_tool_approval_call(cJSON *root, const gateway_business_ctx_t *ctx,
         return jsonrpc_error(-32603, "Tool service returned invalid response", id);
     }
 
-    cJSON *req_id = cJSON_GetObjectItem(root, "id");
-    cJSON *tool_id = cJSON_GetObjectItem(rroot, "id");
-    if (tool_id)
-        cJSON_DeleteItemFromObject(rroot, "id");
-    if (req_id && cJSON_IsString(req_id)) {
-        cJSON_AddStringToObject(rroot, "id", req_id->valuestring);
-    } else if (req_id && cJSON_IsNumber(req_id)) {
-        cJSON_AddNumberToObject(rroot, "id", req_id->valuedouble);
-    } else {
-        cJSON_AddNullToObject(rroot, "id");
-    }
-    char *out = cJSON_PrintUnformatted(rroot);
-    cJSON_Delete(rroot);
-    return out;
+    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
 }
