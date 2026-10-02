@@ -98,6 +98,26 @@ static void gw_hall_root(char *buf, size_t cap)
         snprintf(buf, cap, "%s", HALL_EVT_ROOT_REL);
 }
 
+/* ── JSON-RPC result envelope (shared by hall.* methods) ──────────── */
+
+static char *gw_hall_respond(const cJSON *id, cJSON *result)
+{
+    cJSON *out = cJSON_CreateObject();
+    if (!out) {
+        cJSON_Delete(result);
+        return NULL;
+    }
+    cJSON_AddStringToObject(out, "jsonrpc", "2.0");
+    if (id && cJSON_IsNumber(id))
+        cJSON_AddNumberToObject(out, "id", id->valuedouble);
+    else
+        cJSON_AddNullToObject(out, "id");
+    cJSON_AddItemToObject(out, "result", result);
+    char *s = cJSON_PrintUnformatted(out);
+    cJSON_Delete(out);
+    return s;
+}
+
 /* ── growable event array ─────────────────────────────────────────── */
 
 typedef struct {
@@ -283,16 +303,7 @@ static char *gw_hall_board(const gateway_business_ctx_t *ctx, const cJSON *id)
         }
     }
 
-    cJSON *out = cJSON_CreateObject();
-    cJSON_AddStringToObject(out, "jsonrpc", "2.0");
-    if (id && cJSON_IsNumber(id))
-        cJSON_AddNumberToObject(out, "id", id->valuedouble);
-    else
-        cJSON_AddNullToObject(out, "id");
-    cJSON_AddItemToObject(out, "result", result);
-    char *s = cJSON_PrintUnformatted(out);
-    cJSON_Delete(out);
-    return s;
+    return gw_hall_respond(id, result);
 }
 
 static char *gw_hall_tasks(const cJSON *params, const cJSON *id)
@@ -428,16 +439,7 @@ tasks_done:
     cJSON_AddNumberToObject(result, "total", (double)nt);
     cJSON_AddStringToObject(result, "root", root);
 
-    cJSON *out = cJSON_CreateObject();
-    cJSON_AddStringToObject(out, "jsonrpc", "2.0");
-    if (id && cJSON_IsNumber(id))
-        cJSON_AddNumberToObject(out, "id", id->valuedouble);
-    else
-        cJSON_AddNullToObject(out, "id");
-    cJSON_AddItemToObject(out, "result", result);
-    char *s = cJSON_PrintUnformatted(out);
-    cJSON_Delete(out);
-    return s;
+    return gw_hall_respond(id, result);
 }
 
 static char *gw_hall_replay(const cJSON *params, const cJSON *id)
@@ -478,16 +480,7 @@ static char *gw_hall_replay(const cJSON *params, const cJSON *id)
     cJSON_AddItemToObject(result, "events", arr);
     cJSON_AddNumberToObject(result, "total", (double)total);
 
-    cJSON *out = cJSON_CreateObject();
-    cJSON_AddStringToObject(out, "jsonrpc", "2.0");
-    if (id && cJSON_IsNumber(id))
-        cJSON_AddNumberToObject(out, "id", id->valuedouble);
-    else
-        cJSON_AddNullToObject(out, "id");
-    cJSON_AddItemToObject(out, "result", result);
-    char *s = cJSON_PrintUnformatted(out);
-    cJSON_Delete(out);
-    return s;
+    return gw_hall_respond(id, result);
 }
 
 static char *gw_hall_stream(const cJSON *params, const cJSON *id)
@@ -525,16 +518,7 @@ static char *gw_hall_stream(const cJSON *params, const cJSON *id)
     cJSON_AddItemToObject(result, "events", arr);
     cJSON_AddNumberToObject(result, "total", (double)total);
 
-    cJSON *out = cJSON_CreateObject();
-    cJSON_AddStringToObject(out, "jsonrpc", "2.0");
-    if (id && cJSON_IsNumber(id))
-        cJSON_AddNumberToObject(out, "id", id->valuedouble);
-    else
-        cJSON_AddNullToObject(out, "id");
-    cJSON_AddItemToObject(out, "result", result);
-    char *s = cJSON_PrintUnformatted(out);
-    cJSON_Delete(out);
-    return s;
+    return gw_hall_respond(id, result);
 }
 
 /**

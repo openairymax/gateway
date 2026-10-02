@@ -197,20 +197,7 @@ static char *handle_rpc_request(ws_gateway_t *gateway, cJSON *request)
 
     rpc_result_t result = gateway_rpc_handle_request(request, ws_rpc_handler_adapter, gateway);
 
-    if (result.error_code != 0 || !result.response_json) {
-        char *error_resp = result.response_json ?
-                               result.response_json :
-                               jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
-        if (result.response_json)
-            result.response_json = NULL;
-        gateway_rpc_free(&result);
-        return error_resp;
-    }
-
-    char *success_resp = result.response_json;
-    result.response_json = NULL;
-    gateway_rpc_free(&result);
-    return success_resp;
+    return rpc_take_resp(&result);
 }
 
 /**
