@@ -13,7 +13,6 @@
 #include "gateway_rpc_handler.h"
 
 #include "error.h"
-#include "error.h"
 #include "jsonrpc.h"
 #include "airy_memory.h"
 #include "syscall_router.h"
@@ -162,4 +161,18 @@ void gateway_rpc_free(rpc_result_t *result)
 
     result->error_code = 0;
     result->error_message = NULL;
+}
+
+char *rpc_take_resp(rpc_result_t *result)
+{
+    char *resp = result ? result->response_json : NULL;
+
+    if (result)
+        result->response_json = NULL;
+
+    if (!resp)
+        resp = jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
+
+    gateway_rpc_free(result);
+    return resp;
 }

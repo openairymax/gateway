@@ -141,21 +141,7 @@ char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
                                             base->handler ? http2_internal_handler_adapter : NULL,
                                             base->handler ? &adapter : NULL);
 
-        if (result.error_code != 0 || !result.response_json) {
-            char *error_resp =
-                result.response_json ?
-                    result.response_json :
-                    jsonrpc_create_error_response(NULL, -32603, "Internal error", NULL);
-            if (result.response_json)
-                result.response_json = NULL;
-            gateway_rpc_free(&result);
-            return error_resp;
-        }
-
-        char *success_resp = result.response_json;
-        result.response_json = NULL;
-        gateway_rpc_free(&result);
-        return success_resp;
+        return rpc_take_resp(&result);
     }
 
     return jsonrpc_create_error_response(NULL, -32600, "Invalid request", NULL);

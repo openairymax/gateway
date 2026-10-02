@@ -10,7 +10,6 @@
 #include "jsonrpc.h"
 
 #include "error.h"
-#include "error.h"
 #include "airy_memory.h"
 
 #include <stdlib.h>
@@ -104,6 +103,17 @@ const cJSON *jsonrpc_get_id(const cJSON *json)
 #endif
 }
 
+#ifdef AIRY_HAS_CJSON
+/* echo the request id into a response envelope */
+static void jsonrpc_add_id(cJSON *response, const cJSON *id)
+{
+    if (id)
+        cJSON_AddItemToObject(response, "id", cJSON_Duplicate(id, 1));
+    else
+        cJSON_AddNullToObject(response, "id");
+}
+#endif
+
 char *jsonrpc_create_success_response(const cJSON *id, cJSON *result)
 {
 #ifdef AIRY_HAS_CJSON
@@ -122,11 +132,7 @@ char *jsonrpc_create_success_response(const cJSON *id, cJSON *result)
         cJSON_AddNullToObject(response, "result");
     }
 
-    if (id) {
-        cJSON_AddItemToObject(response, "id", cJSON_Duplicate(id, 1));
-    } else {
-        cJSON_AddNullToObject(response, "id");
-    }
+    jsonrpc_add_id(response, id);
 
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
@@ -172,11 +178,7 @@ char *jsonrpc_create_error_response(const cJSON *id, int code, const char *messa
     cJSON_AddStringToObject(response, "jsonrpc", "2.0");
     cJSON_AddItemToObject(response, "error", error);
 
-    if (id) {
-        cJSON_AddItemToObject(response, "id", cJSON_Duplicate(id, 1));
-    } else {
-        cJSON_AddNullToObject(response, "id");
-    }
+    jsonrpc_add_id(response, id);
 
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
@@ -282,6 +284,25 @@ int jsonrpc_validate_batch_request(const cJSON *batch_json, size_t *out_count)
 #endif
 }
 
+#ifdef AIRY_HAS_CJSON
+/* parse a response string, append it to the batch; consumes json_str */
+static bool batch_append(cJSON *responses, char *json_str)
+{
+    bool ok = false;
+
+    if (json_str) {
+        do {
+            CJSON_PARSE_GUARD(parsed, json_str, { break; });
+            cJSON_AddItemToArray(responses, parsed);
+            parsed = NULL;
+            ok = true;
+        } while (0);
+        AIRY_FREE(json_str);
+    }
+    return ok;
+}
+#endif
+
 char *jsonrpc_process_batch(const cJSON *batch_json,
                             char *(*handler)(const cJSON *request, void *user_data),
                             void *user_data)
@@ -303,16 +324,7 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
         const cJSON *item = cJSON_GetArrayItem(batch_json, (int)i);
 
         if (!cJSON_IsObject(item)) {
-            char *err_resp = jsonrpc_create_invalid_request_response();
-            if (err_resp) {
-
-                do {
-                    CJSON_PARSE_GUARD(parsed, err_resp, { break; });
-                    cJSON_AddItemToArray(responses, parsed);
-                    parsed = NULL;
-                } while (0);
-                AIRY_FREE(err_resp);
-            }
+            batch_append(responses, jsonrpc_create_invalid_request_response());
             continue;
         }
 
@@ -335,54 +347,22 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
                 err_resp = jsonrpc_create_invalid_request_response();
                 break;
             }
-            if (err_resp) {
-
-                do {
-                    CJSON_PARSE_GUARD(parsed, err_resp, { break; });
-                    cJSON_AddItemToArray(responses, parsed);
-                    parsed = NULL;
-                } while (0);
-                AIRY_FREE(err_resp);
-            }
+            batch_append(responses, err_resp);
             continue;
         }
 
         char *resp_str = handler(item, user_data);
         if (resp_str) {
-
-            int _resp_parsed_ok = 0;
-            do {
-                CJSON_PARSE_GUARD(resp_parsed, resp_str, { break; });
-                cJSON_AddItemToArray(responses, resp_parsed);
-                resp_parsed = NULL;
-                _resp_parsed_ok = 1;
-            } while (0);
-            if (!_resp_parsed_ok) {
+            if (!batch_append(responses, resp_str)) {
                 const cJSON *id = jsonrpc_get_id(item);
                 char *err_resp_str =
                     jsonrpc_create_internal_error_response(id, "Handler returned invalid JSON");
-                if (err_resp_str) {
-                    do {
-                        CJSON_PARSE_GUARD(err_parsed, err_resp_str, { break; });
-                        cJSON_AddItemToArray(responses, err_parsed);
-                        err_parsed = NULL;
-                    } while (0);
-                    AIRY_FREE(err_resp_str);
-                }
+                batch_append(responses, err_resp_str);
             }
-            AIRY_FREE(resp_str);
         } else {
             const cJSON *id = jsonrpc_get_id(item);
             char *err_resp = jsonrpc_create_internal_error_response(id, "Handler returned NULL");
-            if (err_resp) {
-
-                do {
-                    CJSON_PARSE_GUARD(parsed, err_resp, { break; });
-                    cJSON_AddItemToArray(responses, parsed);
-                    parsed = NULL;
-                } while (0);
-                AIRY_FREE(err_resp);
-            }
+            batch_append(responses, err_resp);
         }
     }
 

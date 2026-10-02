@@ -79,7 +79,20 @@ rpc_result_t gateway_rpc_create_error(int code, const char *message);
 /**
   * @brief Free an RPC result
   * @param result RPC result pointer
- */
+  */
 void gateway_rpc_free(rpc_result_t *result);
+
+/**
+  * @brief Take the response string out of an RPC result (shared by all transports)
+  *
+  * Extracts the response JSON and releases the result shell. When the result
+  * carries no response (handler or syscall failure), an internal-error
+  * JSON-RPC response is produced instead. The result is always consumed and
+  * must not be reused or freed afterwards.
+  *
+  * @param[in] result RPC result pointer (consumed; may be NULL)
+  * @return Response JSON string; caller frees with AIRY_FREE()
+  */
+char *rpc_take_resp(rpc_result_t *result);
 
 #endif /* GATEWAY_RPC_HANDLER_H */
