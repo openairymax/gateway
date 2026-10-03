@@ -119,9 +119,7 @@ typedef struct http_gateway {
      * "::" 时不启用（绑全部接口）。 */
     struct sockaddr_storage bind_addr;
 
-    void *handler_adapter;
-    gateway_internal_handler_t handler;
-    void *handler_data;
+    gateway_handler_slot_t handler_slot;
     atomic_bool running;
     atomic_uint_fast64_t requests_total;
     atomic_uint_fast64_t requests_failed;

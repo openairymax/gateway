@@ -132,14 +132,13 @@ char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
     http_gateway_t *base = &gw->base;
 
     if (base->protocol_handler && ctx->request_body && ctx->request_body_len > 0) {
-        http2_handler_adapter_t adapter = {.internal_handler = base->handler,
-                                           .internal_data = base->handler_data};
+        http2_handler_adapter_t adapter = {.internal_handler = base->handler_slot.handler,
+                                           .internal_data = base->handler_slot.data};
 
-        rpc_result_t result =
-            gateway_protocol_handle_request(base->protocol_handler, (const char *)ctx->request_body,
-                                            ctx->request_body_len, AIRY_PROTOCOL_COUNT,
-                                            base->handler ? http2_internal_handler_adapter : NULL,
-                                            base->handler ? &adapter : NULL);
+        rpc_result_t result = gateway_protocol_handle_request(
+            base->protocol_handler, (const char *)ctx->request_body, ctx->request_body_len,
+            AIRY_PROTOCOL_COUNT, base->handler_slot.handler ? http2_internal_handler_adapter : NULL,
+            base->handler_slot.handler ? &adapter : NULL);
 
         return rpc_take_resp(&result);
     }

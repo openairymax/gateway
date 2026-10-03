@@ -165,12 +165,12 @@ int ws_send_message(struct lws *wsi, ws_message_t *msg)
 static int ws_rpc_handler_adapter(const char *request_json, char **response_json, void *ctx)
 {
     ws_gateway_t *gw = (ws_gateway_t *)ctx;
-    if (!gw || !gw->handler) {
+    if (!gw || !gw->handler_slot.handler) {
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
                          "ws_rpc_handler_adapter: failed");
         return AIRY_ERR_UNKNOWN;
     }
-    char *result = gw->handler((void *)request_json, gw->handler_data);
+    char *result = gw->handler_slot.handler((void *)request_json, gw->handler_slot.data);
     if (!result) {
         airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
         return AIRY_ERR_UNKNOWN;

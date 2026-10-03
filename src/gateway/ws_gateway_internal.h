@@ -62,9 +62,7 @@ struct ws_gateway {
 
     gateway_rate_limiter_t *rate_limiter;
 
-    void *handler_adapter;
-    gateway_internal_handler_t handler;
-    void *handler_data;
+    gateway_handler_slot_t handler_slot;
 
     atomic_bool running;
 

@@ -50,9 +50,7 @@
   * @brief Stdio gateway internal structure
  */
 typedef struct stdio_gateway {
-    void *handler_adapter;
-    gateway_internal_handler_t handler;
-    void *handler_data;
+    gateway_handler_slot_t handler_slot;
 
     atomic_bool running;
 
@@ -105,10 +103,9 @@ static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
-    rpc_result_t result =
-        gateway_rpc_handle_request(request,
-                                   (int (*)(const char *, char **, void *))gateway->handler,
-                                   gateway->handler_data);
+    rpc_result_t result = gateway_rpc_handle_request(
+        request, (int (*)(const char *, char **, void *))gateway->handler_slot.handler,
+        gateway->handler_slot.data);
 #pragma GCC diagnostic pop
 
     return rpc_take_resp(&result);
@@ -266,12 +263,7 @@ static void stdio_gateway_destroy(void *gateway_impl)
 
     stdio_gateway_stop(gateway);
 
-    if (gateway->handler_adapter) {
-        AIRY_FREE(gateway->handler_adapter);
-        gateway->handler_adapter = NULL;
-    }
-    gateway->handler = NULL;
-    gateway->handler_data = NULL;
+    gw_handler_bind(&gateway->handler_slot, NULL, NULL);
 
     AIRY_FREE(gateway->input_buffer);
     gateway->input_buffer = NULL;
@@ -327,13 +319,7 @@ static airy_err_t stdio_gateway_set_handler(void *gateway_impl, gateway_internal
     if (!gateway)
         return AIRY_EINVAL;
 
-    if (gateway->handler_adapter) {
-        AIRY_FREE(gateway->handler_adapter);
-        gateway->handler_adapter = NULL;
-    }
-
-    gateway->handler = handler;
-    gateway->handler_data = user_data;
+    gw_handler_bind(&gateway->handler_slot, handler, user_data);
 
     return AIRY_SUCCESS;
 }
@@ -352,10 +338,6 @@ gateway_t *stdio_gateway_create(void)
     if (!gateway) {
         return NULL;
     }
-
-    gateway->handler_adapter = NULL;
-    gateway->handler = NULL;
-    gateway->handler_data = NULL;
 
     const char *env_bs = getenv("AIRY_STDIO_BUFFER_SIZE");
     gateway->input_buffer_size = env_bs ? (size_t)strtoul(env_bs, NULL, 10) : 8192;
