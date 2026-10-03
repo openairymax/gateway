@@ -182,12 +182,7 @@ static void http2_gateway_destroy_impl(void *impl)
 
     http_gateway_t *base = &gw->base;
 
-    if (base->handler_adapter) {
-        AIRY_FREE(base->handler_adapter);
-        base->handler_adapter = NULL;
-    }
-    base->handler = NULL;
-    base->handler_data = NULL;
+    gw_handler_bind(&base->handler_slot, NULL, NULL);
 
     if (base->host) {
         AIRY_FREE(base->host);
@@ -299,13 +294,7 @@ static airy_err_t http2_gateway_set_handler_impl(void *impl, gateway_internal_ha
     if (!gw)
         return AIRY_EINVAL;
 
-    if (gw->base.handler_adapter) {
-        AIRY_FREE(gw->base.handler_adapter);
-        gw->base.handler_adapter = NULL;
-    }
-
-    gw->base.handler = handler;
-    gw->base.handler_data = user_data;
+    gw_handler_bind(&gw->base.handler_slot, handler, user_data);
 
     return AIRY_SUCCESS;
 }
@@ -383,9 +372,6 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
     base->daemon = NULL;
     base->port = port;
     base->host = AIRY_STRDUP(host);
-    base->handler_adapter = NULL;
-    base->handler = NULL;
-    base->handler_data = NULL;
 
     if (!base->host) {
         AIRY_FREE(gw);

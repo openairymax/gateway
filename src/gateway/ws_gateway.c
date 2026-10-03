@@ -147,12 +147,7 @@ static void ws_gateway_destroy(void *gateway_impl)
 
     ws_gateway_stop(gateway);
 
-    if (gateway->handler_adapter) {
-        AIRY_FREE(gateway->handler_adapter);
-        gateway->handler_adapter = NULL;
-    }
-    gateway->handler = NULL;
-    gateway->handler_data = NULL;
+    gw_handler_bind(&gateway->handler_slot, NULL, NULL);
 
     if (gateway->host) {
         AIRY_FREE(gateway->host);
@@ -214,13 +209,7 @@ static airy_err_t ws_gateway_set_handler(void *gateway_impl, gateway_internal_ha
     if (!gateway)
         return AIRY_EINVAL;
 
-    if (gateway->handler_adapter) {
-        AIRY_FREE(gateway->handler_adapter);
-        gateway->handler_adapter = NULL;
-    }
-
-    gateway->handler = handler;
-    gateway->handler_data = user_data;
+    gw_handler_bind(&gateway->handler_slot, handler, user_data);
 
     return AIRY_SUCCESS;
 }
@@ -256,9 +245,6 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
 
     gateway->port = port;
     gateway->host = AIRY_STRDUP(host);
-    gateway->handler_adapter = NULL;
-    gateway->handler = NULL;
-    gateway->handler_data = NULL;
 
     /* Rate limiting is opt-in, driven by the same env vars as the HTTP/2
      * gateway (GATEWAY_RATE_LIMIT_ENABLED=true [+ GATEWAY_RATE_LIMIT_RPS]). */

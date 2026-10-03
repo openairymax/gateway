@@ -8,7 +8,8 @@
  * 公共 API（类型、回调签名、全部函数声明）的唯一权威是
  * include/gateway.h；本头文件通过包含它获得公共契约，自身只补充
  * 翻译单元内部使用的：GATEWAY_VERSION 回退、internal handler 签名、
- * ops 分派表与 struct gateway 完整布局（公共头对其保持 opaque）。
+ * 处理回调能力格、ops 分派表与 struct gateway 完整布局（公共头保持
+ * opaque）。
  */
 
 /* @owner: team-B */
@@ -41,6 +42,18 @@ extern "C" {
 #endif
 
 typedef char *(*gateway_internal_handler_t)(void *request, void *user_data);
+
+/* 能力格：请求处理回调的绑定槽。HTTP/HTTP2/WS/Stdio 四类后端共用同一绑定
+ * 语义——绑定机制唯一收敛于 gateway_api.c 的 gw_handler_bind()，后端只持有
+ * 槽位，不再各自维护 handler/handler_data 散字段与适配器所有权。 */
+typedef struct gateway_handler_slot {
+    gateway_internal_handler_t handler;
+    void *data;
+} gateway_handler_slot_t;
+
+/* 绑定/清空槽位；handler 为 NULL 即解绑，data 一并清零。 */
+void gw_handler_bind(gateway_handler_slot_t *slot, gateway_internal_handler_t handler,
+                     void *user_data);
 
 typedef struct gateway_ops {
     int (*start)(void *impl);

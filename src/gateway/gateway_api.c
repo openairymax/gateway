@@ -37,6 +37,15 @@ gateway_t *gateway_stdio_create(void)
     return stdio_gateway_create();
 }
 
+void gw_handler_bind(gateway_handler_slot_t *slot, gateway_internal_handler_t handler,
+                     void *user_data)
+{
+    if (!slot)
+        return;
+    slot->handler = handler;
+    slot->data = user_data;
+}
+
 static struct {
     uint64_t total_connections;
     uint64_t active_connections;

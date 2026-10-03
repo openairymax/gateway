@@ -306,17 +306,17 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
     AIRY_MEMSET(&result, 0, sizeof(result)); /* 防止 OOM 分支读取未初始化 response_json */
 
     if (gateway->protocol_handler && context->body_buf && context->body_len > 0) {
-        internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler,
-                                                .internal_data = gateway->handler_data};
+        internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler_slot.handler,
+                                                .internal_data = gateway->handler_slot.data};
         result = gateway_protocol_handle_request(gateway->protocol_handler, context->body_buf,
                                                  context->body_len, AIRY_PROTOCOL_COUNT,
                                                  internal_handler_public_wrapper, &adapter);
     } else if (context->json_request) {
-        internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler,
-                                                .internal_data = gateway->handler_data};
+        internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler_slot.handler,
+                                                .internal_data = gateway->handler_slot.data};
         result = gateway_rpc_handle_request(context->json_request, internal_handler_public_wrapper,
                                             &adapter);
-    } else if (context->body_buf && context->body_len > 0 && gateway->handler) {
+    } else if (context->body_buf && context->body_len > 0 && gateway->handler_slot.handler) {
         /* Raw non-JSON-RPC body (OpenAI/MCP/A2A): pass the HTTP context
          * (method/path + NUL-terminated body copy) to the protocol entry
          * handler for detection and routing (translated uniformly by
@@ -337,7 +337,7 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
             http_req.body = body_copy;
             http_req.body_len = context->body_len;
 
-            char *resp = gateway->handler(&http_req, gateway->handler_data);
+            char *resp = gateway->handler_slot.handler(&http_req, gateway->handler_slot.data);
             AIRY_MEMSET(&result, 0, sizeof(result));
             if (resp) {
                 result.response_json = resp;
@@ -601,12 +601,7 @@ static void http_gateway_destroy(void *gateway_impl)
 
     http_gateway_stop(gateway);
 
-    if (gateway->handler_adapter) {
-        AIRY_FREE(gateway->handler_adapter);
-        gateway->handler_adapter = NULL;
-    }
-    gateway->handler = NULL;
-    gateway->handler_data = NULL;
+    gw_handler_bind(&gateway->handler_slot, NULL, NULL);
 
     if (gateway->host) {
         AIRY_FREE(gateway->host);
@@ -705,13 +700,7 @@ static airy_err_t http_gateway_set_handler(void *gateway_impl, gateway_internal_
     if (!gateway)
         return AIRY_EINVAL;
 
-    if (gateway->handler_adapter) {
-        AIRY_FREE(gateway->handler_adapter);
-        gateway->handler_adapter = NULL;
-    }
-
-    gateway->handler = handler;
-    gateway->handler_data = user_data;
+    gw_handler_bind(&gateway->handler_slot, handler, user_data);
 
     return AIRY_SUCCESS;
 }
@@ -737,9 +726,6 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
 
     gateway->port = port;
     gateway->host = AIRY_STRDUP(host);
-    gateway->handler_adapter = NULL;
-    gateway->handler = NULL;
-    gateway->handler_data = NULL;
 
     if (!gateway->host) {
         AIRY_FREE(gateway);
