@@ -160,6 +160,9 @@ target_include_directories(gateway
         ${COMMONS_DIR}/utils/sync
         ${COMMONS_DIR}/utils/compat
         ${COMMONS_DIR}/utils/include
+        # 0.1.19 §131: 字符串→下标哈希索引 SSoT（hindex.h），
+        # syscall_router 会话索引单源化消费
+        ${COMMONS_DIR}/utils/ds
         ${PROTOCOLS_DIR}/core/router/include
         ${PROTOCOLS_DIR}/core/registry/include
         ${PROTOCOLS_DIR}/core/adapter/include

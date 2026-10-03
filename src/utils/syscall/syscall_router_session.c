@@ -101,7 +101,7 @@ airy_err_t airy_sys_session_create(const char *metadata, char **out_session_id)
     sess->created_at = time(NULL);
     sess->last_accessed = sess->created_at;
     *out_session_id = AIRY_STRDUP(sess->session_id);
-    ht_insert(&g_runtime.session_index, sess->session_id, g_runtime.session_count - 1);
+    hindex_put(&g_runtime.session_index, sess->session_id, g_runtime.session_count - 1);
     RUNTIME_UNLOCK();
     return AIRY_OK;
 }
@@ -112,7 +112,7 @@ airy_err_t airy_sys_session_get(const char *session_id, char **out_info)
         return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
-    ssize_t idx = ht_lookup(&g_runtime.session_index, session_id);
+    ssize_t idx = hindex_get(&g_runtime.session_index, session_id);
     if (idx >= 0 && (size_t)idx < g_runtime.session_count) {
         g_runtime.sessions[idx].last_accessed = time(NULL);
         cJSON *info = cJSON_CreateObject();
@@ -139,7 +139,7 @@ airy_err_t airy_sys_session_close(const char *session_id)
         return AIRY_ERR_INVALID_PARAM;
 
     RUNTIME_LOCK();
-    ssize_t idx = ht_lookup(&g_runtime.session_index, session_id);
+    ssize_t idx = hindex_get(&g_runtime.session_index, session_id);
     if (idx >= 0 && (size_t)idx < g_runtime.session_count) {
         AIRY_FREE(g_runtime.sessions[idx].session_id);
         AIRY_FREE(g_runtime.sessions[idx].metadata);
@@ -150,15 +150,15 @@ airy_err_t airy_sys_session_close(const char *session_id)
         /* P0: after the left-shift, indices after idx change for all sessions, but
           * session_index still holds the old indices, so later session_get/close
           * would hit the wrong session (OOB/UAF). Rebuild session_index after deletion. */
-        ht_destroy(&g_runtime.session_index);
-        if (ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
+        hindex_free(&g_runtime.session_index);
+        if (hindex_init(&g_runtime.session_index, g_max_sessions * 2) != AIRY_SUCCESS) {
             airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
                              "session_index rebuild failed");
             RUNTIME_UNLOCK();
             return AIRY_ERR_OUT_OF_MEMORY;
         }
         for (size_t i = 0; i < g_runtime.session_count; i++) {
-            ht_insert(&g_runtime.session_index, g_runtime.sessions[i].session_id, i);
+            hindex_put(&g_runtime.session_index, g_runtime.sessions[i].session_id, i);
         }
         RUNTIME_UNLOCK();
         return AIRY_OK;
