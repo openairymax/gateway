@@ -3,7 +3,10 @@
 
 /**
  * @file syscall_router_runtime.c
- * @brief Syscall router runtime domain (global state, open-addressing hash table, ctor/dtor init).
+ * @brief Syscall router runtime domain (global state, ctor/dtor init).
+ *
+ * 会话 id→下标索引委托 commons/utils/ds/hindex（唯一机制源）；本文件不再
+ * 自带开放寻址哈希实现。
  */
 
 // @owner: team-B
@@ -11,85 +14,6 @@
 #include "syscall_router_internal.h"
 
 size_t g_max_sessions = 0;
-
-unsigned long hash_fn(const char *str)
-{
-    unsigned long h = 5381;
-    int c;
-    while ((c = (unsigned char)*str++))
-        h = ((h << 5) + h) + c;
-    return h;
-}
-
-int ht_init(hash_table_t *ht, size_t capacity)
-{
-    ht->entries = (hash_entry_t *)AIRY_CALLOC(capacity, sizeof(hash_entry_t));
-    if (!ht->entries) {
-        ht->capacity = 0;
-        airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
-                         "ht_init: allocation failed");
-        return AIRY_ERR_OUT_OF_MEMORY;
-    }
-    ht->capacity = capacity;
-    ht->count = 0;
-    return 0;
-}
-
-void ht_destroy(hash_table_t *ht)
-{
-    if (!ht->entries)
-        return;
-    for (size_t i = 0; i < ht->capacity; i++) {
-        AIRY_FREE(ht->entries[i].key);
-    }
-    AIRY_FREE(ht->entries);
-    ht->entries = NULL;
-    ht->capacity = 0;
-    ht->count = 0;
-}
-
-bool ht_insert(hash_table_t *ht, const char *key, size_t index)
-{
-    if (!ht->entries || ht->count >= ht->capacity * 3 / 4)
-        return false;
-    unsigned long h = hash_fn(key) % ht->capacity;
-    for (size_t i = 0; i < ht->capacity; i++) {
-        size_t pos = (h + i) % ht->capacity;
-        if (!ht->entries[pos].occupied) {
-            /* P0: tombstone slots (deleted=true) are reusable; reset deleted before reuse,
-              * or ht_lookup skips them */
-            ht->entries[pos].key = AIRY_STRDUP(key);
-            ht->entries[pos].index = index;
-            ht->entries[pos].occupied = true;
-            ht->entries[pos].deleted = false;
-            ht->count++;
-            return true;
-        }
-    }
-    return false;
-}
-
-ssize_t ht_lookup(hash_table_t *ht, const char *key)
-{
-    if (!ht->entries || ht->count == 0) {
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "ht_lookup: failed");
-        return AIRY_ERR_UNKNOWN;
-    }
-    unsigned long h = hash_fn(key) % ht->capacity;
-    for (size_t i = 0; i < ht->capacity; i++) {
-        size_t pos = (h + i) % ht->capacity;
-        if (!ht->entries[pos].occupied) {
-            if (ht->entries[pos].deleted)
-                continue;
-            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "hash_fn: failed");
-            return AIRY_ERR_UNKNOWN;
-        }
-        if (strcmp(ht->entries[pos].key, key) == 0)
-            return (ssize_t)ht->entries[pos].index;
-    }
-    airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: failed");
-    return AIRY_ERR_UNKNOWN;
-}
 
 struct syscall_runtime_s g_runtime = {0};
 
@@ -116,8 +40,8 @@ static void __attribute__((constructor)) runtime_init(void)
         g_runtime.sessions = NULL;
         return;
     }
-    if (ht_init(&g_runtime.session_index, g_max_sessions * 2) != 0) {
-        ht_destroy(&g_runtime.session_index);
+    if (hindex_init(&g_runtime.session_index, g_max_sessions * 2) != AIRY_SUCCESS) {
+        hindex_free(&g_runtime.session_index);
         AIRY_FREE(g_runtime.sessions);
         g_runtime.sessions = NULL;
         return;
@@ -134,7 +58,7 @@ static void __attribute__((destructor)) runtime_cleanup(void)
     }
 
     airy_mtx_destroy(&g_runtime.mutex);
-    ht_destroy(&g_runtime.session_index);
+    hindex_free(&g_runtime.session_index);
     AIRY_FREE(g_runtime.sessions);
     g_runtime.sessions = NULL;
     g_runtime.initialized = false;

@@ -13,7 +13,7 @@
 
 #include "daemon_rpc_client.h"
 #include "error.h"
-#include "error.h"
+#include "hindex.h"
 #include "jsonrpc.h"
 #include "logging.h"
 #include "airy_memory.h"
@@ -62,20 +62,6 @@
 #define MAX_INPUT_SIZE 4096
 
 typedef struct {
-    char *key;
-    size_t index;
-    bool occupied;
-    bool deleted; /**< tombstone：删除标记。P0: 删除槽位不直接置空，
-                       否则开放寻址探测链断裂，后续 ht_lookup 会漏查元素 */
-} hash_entry_t;
-
-typedef struct {
-    hash_entry_t *entries;
-    size_t capacity;
-    size_t count;
-} hash_table_t;
-
-typedef struct {
     char *session_id;
     char *metadata;
     time_t created_at;
@@ -85,7 +71,8 @@ typedef struct {
 struct syscall_runtime_s {
     session_entry_t *sessions;
     size_t session_count;
-    hash_table_t session_index;
+    /* 会话 id→下标索引：委托 commons/utils/ds/hindex（djb2 + 墓碑） */
+    hindex_t session_index;
     /* Telemetry fields: real memory/agent counts are managed by mem_d/agent_d
       * (Phase 3); the gateway keeps them at 0. */
     uint64_t record_count;
@@ -101,11 +88,6 @@ extern size_t g_max_sessions;
 extern struct syscall_runtime_s g_runtime;
 
 /* Helpers shared across files (was static; now external linkage) **/
-unsigned long hash_fn(const char *str);
-int ht_init(hash_table_t *ht, size_t capacity);
-void ht_destroy(hash_table_t *ht);
-bool ht_insert(hash_table_t *ht, const char *key, size_t index);
-ssize_t ht_lookup(hash_table_t *ht, const char *key);
 const char *generate_uuid(void);
 
 /* Per-domain route functions (was static; now external linkage) **/
