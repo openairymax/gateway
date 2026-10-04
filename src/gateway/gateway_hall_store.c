@@ -40,8 +40,6 @@
 /* stat/S_ISDIR for the hall watch read-side directory walk */
 #include <sys/stat.h>
 
-#define GW_HALL_PATH_MAX 1024
-
 int gw_hall_store_event(const char *task_id, const char *category, const char *node_id,
                         const char *content_json)
 {
@@ -94,8 +92,7 @@ static void gw_hall_walk_collect(const char *dir, const char *n, gw_hall_cand_t 
     (*count)++;
 }
 
-/* Recursively scan hall root (tenant/task/category/events.json layout). */
-static void gw_hall_watch_walk(const char *dir, gw_hall_cand_t *cands, size_t *count, size_t cap)
+void gw_hall_dir_walk(const char *dir, gw_hall_walk_cb cb, void *ud)
 {
     DIR *d = opendir(dir);
     if (!d)
@@ -106,13 +103,33 @@ static void gw_hall_watch_walk(const char *dir, gw_hall_cand_t *cands, size_t *c
             continue;
         char sub[GW_HALL_PATH_MAX];
         snprintf(sub, sizeof(sub), "%s/%s", dir, ent->d_name);
-        struct stat st;
-        if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode))
-            gw_hall_watch_walk(sub, cands, count, cap);
-        else
-            gw_hall_walk_collect(dir, ent->d_name, cands, count, cap);
+        cb(dir, ent->d_name, sub, ud);
     }
     closedir(d);
+}
+
+/* Recursively scan hall root (tenant/task/category/events.json layout). */
+
+typedef struct {
+    gw_hall_cand_t *cands;
+    size_t *count;
+    size_t cap;
+} gw_hall_watch_ctx_t;
+
+static void gw_hall_watch_visit(const char *dir, const char *name, const char *sub, void *ud)
+{
+    gw_hall_watch_ctx_t *x = ud;
+    struct stat st;
+    if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode))
+        gw_hall_dir_walk(sub, gw_hall_watch_visit, ud);
+    else
+        gw_hall_walk_collect(dir, name, x->cands, x->count, x->cap);
+}
+
+static void gw_hall_watch_walk(const char *dir, gw_hall_cand_t *cands, size_t *count, size_t cap)
+{
+    gw_hall_watch_ctx_t x = { cands, count, cap };
+    gw_hall_dir_walk(dir, gw_hall_watch_visit, &x);
 }
 
 void gw_hall_watch_init(gw_hall_watch_t *w)
@@ -124,8 +141,7 @@ void gw_hall_watch_init(gw_hall_watch_t *w)
     w->initialized = 1;
 }
 
-/* Read a whole file into a malloc'd buffer (caller AIRY_FREE). NULL on error. */
-static char *gw_hall_read_file(const char *path)
+char *gw_hall_read_file(const char *path)
 {
     FILE *f = fopen(path, "rb");
     if (!f)

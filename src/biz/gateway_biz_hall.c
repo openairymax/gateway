@@ -44,39 +44,8 @@
 #define GW_HALL_STATE_REL "agentrt/state/work_hall_state.json"
 #define GW_HALL_DEFAULT_STREAM_LIMIT 512
 #define GW_HALL_MAX_LIMIT 8192
-#define GW_HALL_PATH_MAX 1024
 
 /* ── file I/O helpers ─────────────────────────────────────────────── */
-
-/* Read a whole file into a malloc'd buffer (caller AIRY_FREE). NULL on error. */
-static char *gw_hall_read_file(const char *path)
-{
-    FILE *f = fopen(path, "rb");
-    if (!f)
-        return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    long sz = ftell(f);
-    if (sz < 0) {
-        fclose(f);
-        return NULL;
-    }
-    if (fseek(f, 0, SEEK_SET) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    char *buf = (char *)AIRY_MALLOC((size_t)sz + 1);
-    if (!buf) {
-        fclose(f);
-        return NULL;
-    }
-    size_t rd = fread(buf, 1, (size_t)sz, f);
-    fclose(f);
-    buf[rd] = '\0';
-    return buf;
-}
 
 static void gw_hall_state_path(char *buf, size_t cap)
 {
@@ -216,30 +185,35 @@ static int gw_hall_collect_file(const char *path, const char *name, gw_hall_evt_
  *   <root>/<tenant>/<task>/<category>/events.json   (depth 0=root,1=tenant,2=task,3=cat)
  * `tenant_filter`/`task_filter`/`cat_filter` are optional exact matches
  * (NULL = any); files are collected into `out`. */
+
+typedef struct {
+    int depth;
+    const char *tf, *kf, *cf;
+    gw_hall_evt_list_t *out;
+} gw_hall_walk_ctx_t;
+
+static void gw_hall_walk_visit(const char *dir, const char *name, const char *sub, void *ud)
+{
+    gw_hall_walk_ctx_t *x = ud;
+    if (x->depth == 3) {
+        gw_hall_collect_file(sub, name, x->out);
+        return;
+    }
+    /* depth 0/1/2: subdirectories (tenant/task/category) */
+    if ((x->depth == 0 && x->tf && strcmp(name, x->tf) != 0) ||
+        (x->depth == 1 && x->kf && strcmp(name, x->kf) != 0) ||
+        (x->depth == 2 && x->cf && strcmp(name, x->cf) != 0))
+        return;
+    gw_hall_walk_ctx_t nx = *x;
+    nx.depth++;
+    gw_hall_dir_walk(sub, gw_hall_walk_visit, &nx);
+}
+
 static void gw_hall_walk(const char *dir, int depth, const char *tenant_filter,
                          const char *task_filter, const char *cat_filter, gw_hall_evt_list_t *out)
 {
-    DIR *d = opendir(dir);
-    if (!d)
-        return;
-    struct dirent *ent;
-    while ((ent = readdir(d)) != NULL) {
-        if (ent->d_name[0] == '.')
-            continue;
-        char sub[GW_HALL_PATH_MAX];
-        snprintf(sub, sizeof(sub), "%s/%s", dir, ent->d_name);
-        if (depth == 3) {
-            gw_hall_collect_file(sub, ent->d_name, out);
-            continue;
-        }
-        /* depth 0/1/2: subdirectories (tenant/task/category) */
-        if ((depth == 0 && tenant_filter && strcmp(ent->d_name, tenant_filter) != 0) ||
-            (depth == 1 && task_filter && strcmp(ent->d_name, task_filter) != 0) ||
-            (depth == 2 && cat_filter && strcmp(ent->d_name, cat_filter) != 0))
-            continue;
-        gw_hall_walk(sub, depth + 1, tenant_filter, task_filter, cat_filter, out);
-    }
-    closedir(d);
+    gw_hall_walk_ctx_t x = { depth, tenant_filter, task_filter, cat_filter, out };
+    gw_hall_dir_walk(dir, gw_hall_walk_visit, &x);
 }
 
 /* ── method implementations ───────────────────────────────────────── */
