@@ -50,6 +50,37 @@ static void gw_aipc_sock_close(int fd)
     if (fd >= 0)
         close(fd);
 }
+
+/* 机制件：AF_UNIX 连接仪式（socket + sockaddr_un 填充 + connect）。
+ * call/stream/subscribe 三处入口共用；失败即自关闭并返回 -1。 */
+static int gw_aipc_connect(const char *sock_path)
+{
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0)
+        return -1;
+    struct sockaddr_un addr;
+    AIRY_MEMSET(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+/* 机制件：发全循环（短写续发），成功返回 0，失败返回 -1。 */
+static int gw_aipc_send_all(int fd, const char *buf, size_t len)
+{
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t n = send(fd, buf + sent, len - sent, 0);
+        if (n <= 0)
+            return -1;
+        sent += (size_t)n;
+    }
+    return 0;
+}
 #else
 static void gw_aipc_sock_close(SOCKET fd)
 {
@@ -104,18 +135,9 @@ char *gw_aipc_call(const char *sock_path, const char *method,
     }
 
 #ifndef _WIN32
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = gw_aipc_connect(sock_path);
     if (fd < 0) {
         AIRY_FREE(req_str);
-        return NULL;
-    }
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        AIRY_FREE(req_str);
-        close(fd);
         return NULL;
     }
 
@@ -224,31 +246,16 @@ char *gw_aipc_call(const char *sock_path, const char *method,
 int gw_aipc_stream(const char *sock_path, const char *req_json, int poll_timeout_s)
 {
 #ifndef _WIN32
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = gw_aipc_connect(sock_path);
     if (fd < 0)
         return -1;
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
-        return -1;
-    }
     if (poll_timeout_s > 0) {
         struct timeval tv = {poll_timeout_s, 0};
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     }
-
-    size_t len = strlen(req_json);
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, req_json + sent, len - sent, 0);
-        if (n <= 0) {
-            close(fd);
-            return -1;
-        }
-        sent += (size_t)n;
+    if (gw_aipc_send_all(fd, req_json, strlen(req_json)) != 0) {
+        close(fd);
+        return -1;
     }
     return fd;
 #else
@@ -265,26 +272,13 @@ int gw_aipc_subscribe(const char *sock_path, const char *handshake,
                       size_t handshake_len)
 {
 #ifndef _WIN32
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = gw_aipc_connect(sock_path);
     if (fd < 0)
         return -1;
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+
+    if (gw_aipc_send_all(fd, handshake, handshake_len) != 0) {
         close(fd);
         return -1;
-    }
-
-    size_t sent = 0;
-    while (sent < handshake_len) {
-        ssize_t n = send(fd, handshake + sent, handshake_len - sent, 0);
-        if (n <= 0) {
-            close(fd);
-            return -1;
-        }
-        sent += (size_t)n;
     }
     return fd;
 #else
