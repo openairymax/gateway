@@ -119,6 +119,55 @@ int gw_biz_tool_exec(const char *tool_name, const char *arguments_json, char **r
 }
 
 /**
+ * @brief Shared llm_d backend mechanism: syscall dispatch + error envelope.
+ *
+ * gw_biz_llm_embeddings and gw_biz_llm_complete duplicated the same ritual:
+ * build an internal params object, dispatch it to llm_d through SYS_SVC_CALL,
+ * then unwrap the JSON-RPC envelope. This helper owns that mechanism so each
+ * backend only shapes its own params and translates its own result.
+ *
+ * @param method        llm_d service method name ("embeddings" / "complete").
+ * @param params        Params object; owned by this helper and always freed.
+ * @param response_json On llm_d error: the printable error envelope, owned by
+ *                      the caller. Otherwise NULL.
+ * @param out_root      On success: the parsed JSON-RPC root, owned by the
+ *                      caller. Left NULL on failure.
+ * @return 0 on success, -1 on transport/parse failure.
+ */
+static int gw_biz_llm_dispatch(const char *method, cJSON *params, char **response_json,
+                               cJSON **out_root)
+{
+    *response_json = NULL;
+    *out_root = NULL;
+
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return -1;
+
+    /* 架构约束 2026-08-25 "必须走 syscall": llm.* 经 SYS_SVC_CALL 派发 */
+    char *resp = NULL;
+    airy_err_t rc = airy_sys_svc_call("llm", method, params_str, GW_LLM_DEFAULT_TIMEOUT_MS, &resp);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS || !resp)
+        return -1;
+
+    cJSON *root = cJSON_Parse(resp);
+    AIRY_FREE(resp);
+    if (!root)
+        return -1;
+
+    if (cJSON_GetObjectItem(root, "error")) {
+        *response_json = cJSON_PrintUnformatted(root);
+        cJSON_Delete(root);
+        return *response_json ? 0 : -1;
+    }
+
+    *out_root = root;
+    return 0;
+}
+
+/**
  * @brief OpenAI embeddings backend: /v1/embeddings -> llm_d.embeddings
  *
  * Forwards the OpenAI-format embeddings request to llm_d, which proxies it to
@@ -140,37 +189,17 @@ int gw_biz_llm_embeddings(const char *model, const char *input_json, char **resp
     cJSON_AddStringToObject(params, "model", (model && model[0]) ? model : ctx->default_model);
     cJSON *input = cJSON_Parse(input_json && input_json[0] ? input_json : "[]");
     cJSON_AddItemToObject(params, "input", input ? input : cJSON_CreateArray());
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return -1;
 
-    /* 架构约束 2026-08-25 "必须走 syscall": llm.embeddings 经 SYS_SVC_CALL 派发 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call("llm", "embeddings", params_str, GW_LLM_DEFAULT_TIMEOUT_MS,
-                                      &resp);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS || !resp)
+    cJSON *root = NULL;
+    if (gw_biz_llm_dispatch("embeddings", params, response_json, &root) != 0)
         return -1;
-
-    cJSON *root = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!root)
-        return -1;
-
-    cJSON *err = cJSON_GetObjectItem(root, "error");
-    if (err) {
-        *response_json = cJSON_PrintUnformatted(root);
-        cJSON_Delete(root);
+    if (*response_json)
         return 0;
-    }
 
     cJSON *result = cJSON_GetObjectItem(root, "result");
     *response_json = cJSON_PrintUnformatted(result ? result : root);
     cJSON_Delete(root);
-    if (!*response_json)
-        return -1;
-    return 0;
+    return *response_json ? 0 : -1;
 }
 
 /**
@@ -209,31 +238,12 @@ int gw_biz_llm_complete(const char *model, const char *messages_json, const char
     if (max_tokens > 0)
         cJSON_AddNumberToObject(params, "max_tokens", max_tokens);
     cJSON_AddNumberToObject(params, "temperature", temperature);
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
+
+    cJSON *root = NULL;
+    if (gw_biz_llm_dispatch("complete", params, response_json, &root) != 0)
         return -1;
-
-    /* 架构约束 2026-08-25 "必须走 syscall": llm.complete 经 SYS_SVC_CALL 派发 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call("llm", "complete", params_str, GW_LLM_DEFAULT_TIMEOUT_MS,
-                                      &resp);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS || !resp)
-        return -1;
-
-    cJSON *root = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!root)
-        return -1;
-
-    cJSON *err = cJSON_GetObjectItem(root, "error");
-    if (err) {
-
-        *response_json = cJSON_PrintUnformatted(root);
-        cJSON_Delete(root);
+    if (*response_json)
         return 0;
-    }
 
     cJSON *result = cJSON_GetObjectItem(root, "result");
     cJSON *choices = result ? cJSON_GetObjectItem(result, "choices") : NULL;
