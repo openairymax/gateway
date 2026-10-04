@@ -33,9 +33,28 @@
 
 #include <stddef.h>
 
+/* Max path buffer for hall root walking (single-sourced for the family). */
+#define GW_HALL_PATH_MAX 1024
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Read a whole file into a malloc'd buffer (caller AIRY_FREE).
+ * @return NULL on any error (open/seek/size/truncated read/OOM).
+ */
+char *gw_hall_read_file(const char *path);
+
+/**
+ * @brief Directory-walk skeleton shared by the hall read side.
+ *
+ * Iterates @p dir once, skipping dot entries, and invokes @p cb for every
+ * entry with the parent dir, entry name and a pre-joined "dir/name" path.
+ * Recursion and per-entry policy stay in the callback.
+ */
+typedef void (*gw_hall_walk_cb)(const char *dir, const char *name, const char *sub, void *ud);
+void gw_hall_dir_walk(const char *dir, gw_hall_walk_cb cb, void *ud);
 
 /**
  * @brief Record one hall event (task-file model).
