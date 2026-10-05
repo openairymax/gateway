@@ -377,37 +377,6 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
 #endif
 }
 
-char *jsonrpc_create_notification(const char *method, cJSON *params)
-{
-#ifdef AIRY_HAS_CJSON
-    if (!method || strlen(method) == 0)
-        return NULL;
-
-    cJSON *notif = cJSON_CreateObject();
-    if (!notif) {
-        if (params)
-            cJSON_Delete(params);
-        return NULL;
-    }
-
-    cJSON_AddStringToObject(notif, "jsonrpc", "2.0");
-    cJSON_AddStringToObject(notif, "method", method);
-
-    if (params) {
-        cJSON_AddItemToObject(notif, "params", params);
-    }
-
-    char *json_str = cJSON_PrintUnformatted(notif);
-    cJSON_Delete(notif);
-
-    return json_str;
-#else
-    (void)method;
-    (void)params;
-    return NULL;
-#endif
-}
-
 bool gw_jsonrpc_is_notification(const cJSON *json)
 {
 #ifdef AIRY_HAS_CJSON
@@ -418,26 +387,5 @@ bool gw_jsonrpc_is_notification(const cJSON *json)
 #else
     (void)json;
     return false;
-#endif
-}
-
-char *jsonrpc_create_notification_params(const char *method, const char *params_json)
-{
-#ifdef AIRY_HAS_CJSON
-    if (!method || strlen(method) == 0)
-        return NULL;
-
-    if (params_json && strlen(params_json) > 0) {
-
-        CJSON_PARSE_GUARD(params, params_json, { return NULL; });
-        char *result = jsonrpc_create_notification(method, params);
-        params = NULL;
-        return result;
-    }
-    return jsonrpc_create_notification(method, NULL);
-#else
-    (void)method;
-    (void)params_json;
-    return NULL;
 #endif
 }
