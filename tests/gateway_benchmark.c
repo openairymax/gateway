@@ -51,11 +51,8 @@
 #include <curl/curl.h>
 #endif
 #include "airy_memory.h"
+#include "platform_sync.h"
 #include "error.h"
-#include "error.h"
-/* d8 清理：移除 sync_compat.h。本文件使用 airy_mtx_t + airy_mtx_* 函数 + AIRY_MUTEX_LOCK_GUARD
-  * RAII guards, all from platform.h (via airy_memory.h -> error.h -> types.h -> platform.h
-  * ). The RAII guards moved from sync_compat.h to platform.h. */
 
 #define BENCHMARK_VERSION "0.1.1"
 #define MAX_CONCURRENT 500
