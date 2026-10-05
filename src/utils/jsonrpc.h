@@ -198,39 +198,12 @@ char *jsonrpc_process_batch(const cJSON *batch_json,
 
 /* ==================== Notifications (PROTO-004) ==================== */
 /**
-  * @brief Create a notification (a request without an id)
- *
-  * Notification format:
- * {
- *   "jsonrpc": "2.0",
- *   "method": "<method>",
- *   "params": <params>
- * }
- *
-  * Unlike a normal request, no "id" field; the server must not reply.
- *
- * @param[in] method Method name
- * @param[in] params Parameter object (may be NULL)
-  * @return JSON notification string (free required), NULL on failure
- */
-char *jsonrpc_create_notification(const char *method, cJSON *params);
-
-/**
   * @brief Check whether a request is a notification (no id)
- *
- * @param[in] json JSON object
+  *
+  * @param[in] json JSON object
   * @return true if a notification
   * @return false otherwise (has an id)
  */
 bool gw_jsonrpc_is_notification(const cJSON *json);
-
-/**
-  * @brief Create a parameterized notification (convenience)
- *
- * @param[in] method Method name
- * @param[in] params_json Parameter JSON string
-  * @return JSON notification string (free required)
- */
-char *jsonrpc_create_notification_params(const char *method, const char *params_json);
 
 #endif /* GATEWAY_JSONRPC_H */
