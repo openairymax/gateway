@@ -57,11 +57,10 @@ struct gateway_rate_limiter {
      * (cleanup_expired_clients) raced on last_cleanup_time. */
     atomic_uint_fast64_t last_cleanup_time;
 
-#ifdef _WIN32
+    /* airy_mtx_t is platform-backed (CRITICAL_SECTION on Windows,
+     * pthread_mutex_t elsewhere) but the airy_mtx_* API is unified, so no
+     * per-platform branching is required here. */
     airy_mtx_t table_lock;
-#else
-    airy_mtx_t table_lock;
-#endif
 };
 
 /**
@@ -122,7 +121,7 @@ static void client_state_destroy(client_state_t *state)
 
 /**
   * @brief Find or create a client state
- *
+  *
   * @note P0: caller must hold limiter->table_lock. Mutually exclusive with
   * cleanup_expired_clients so a client is not freed while check_rate_limit reads it (UAF).
  */
@@ -212,11 +211,7 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
     time_t now = time(NULL);
     time_t expire_threshold = now - 3600;
 
-#ifdef _WIN32
     airy_mtx_lock(&limiter->table_lock);
-#else
-    airy_mtx_lock(&limiter->table_lock);
-#endif
 
     for (size_t i = 0; i < limiter->table_size; i++) {
         client_state_t **current = &limiter->clients_table[i];
@@ -235,12 +230,9 @@ static void cleanup_expired_clients(gateway_rate_limiter_t *limiter)
 
     atomic_store(&limiter->last_cleanup_time, (uint64_t)now);
 
-#ifdef _WIN32
     airy_mtx_unlock(&limiter->table_lock);
-#else
-    airy_mtx_unlock(&limiter->table_lock);
-#endif
 }
+
 /**
   * @brief Precondition checks
  */
@@ -349,11 +341,7 @@ gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_con
     atomic_init(&limiter->running, true);
     atomic_init(&limiter->last_cleanup_time, (uint64_t)time(NULL));
 
-#ifdef _WIN32
     airy_mtx_init(&limiter->table_lock);
-#else
-    airy_mtx_init(&limiter->table_lock);
-#endif
 
     return limiter;
 }
@@ -365,11 +353,7 @@ void gateway_rate_limiter_destroy(gateway_rate_limiter_t *limiter)
 
     atomic_store(&limiter->running, false);
 
-#ifdef _WIN32
     airy_mtx_lock(&limiter->table_lock);
-#else
-    airy_mtx_lock(&limiter->table_lock);
-#endif
 
     if (limiter->clients_table) {
         for (size_t i = 0; i < limiter->table_size; i++) {
@@ -383,13 +367,8 @@ void gateway_rate_limiter_destroy(gateway_rate_limiter_t *limiter)
         AIRY_FREE(limiter->clients_table);
     }
 
-#ifdef _WIN32
     airy_mtx_unlock(&limiter->table_lock);
     airy_mtx_destroy(&limiter->table_lock);
-#else
-    airy_mtx_unlock(&limiter->table_lock);
-    airy_mtx_destroy(&limiter->table_lock);
-#endif
 
     AIRY_FREE(limiter);
 }
@@ -409,19 +388,11 @@ bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *cli
     /* Steps 4-5: P0 - client lookup and state read/write must happen under the
       * same lock as cleanup_expired_clients. Otherwise the cleaner may free the
       * client mid-read/write (data race + UAF). */
-#ifdef _WIN32
     airy_mtx_lock(&limiter->table_lock);
-#else
-    airy_mtx_lock(&limiter->table_lock);
-#endif
 
     client_state_t *client = get_or_create_client_locked(limiter, client_key, now_ns);
     if (!client) {
-#ifdef _WIN32
         airy_mtx_unlock(&limiter->table_lock);
-#else
-        airy_mtx_unlock(&limiter->table_lock);
-#endif
         /* On allocation failure, allow the request (availability first) so memory pressure
           * does not take the whole gateway down. Known trade-off: limits may be bypassed under OOM. */
         return true;
@@ -429,11 +400,7 @@ bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *cli
 
     bool allowed = check_rate_limit(client, limiter, &limiter->config, now_ns);
 
-#ifdef _WIN32
     airy_mtx_unlock(&limiter->table_lock);
-#else
-    airy_mtx_unlock(&limiter->table_lock);
-#endif
     return allowed;
 }
 
@@ -461,11 +428,7 @@ void gateway_rate_limiter_reset_client(gateway_rate_limiter_t *limiter, const ch
 
     uint32_t hash = hash_string(client_key, limiter->table_size);
 
-#ifdef _WIN32
     airy_mtx_lock(&limiter->table_lock);
-#else
-    airy_mtx_lock(&limiter->table_lock);
-#endif
 
     client_state_t *current = limiter->clients_table[hash];
     while (current) {
@@ -475,19 +438,11 @@ void gateway_rate_limiter_reset_client(gateway_rate_limiter_t *limiter, const ch
             current->request_count_hour = 0;
             current->last_update_ns = gateway_time_ns();
 
-#ifdef _WIN32
             airy_mtx_unlock(&limiter->table_lock);
-#else
-            airy_mtx_unlock(&limiter->table_lock);
-#endif
             return;
         }
         current = current->next;
     }
 
-#ifdef _WIN32
     airy_mtx_unlock(&limiter->table_lock);
-#else
-    airy_mtx_unlock(&limiter->table_lock);
-#endif
 }
