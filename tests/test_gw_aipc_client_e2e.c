@@ -8,7 +8,7 @@
  * @brief E2E-3：gateway 南向统一 A-IPC 客户端面往返。
  *
  * mock daemon（真实 UDS accept/往返）× 三个入口：
- *   A. gw_aipc_call：mock 分片回包（3 片，usleep 强制多次 recv）→
+ *   A. gw_aipc_call：mock 分片回包（3 片，airy_sleep_ms 强制多次 recv）→
  *      gateway 聚合为完整 JSON-RPC 响应（EOF 定界）
  *   B. gw_aipc_stream：连接 + 请求下发 → mock 读到请求后分片回推 →
  *      调用方 fd 消费聚合（流式过渡态契约）
@@ -24,6 +24,7 @@
 #include "gateway_aipc_client.h"
 
 #include "airy_memory.h"
+#include "platform.h"
 
 #include <cjson/cJSON.h>
 
@@ -188,16 +189,16 @@ static void chunked_resp_handler(int fd, void *arg)
     if (mock_read_request(fd, buf, sizeof(buf)) != 0)
         return;
 
-    /* 完整响应分 3 片下发，片间 usleep 强制 gateway 侧多次 recv 聚合 */
+    /* 完整响应分 3 片下发，片间 airy_sleep_ms 强制 gateway 侧多次 recv 聚合 */
     static const char resp[] =
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"echo\":\"chunked-roundtrip\","
         "\"chunks\":3}}";
     size_t len = sizeof(resp) - 1;
     size_t third = len / 3;
     mock_send_all(fd, resp, third);
-    usleep(20000);
+    airy_sleep_ms(20);
     mock_send_all(fd, resp + third, third);
-    usleep(20000);
+    airy_sleep_ms(20);
     mock_send_all(fd, resp + 2 * third, len - 2 * third);
     /* 关闭连接 = 响应边界（EOF 定界） */
 }
@@ -242,7 +243,7 @@ static void stream_handler(int fd, void *arg)
     atomic_store(&sa->ready, 1);
     /* 分 2 片回推流式数据（调用方 fd 消费） */
     mock_send_all(fd, "chunk-1;", 8);
-    usleep(20000);
+    airy_sleep_ms(20);
     mock_send_all(fd, "chunk-2", 7);
 }
 
@@ -261,7 +262,7 @@ static void test_b_stream_open_and_ship(void)
 
     /* mock 侧必须收到完整请求（连接 + 下发归一），以 ready 发布为同步边沿 */
     for (int i = 0; i < 100 && !atomic_load(&sa.ready); i++)
-        usleep(10000);
+        airy_sleep_ms(10);
     ASSERT_STREQ(sa.last_req, "{\"method\":\"agent.run_stream\"}");
 
     /* 调用方 fd 消费：聚合 mock 分片回推 */

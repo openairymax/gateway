@@ -42,8 +42,7 @@
 #include "airy_memory.h"
 
 /*
- * time_ns() migrated to gateway_utils.h (gateway_time_ns);
- * portable_sleep() migrated to gateway_utils.h (gateway_sleep).
+ * time_ns() migrated to gateway_utils.h (gateway_time_ns).
  */
 
 /**
