@@ -45,12 +45,12 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
-#include <unistd.h>
 
 #ifdef USE_CURL
 #include <curl/curl.h>
 #endif
 #include "airy_memory.h"
+#include "platform.h"
 #include "platform_sync.h"
 #include "error.h"
 
@@ -127,13 +127,6 @@ typedef struct {
 
 static benchmark_config_t g_config;
 static volatile sig_atomic_t g_interrupted = 0;
-
-static uint64_t get_timestamp_ns(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-}
 
 static double elapsed_ms(struct timeval *start, struct timeval *end)
 {
@@ -306,7 +299,7 @@ static void *worker_thread(void *arg)
         result.latency_us = elapsed_ms(&req_start, &req_end) * 1000.0;
         result.status_code = (int)http_code;
         result.response_size = response_size;
-        result.timestamp_ns = get_timestamp_ns();
+        result.timestamp_ns = airy_time_ns();
         result.error_code = (res != CURLE_OK) ? (int)res : 0;
 
         if (g_config.warmup_count > 0) {
@@ -657,7 +650,7 @@ int main(int argc, char *argv[])
                 break;
             }
         }
-        usleep(SAMPLING_INTERVAL_US);
+        airy_sleep_us(SAMPLING_INTERVAL_US);
     }
 
     g_config.running = 0;
@@ -686,7 +679,7 @@ int main(int argc, char *argv[])
         r.latency_us = 500.0 + (double)(rand() % 95000);
         r.status_code = 200;
         r.response_size = 256 + (rand() % 4096);
-        r.timestamp_ns = get_timestamp_ns();
+        r.timestamp_ns = airy_time_ns();
         r.error_code = 0;
 
         if (g_config.warmup_count > 0) {
@@ -702,7 +695,7 @@ int main(int argc, char *argv[])
             printf("\r  Progress: %d/%d", i, total);
             fflush(stdout);
         }
-        usleep(100);
+        airy_sleep_us(100);
     }
 
     gettimeofday(&g_config.end_time, NULL);

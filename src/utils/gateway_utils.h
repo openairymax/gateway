@@ -23,7 +23,6 @@
 #include <ws2tcpip.h>
 #else
 #include <time.h>
-#include <unistd.h>
 #endif
 
 #ifdef __cplusplus
@@ -56,20 +55,6 @@ static inline uint64_t gateway_time_ns(void)
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
-#endif
-}
-
-/**
-  * @brief Cross-platform sleep function
- *
-  * @param seconds Seconds to sleep
- */
-static inline void gateway_sleep(unsigned int seconds)
-{
-#ifdef _WIN32
-    Sleep(seconds * 1000);
-#else
-    sleep(seconds);
 #endif
 }
 

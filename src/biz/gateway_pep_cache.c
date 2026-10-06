@@ -20,6 +20,7 @@
 #include "daemon_security.h"
 #include "logging.h"
 
+#include "platform.h"
 #include "platform_sync.h"
 
 #include <cjson/cJSON.h>
@@ -319,13 +320,13 @@ static void *epoch_watch_main(void *arg)
                           "\r\n");
         if (hl <= 0 || hl >= (int)sizeof(hdr)) {
             AIRY_LOG_WARN("gateway PEP: epoch watch handshake build failed, retry in 2s");
-            sleep(2);
+            airy_sleep_ms(2000);
             continue;
         }
         int fd = gw_aipc_subscribe(a->path, hdr, (size_t)hl);
         if (fd < 0) {
             AIRY_LOG_WARN("gateway PEP: notify_d unreachable (%s), retry in 2s", a->path);
-            sleep(2);
+            airy_sleep_ms(2000);
             continue;
         }
 
@@ -385,7 +386,7 @@ static void *epoch_watch_main(void *arg)
         }
         close(fd);
         AIRY_LOG_WARN("gateway PEP: epoch watch disconnected, reconnecting");
-        sleep(2);
+        airy_sleep_ms(2000);
     }
     return NULL;
 }

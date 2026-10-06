@@ -50,8 +50,7 @@ static ssize_t gw_hall_watch_reader(void *cls, uint64_t pos, char *buf, size_t m
         return (ssize_t)n;
     }
 
-    struct timespec ts = {.tv_sec = 0, .tv_nsec = 200 * 1000 * 1000};
-    nanosleep(&ts, NULL);
+    airy_sleep_ms(200);
     AIRY_MEMCPY(buf, ": keep-alive\n\n", 15);
     return 15;
 }

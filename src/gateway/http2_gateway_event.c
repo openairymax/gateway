@@ -10,6 +10,7 @@
 #define LOG_TAG "http2_gateway"
 #include "http2_gateway.h"
 #include "http2_gateway_internal.h"
+#include "platform.h"
 
 #ifdef AIRY_HAS_HTTP2
 
@@ -130,7 +131,7 @@ void *http2_event_loop(void *arg)
         struct pollfd *fds = AIRY_CALLOC(max_fds, sizeof(struct pollfd));
         if (!fds) {
 
-            gateway_sleep(1);
+            airy_sleep_ms(1000);
             continue;
         }
 

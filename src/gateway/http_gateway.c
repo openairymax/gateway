@@ -23,6 +23,7 @@
 #include "error.h"
 #include "airy_memory.h"
 #include "logging.h"
+#include "platform.h"
 
 #ifdef GATEWAY_HAS_HTTP
 
@@ -460,7 +461,7 @@ static airy_err_t http_gateway_probe_listen(const char *host, uint16_t port)
             err = AIRY_SUCCESS;
             break;
         }
-        usleep(100 * 1000);
+        airy_sleep_ms(100);
     }
     close(fd);
     return err;
