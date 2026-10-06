@@ -17,66 +17,39 @@
 
 #include <cjson/cJSON.h>
 
-#include <stdio.h>
 #include <string.h>
 
-static int json_field_equals(const char *json, const char *key, const char *value)
+static int has_key(const cJSON *obj, const char *key)
 {
-    if (!json || !key || !value)
-        return 0;
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\": \"%s\"", key, value);
-    return strstr(json, pattern) != NULL ? 1 : 0;
-}
-
-static int json_field_exists(const char *json, const char *key)
-{
-    if (!json || !key)
-        return 0;
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    return strstr(json, pattern) != NULL ? 1 : 0;
-}
-
-static int is_valid_json(const char *data, size_t len)
-{
-    if (!data || len == 0)
-        return 0;
-
-    cJSON *json = cJSON_ParseWithLength(data, len);
-    if (!json)
-        return 0;
-    cJSON_Delete(json);
-    return 1;
+    return cJSON_GetObjectItemCaseSensitive(obj, key) != NULL;
 }
 
 airy_protocol_type_t detect_protocol_internal(const char *request_data, size_t request_size)
 {
-
-    if (!request_data || request_size == 0) {
+    if (!request_data || request_size == 0)
         return AIRY_PROTOCOL_COUNT;
-    }
 
-    if (!is_valid_json(request_data, request_size)) {
+    cJSON *json = cJSON_ParseWithLength(request_data, request_size);
+    if (!json)
         return AIRY_PROTOCOL_COUNT;
+
+    airy_protocol_type_t type = AIRY_PROTOCOL_COUNT;
+    const cJSON *jsonrpc = cJSON_GetObjectItemCaseSensitive(json, "jsonrpc");
+    const cJSON *method = cJSON_GetObjectItemCaseSensitive(json, "method");
+
+    if (cJSON_IsString(jsonrpc) && strcmp(jsonrpc->valuestring, "2.0") == 0 && method) {
+        if (has_key(json, "MCP") || has_key(json, "mcp"))
+            type = AIRY_PROTOCOL_MCP;
+        else
+            type = AIRY_PROTOCOL_JSON_RPC;
+    } else if (has_key(json, "model") && (has_key(json, "messages") || has_key(json, "prompt"))) {
+        type = AIRY_PROTOCOL_OPENAI;
+    } else if (has_key(json, "agent_id") && (has_key(json, "task_id") || has_key(json, "message"))) {
+        type = AIRY_PROTOCOL_A2A;
     }
 
-    if (json_field_equals(request_data, "jsonrpc", "2.0") &&
-        json_field_exists(request_data, "method")) {
-        if (json_field_exists(request_data, "MCP") || json_field_exists(request_data, "mcp"))
-            return AIRY_PROTOCOL_MCP;
-        return AIRY_PROTOCOL_JSON_RPC;
-    }
-
-    if (json_field_exists(request_data, "model") &&
-        (json_field_exists(request_data, "messages") || json_field_exists(request_data, "prompt")))
-        return AIRY_PROTOCOL_OPENAI;
-
-    if (json_field_exists(request_data, "agent_id") &&
-        (json_field_exists(request_data, "task_id") || json_field_exists(request_data, "message")))
-        return AIRY_PROTOCOL_A2A;
-
-    return AIRY_PROTOCOL_COUNT;
+    cJSON_Delete(json);
+    return type;
 }
 
 airy_protocol_type_t gateway_protocol_detect(const char *request_data, size_t request_size)
