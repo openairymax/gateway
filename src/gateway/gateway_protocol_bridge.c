@@ -11,7 +11,6 @@
 
 #include "airy_protocol_interface.h"
 #include "airy_memory.h"
-#include "protocol_extension_framework.h"
 #include "protocol_registry.h"
 #include "unified_protocol.h"
 
@@ -29,7 +28,6 @@ struct gw_protocol_bridge_s {
     gw_protocol_bridge_config_t config;
     void *router;
     void *registry;
-    void *ext_framework;
     void *default_handler;
     void *handlers[GW_PROTO_COUNT];
     char handler_patterns[GW_PROTO_COUNT][256];
@@ -64,8 +62,6 @@ int gw_protocol_bridge_create(const gw_protocol_bridge_config_t *config,
 
     bridge->registry = NULL;
 
-    bridge->ext_framework = NULL;
-
     bridge->initialized = true;
     AIRY_MEMSET(&bridge->stats, 0, sizeof(bridge->stats));
 
@@ -82,8 +78,6 @@ void gw_protocol_bridge_destroy(gw_protocol_bridge_handle_t handle)
         AIRY_FREE(bridge->router);
     if (bridge->registry)
         AIRY_FREE(bridge->registry);
-    if (bridge->ext_framework)
-        AIRY_FREE(bridge->ext_framework);
     bridge->initialized = false;
     AIRY_FREE(bridge);
 }
@@ -535,28 +529,6 @@ int gw_protocol_bridge_list_registry_protocols(gw_protocol_bridge_handle_t bridg
     }
     *protocols_json = AIRY_STRDUP("{\"registered_protocols\":[],\"total\":0}");
     return 0;
-}
-
-int gw_protocol_bridge_load_extensions_from_config(gw_protocol_bridge_handle_t bridge,
-                                                   const char *config_json)
-{
-    if (!bridge || !config_json) {
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                         "gw_protocol_bridge_load_extensions_from_config: failed");
-        return AIRY_ERR_UNKNOWN;
-    }
-    struct gw_protocol_bridge_s *b = (struct gw_protocol_bridge_s *)bridge;
-
-    if (!b->ext_framework) {
-        b->ext_framework = proto_ext_framework_create();
-        if (!b->ext_framework) {
-            airy_err_push_ex(AIRY_ERR_OUT_OF_MEMORY, __FILE__, __LINE__, __func__,
-                             "operation failed");
-            return AIRY_ERR_OUT_OF_MEMORY;
-        }
-    }
-
-    return proto_ext_load_from_config((proto_ext_framework_t *)b->ext_framework, config_json);
 }
 
 int gw_protocol_bridge_register_extension_adapter(gw_protocol_bridge_handle_t bridge,
