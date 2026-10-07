@@ -12,13 +12,12 @@
  * pep_cache) were deleted and now consume this face.
  *
  * Wire contract:
- *   - gw_aipc_call      REQUEST/RESPONSE: L2-first (channel_for_socket +
- *     daemon_l2_rpc_call_resp, blueprint 8.3.3 grey norm) with the UDS/TCP
- *     fallback path; misses fail fast, never silently downgrade.
+ *   - gw_aipc_call      REQUEST/RESPONSE: full JSON-RPC round trip over the
+ *     socket transport (UDS, WIN32 TCP loopback); oversized replies fail the
+ *     call (GW_AIPC_MAX_RESP).
  *   - gw_aipc_stream    STREAM: connect + send request, returns the fd; the
  *     caller owns the chunked read loop (MHD pull model keeps idle-deadline
- *     supervision). L2 STREAM client mapping is pending;
- *     today this is the fallback transport, centralized.
+ *     supervision).
  *   - gw_aipc_subscribe EVENT: connect + send the subscription handshake,
  *     returns the fd; the caller owns the frame loop and reconnect policy.
  *
@@ -42,9 +41,8 @@ extern "C" {
  * @brief REQUEST/RESPONSE round trip against a daemon endpoint.
  *
  * Builds {"jsonrpc":"2.0","method":<method>,"params":<params_json>,"id":1},
- * sends it over the L2 channel when the transport switch resolves to
- * "corekern", otherwise over the socket/TCP fallback, and blocks until the
- * full JSON response is read (EOF-delimited).
+ * sends it over the socket transport (UDS, WIN32 TCP loopback), and blocks
+ * until the full JSON response is read (EOF-delimited).
  *
  * @param sock_path   Target endpoint: UDS path (POSIX) or "host:port" (WIN32
  *                    daemon convention: TCP loopback)

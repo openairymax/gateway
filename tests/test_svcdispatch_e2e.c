@@ -15,9 +15,7 @@
  * 架构判据：架构约束 2026-08-25 "必须走 syscall"；响应语义为完整响应
  * 原文（gw_svc_call 返回累积缓冲整体，gw_sys_svc_dispatch 原样透传）。
  *
- * mock 端点用 "<ns>.srvc" 非 .sock 后缀（daemon_l2_channel_for_socket 对
- * 非 .sock 后缀 fail-closed），锁定本测试只覆盖 socket 翻译路径；corekern
- * L2 灰度先行路由 test_gw_daemon_roundtrip.c 覆盖。
+ * mock 端点用 "<ns>.srvc" 非 .sock 后缀，锁定本测试只覆盖 socket 翻译路径。
  *
  * socket 位于 /tmp/airy_svcdispatch_e2e_<pid>/（pid 后缀，ctest -j 并行安全）。
  */
