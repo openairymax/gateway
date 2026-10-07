@@ -27,8 +27,8 @@ extern "C" {
 /* Conversion domain (gateway_protocol_convert.c) */
 rpc_result_t create_error_result(int code, const char *message, const char *id_str);
 
-cJSON *extract_openai_to_jsonrpc(const char *request_data, size_t request_size,
-                                 char **out_method, char **out_id);
+cJSON *extract_llm_to_jsonrpc(const char *request_data, size_t request_size,
+                              char **out_method, char **out_id);
 cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_size,
                               char **out_method, char **out_id);
 cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_size,
