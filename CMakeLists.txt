@@ -177,10 +177,9 @@ target_include_directories(gateway
         # 头文件位于 commons/include/third_party/nghttp2/nghttp2.h
         # include 路径需指向 third_party/ 以解析 <nghttp2/nghttp2.h>
         ${COMMONS_DIR}/include/third_party
-        # 8.3.3 灰度：gw_svc_call 的 L2 先行路（daemon_l2_channel_for_socket
-        # / daemon_l2_rpc_call_resp，daemon_l1_server.h）。置于 commons 路径
-        # 之后——daemons/common/include 是兼容层，顺序约束见
-        # daemons/common/CMakeLists（svc_common PUBLIC 末位）。
+        # daemon_security.h / svc_model_defaults.h / daemon_heapstore_bootstrap.h
+        # 等共享头仍由 daemons/common/include 提供（svc_common PUBLIC 末位，
+        # 顺序约束见 daemons/common/CMakeLists）。
         ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
 )
 
@@ -199,9 +198,6 @@ target_link_libraries(gateway
         airy_protocols
         airy_common
         airy_memory
-        # 8.3.3 灰度：L2 先行路符号（daemon_l2_*）。corekern 的 airy_ipc_*
-        # 经 daemon_l1_server 的 PRIVATE 链自动补全（$<LINK_ONLY>）。
-        daemon_l1_server
 )
 
 if(AIRY_HAS_CJSON)
@@ -331,27 +327,6 @@ if(BUILD_TESTS AND NOT WIN32)
         gateway
     )
     add_test(NAME svcdispatch_e2e COMMAND test_svcdispatch_e2e)
-
-    # 审计 E2E：gateway↔daemon 双 transport 往返（Blueprint 8.3.3
-    # 灰度矩阵：socket / corekern L2 优先 / 卸载回落，3 Case）。
-    add_executable(test_gw_daemon_roundtrip tests/test_gw_daemon_roundtrip.c)
-    target_compile_definitions(test_gw_daemon_roundtrip PRIVATE AIRY_COMPLIANCE_IMPL)
-    target_include_directories(test_gw_daemon_roundtrip PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/biz
-        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/gateway_d/src/protocol
-        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
-        ${COREKERN_DIR}/include
-        ${SYSCALL_DIR}/include
-        ${COMMONS_DIR}/include
-        ${COMMONS_DIR}/utils/include
-        ${COMMONS_DIR}/utils/memory
-        ${COMMONS_DIR}/utils/ipc
-    )
-    target_link_libraries(test_gw_daemon_roundtrip
-        airy_gateway_service
-        gateway
-    )
-    add_test(NAME gw_daemon_roundtrip COMMAND test_gw_daemon_roundtrip)
 
     # E2E：南向 A-IPC 统一客户端面往返（gw_aipc_call 分片聚合 /
     # gw_aipc_stream 连接下发 / gw_aipc_subscribe 握手 / 不可达快速失败）。
