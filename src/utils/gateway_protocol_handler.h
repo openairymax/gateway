@@ -8,7 +8,7 @@
  * @file gateway_protocol_handler.h
   * @brief Multi-protocol gateway request handler
  *
-  * Extends gateway_rpc_handler.h with adaptive handling for MCP/A2A/OpenAI API, etc.
+  * Extends gateway_rpc_handler.h with adaptive handling for MCP/A2A/LLM chat-completions API, etc.
   * Provides protocol detection, conversion and a unified handling interface.
  *
   * Design principles:
@@ -40,7 +40,7 @@ extern "C" {
 typedef struct {
     bool enable_mcp_protocol;
     bool enable_a2a_protocol;
-    bool enable_openai_protocol;
+    bool enable_llm_protocol;
     const char *default_protocol;
     uint32_t max_request_size;
     bool enable_protocol_detection;
@@ -143,14 +143,6 @@ int gateway_protocol_is_mcp(const char *request_data, size_t request_size);
   * @return 1 if A2A, 0 otherwise
  */
 int gateway_protocol_is_a2a(const char *request_data, size_t request_size);
-
-/**
-  * @brief Detect whether the request is an OpenAI API request
- * @param request_data Request data
-  * @param request_size Request data size
-  * @return 1 if OpenAI API, 0 otherwise
- */
-int gateway_protocol_is_openai(const char *request_data, size_t request_size);
 
 /* ============================================================================ */
 

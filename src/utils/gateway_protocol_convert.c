@@ -6,14 +6,17 @@
  * @file gateway_protocol_convert.c
  * @brief Multi-protocol gateway request handler - protocol conversion domain.
  *
- * Implements protocol-to-JSON-RPC extraction (MCP/A2A/OpenAI), JSON-RPC
- * round-trip conversion and the backward-compatible JSON-RPC entry point,
- * single responsibility. Split out of gateway_protocol_handler.c.
+ * Implements protocol-to-JSON-RPC extraction (MCP/A2A/LLM
+ * chat-completions), JSON-RPC round-trip conversion and the
+ * backward-compatible JSON-RPC entry point, single responsibility. Split
+ * out of gateway_protocol_handler.c.
  */
 
 #include "gateway_protocol_handler.h"
 
 #include "gateway_protocol_handler_internal.h"
+
+#include "airy_protocol_interface.h"
 
 #include "error.h"
 #include "airy_memory.h"
@@ -55,8 +58,8 @@ rpc_result_t create_error_result(int code, const char *message, const char *id_s
     return result;
 }
 
-cJSON *extract_openai_to_jsonrpc(const char *request_data, size_t request_size,
-                                 char **out_method, char **out_id)
+cJSON *extract_llm_to_jsonrpc(const char *request_data, size_t request_size,
+                              char **out_method, char **out_id)
 {
     cJSON *root = cJSON_ParseWithLength(request_data, request_size);
     if (!root)
@@ -205,23 +208,20 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
     char *method = NULL;
     char *id_str = NULL;
     cJSON *params = NULL;
+    airy_protocol_type_t llm_type = proto_interface_parse_type("openai");
 
-    switch (protocol_type) {
-    case AIRY_PROTOCOL_MCP:
-        params = extract_mcp_to_jsonrpc(request_data, request_size, &method, &id_str);
-        break;
-    case AIRY_PROTOCOL_A2A:
-        params = extract_a2a_to_jsonrpc(request_data, request_size, &method, &id_str);
-        break;
-    case AIRY_PROTOCOL_OPENAI:
-        params = extract_openai_to_jsonrpc(request_data, request_size, &method, &id_str);
-        break;
-    case AIRY_PROTOCOL_JSON_RPC:
+    if (protocol_type == AIRY_PROTOCOL_JSON_RPC) {
         *jsonrpc_out = AIRY_STRNDUP(request_data, request_size);
         AIRY_FREE(method);
         AIRY_FREE(id_str);
         return *jsonrpc_out ? 0 : -2;
-    default:
+    } else if (protocol_type == AIRY_PROTOCOL_MCP) {
+        params = extract_mcp_to_jsonrpc(request_data, request_size, &method, &id_str);
+    } else if (protocol_type == AIRY_PROTOCOL_A2A) {
+        params = extract_a2a_to_jsonrpc(request_data, request_size, &method, &id_str);
+    } else if (protocol_type == llm_type) {
+        params = extract_llm_to_jsonrpc(request_data, request_size, &method, &id_str);
+    } else {
         airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
                          "gateway_protocol_handler: null pointer");
         return AIRY_ERR_NULL_POINTER;
@@ -282,30 +282,26 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         return AIRY_ERR_NULL_POINTER;
     }
 
-    switch (target_protocol) {
-    case AIRY_PROTOCOL_OPENAI: {
-        cJSON *openai = cJSON_CreateObject();
+    if (target_protocol == proto_interface_parse_type("openai")) {
+        cJSON *llm_resp = cJSON_CreateObject();
         cJSON *choices = cJSON_CreateArray();
         cJSON *choice = cJSON_CreateObject();
 
         cJSON_AddItemToObject(choice, "message", CJSON_DEEP_COPY(result));
         cJSON_AddItemToArray(choices, choice);
-        cJSON_AddItemToObject(openai, "choices", choices);
+        cJSON_AddItemToObject(llm_resp, "choices", choices);
 
         cJSON *model = cJSON_GetObjectItem(result, "model");
         if (model) {
-
-            cJSON_AddItemToObject(openai, "model", CJSON_DEEP_COPY(model));
+            cJSON_AddItemToObject(llm_resp, "model", CJSON_DEEP_COPY(model));
         } else {
-            cJSON_AddStringToObject(openai, "model", "default");
+            cJSON_AddStringToObject(llm_resp, "model", "default");
         }
-        cJSON_AddStringToObject(openai, "object", "chat.completion");
+        cJSON_AddStringToObject(llm_resp, "object", "chat.completion");
 
-        *target_response = cJSON_PrintUnformatted(openai);
-        cJSON_Delete(openai);
-    } break;
-
-    case AIRY_PROTOCOL_MCP: {
+        *target_response = cJSON_PrintUnformatted(llm_resp);
+        cJSON_Delete(llm_resp);
+    } else if (target_protocol == AIRY_PROTOCOL_MCP) {
         cJSON *mcp = cJSON_CreateObject();
 
         cJSON_AddItemToObject(mcp, "content", CJSON_DEEP_COPY(result));
@@ -313,20 +309,15 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
 
         *target_response = cJSON_PrintUnformatted(mcp);
         cJSON_Delete(mcp);
-    } break;
-
-    case AIRY_PROTOCOL_A2A: {
+    } else if (target_protocol == AIRY_PROTOCOL_A2A) {
         cJSON *a2a = cJSON_CreateObject();
         cJSON_AddItemToObject(a2a, "response", CJSON_DEEP_COPY(result));
         cJSON_AddStringToObject(a2a, "status", "success");
 
         *target_response = cJSON_PrintUnformatted(a2a);
         cJSON_Delete(a2a);
-    } break;
-
-    default:
+    } else {
         *target_response = AIRY_STRDUP(jsonrpc_response);
-        break;
     }
 
     return *target_response ? 0 : -4;

@@ -7,13 +7,15 @@
  * @brief Multi-protocol gateway request handler - protocol detection domain.
  *
  * Implements JSON signature based protocol detection (JSON-RPC / MCP /
- * A2A / OpenAI) and the public detection predicates, single
+ * A2A / LLM chat-completions) and the public detection predicates, single
  * responsibility. Split out of gateway_protocol_handler.c.
  */
 
 #include "gateway_protocol_handler.h"
 
 #include "gateway_protocol_handler_internal.h"
+
+#include "airy_protocol_interface.h"
 
 #include <cjson/cJSON.h>
 
@@ -43,7 +45,7 @@ airy_protocol_type_t detect_protocol_internal(const char *request_data, size_t r
         else
             type = AIRY_PROTOCOL_JSON_RPC;
     } else if (has_key(json, "model") && (has_key(json, "messages") || has_key(json, "prompt"))) {
-        type = AIRY_PROTOCOL_OPENAI;
+        type = proto_interface_parse_type("openai");
     } else if (has_key(json, "agent_id") && (has_key(json, "task_id") || has_key(json, "message"))) {
         type = AIRY_PROTOCOL_A2A;
     }
@@ -70,9 +72,4 @@ int gateway_protocol_is_mcp(const char *request_data, size_t request_size)
 int gateway_protocol_is_a2a(const char *request_data, size_t request_size)
 {
     return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_A2A ? 1 : 0;
-}
-
-int gateway_protocol_is_openai(const char *request_data, size_t request_size)
-{
-    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_OPENAI ? 1 : 0;
 }
