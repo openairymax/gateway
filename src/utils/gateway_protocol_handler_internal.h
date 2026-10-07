@@ -27,12 +27,12 @@ extern "C" {
 /* Conversion domain (gateway_protocol_convert.c) */
 rpc_result_t create_error_result(int code, const char *message, const char *id_str);
 
-cJSON *extract_llm_to_jsonrpc(const char *request_data, size_t request_size,
-                              char **out_method, char **out_id);
-cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_size,
-                              char **out_method, char **out_id);
-cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_size,
-                              char **out_method, char **out_id);
+cJSON *gw_llm_to_rpc(const char *request_data, size_t request_size,
+                     char **out_method, char **out_id);
+cJSON *gw_mcp_to_rpc(const char *request_data, size_t request_size,
+                     char **out_method, char **out_id);
+cJSON *gw_a2a_to_rpc(const char *request_data, size_t request_size,
+                     char **out_method, char **out_id);
 
 /* Detection domain (gateway_protocol_detect.c) */
 airy_protocol_type_t detect_protocol_internal(const char *request_data, size_t request_size);

@@ -171,7 +171,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
             handler->conversion_errors++;
             return create_error_result(-32604, "MCP protocol not enabled", "null");
         }
-        converted_params = extract_mcp_to_jsonrpc(request_data, request_size, &method, &id_str);
+        converted_params = gw_mcp_to_rpc(request_data, request_size, &method, &id_str);
     } else if (detected_type == AIRY_PROTOCOL_A2A) {
         if (!handler->config.enable_a2a_protocol) {
             AIRY_FREE(method);
@@ -179,7 +179,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
             handler->conversion_errors++;
             return create_error_result(-32605, "A2A protocol not enabled", "null");
         }
-        converted_params = extract_a2a_to_jsonrpc(request_data, request_size, &method, &id_str);
+        converted_params = gw_a2a_to_rpc(request_data, request_size, &method, &id_str);
     } else if (detected_type == llm_type) {
         if (!handler->config.enable_llm_protocol) {
             AIRY_FREE(method);
@@ -187,7 +187,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
             handler->conversion_errors++;
             return create_error_result(-32606, "LLM protocol not enabled", "null");
         }
-        converted_params = extract_llm_to_jsonrpc(request_data, request_size, &method, &id_str);
+        converted_params = gw_llm_to_rpc(request_data, request_size, &method, &id_str);
     } else {
         AIRY_FREE(method);
         AIRY_FREE(id_str);

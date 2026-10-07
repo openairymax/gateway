@@ -58,8 +58,8 @@ rpc_result_t create_error_result(int code, const char *message, const char *id_s
     return result;
 }
 
-cJSON *extract_llm_to_jsonrpc(const char *request_data, size_t request_size,
-                              char **out_method, char **out_id)
+cJSON *gw_llm_to_rpc(const char *request_data, size_t request_size,
+                     char **out_method, char **out_id)
 {
     cJSON *root = cJSON_ParseWithLength(request_data, request_size);
     if (!root)
@@ -123,8 +123,8 @@ cJSON *extract_llm_to_jsonrpc(const char *request_data, size_t request_size,
     return params;
 }
 
-cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_size,
-                              char **out_method, char **out_id)
+cJSON *gw_mcp_to_rpc(const char *request_data, size_t request_size,
+                     char **out_method, char **out_id)
 {
     cJSON *root = cJSON_ParseWithLength(request_data, request_size);
     if (!root)
@@ -159,8 +159,8 @@ cJSON *extract_mcp_to_jsonrpc(const char *request_data, size_t request_size,
     return result;
 }
 
-cJSON *extract_a2a_to_jsonrpc(const char *request_data, size_t request_size,
-                              char **out_method, char **out_id)
+cJSON *gw_a2a_to_rpc(const char *request_data, size_t request_size,
+                     char **out_method, char **out_id)
 {
     cJSON *root = cJSON_ParseWithLength(request_data, request_size);
     if (!root)
@@ -216,11 +216,11 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
         AIRY_FREE(id_str);
         return *jsonrpc_out ? 0 : -2;
     } else if (protocol_type == AIRY_PROTOCOL_MCP) {
-        params = extract_mcp_to_jsonrpc(request_data, request_size, &method, &id_str);
+        params = gw_mcp_to_rpc(request_data, request_size, &method, &id_str);
     } else if (protocol_type == AIRY_PROTOCOL_A2A) {
-        params = extract_a2a_to_jsonrpc(request_data, request_size, &method, &id_str);
+        params = gw_a2a_to_rpc(request_data, request_size, &method, &id_str);
     } else if (protocol_type == llm_type) {
-        params = extract_llm_to_jsonrpc(request_data, request_size, &method, &id_str);
+        params = gw_llm_to_rpc(request_data, request_size, &method, &id_str);
     } else {
         airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
                          "gateway_protocol_handler: null pointer");
