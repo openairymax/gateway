@@ -197,7 +197,6 @@ target_link_libraries(gateway
     PRIVATE
         airy_protocols
         airy_common
-        airy_memory
 )
 
 if(AIRY_HAS_CJSON)
