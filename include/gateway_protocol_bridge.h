@@ -20,13 +20,9 @@
 #include "protocol_router.h"
 #include "protocol_transformers.h"
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include "airy_abi.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AIRY_ABI_BEGIN
 
 /* ============================================================================
  * Bridge Configuration
@@ -156,8 +152,6 @@ int gw_protocol_bridge_list_registry_protocols(gw_protocol_bridge_handle_t bridg
 int gw_protocol_bridge_register_extension_adapter(gw_protocol_bridge_handle_t bridge,
                                                   gw_proto_type_t proto_type, void *handler);
 
-#ifdef __cplusplus
-}
-#endif
+AIRY_ABI_END
 
 #endif /* AIRY_RT_GATEWAY_PROTOCOL_BRIDGE_H */
