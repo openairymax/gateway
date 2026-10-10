@@ -22,13 +22,9 @@
 
 #include "airy_rt.h"
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include "airy_abi.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AIRY_ABI_BEGIN
 
 
 /**
@@ -312,8 +308,6 @@ const char *gateway_get_name(gateway_t *gw);
 int gateway_register_endpoint(gateway_t *gw, const char *method, const char *path,
                               gateway_endpoint_handler_t handler, void *user_data);
 
-#ifdef __cplusplus
-}
-#endif
+AIRY_ABI_END
 
 #endif /* AIRY_RT_GATEWAY_H */
