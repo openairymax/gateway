@@ -153,11 +153,6 @@ gateway_t *http_gateway_create(const char *host, uint16_t port);
 char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *context);
 
 /**
-  * @brief Create an HTTP response
- */
-struct MHD_Response *create_http_response(int status_code, const char *content, size_t content_len);
-
-/**
   * @brief Create an HTTP response (CORS-safe variant)
  *
  * Automatically set CORS headers per gateway config; prefer this in all route handlers.
