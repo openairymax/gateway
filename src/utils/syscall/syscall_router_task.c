@@ -136,25 +136,11 @@ static int task_daemon_get_status(const char *task_id, int *status)
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "task_id", task_id);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.get_task） */
-    int rc = syscall_svc_call_unwrap("sched", "get_task", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS)
+    airy_err_t rc = AIRY_SUCCESS;
+    cJSON *result = syscall_fetch("sched", "get_task", params, &rc);
+    if (!result)
         return rc;
-
-    cJSON *result = cJSON_Parse(result_str);
-    AIRY_FREE(result_str);
-    if (!result) {
-        SVC_LOG_ERROR("airy_sys_task_query: malformed result JSON");
-        return AIRY_ERR_GENERIC_FAIL;
-    }
     cJSON *st = cJSON_GetObjectItem(result, "status");
     const char *sname = (st && cJSON_IsString(st)) ? st->valuestring : "unknown";
     *status = task_status_from_string(sname);
@@ -178,21 +164,8 @@ airy_err_t airy_sys_task_submit(const char *input, size_t len, uint32_t timeout_
                             (double)(timeout_ms ? timeout_ms : TASK_DEFAULT_TIMEOUT_MS));
     cJSON_AddItemToObject(params, "task", task);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.schedule_task） */
-    int rc = syscall_svc_call_unwrap("sched", "schedule_task", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS)
-        return rc;
-
-    *out_result = result_str;
-    return AIRY_OK;
+    return syscall_raw("sched", "schedule_task", params, out_result);
 }
 
 airy_err_t airy_sys_task_query(const char *task_id, int *status)
@@ -228,20 +201,8 @@ airy_err_t airy_sys_task_wait(const char *task_id, uint32_t timeout_ms, char **o
             /* Return the final daemon report (task_id/status/output/error). */
             cJSON *params = cJSON_CreateObject();
             cJSON_AddStringToObject(params, "task_id", task_id);
-            char *params_str = cJSON_PrintUnformatted(params);
-            cJSON_Delete(params);
-            if (!params_str)
-                return AIRY_ERR_OUT_OF_MEMORY;
-
-            char *result_str = NULL;
             /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.get_task） */
-            rc = syscall_svc_call_unwrap("sched", "get_task", params_str,
-                                         AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-            AIRY_FREE(params_str);
-            if (rc != AIRY_SUCCESS)
-                return rc;
-            *out_result = result_str;
-            return AIRY_OK;
+            return syscall_raw("sched", "get_task", params, out_result);
         }
 
         if (waited_ms >= budget_ms)
@@ -263,16 +224,6 @@ airy_err_t airy_sys_task_cancel(const char *task_id)
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "task_id", task_id);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.cancel） */
-    int rc = syscall_svc_call_unwrap("sched", "cancel", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    AIRY_FREE(result_str);
-    return rc;
+    return syscall_raw("sched", "cancel", params, NULL);
 }

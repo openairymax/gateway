@@ -101,6 +101,13 @@ char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id);
 int syscall_svc_call_unwrap(const char *ns, const char *method, const char *params_json,
                             int timeout_ms, char **out_result);
 
+/* L4 SSoT 收敛：daemon 转发调用尾唯一机制件（五域共用，禁止复刻样板）。
+ * syscall_raw 承接 params 所有权，经 syscall 派发后交回原始 result JSON
+ * （out_result 为 NULL 则丢弃）；syscall_fetch 在其上加解析，失败经 out_rc
+ * （可为 NULL）输出契约错误码。 */
+airy_err_t syscall_raw(const char *ns, const char *method, cJSON *params, char **out_result);
+cJSON *syscall_fetch(const char *ns, const char *method, cJSON *params, airy_err_t *out_rc);
+
 /* C-5 收敛：syscall 契约错误统一出口。契约码经 airy_err_code_name/
  * airy_err_str 语义化后才可进入 JSON-RPC 用户面，禁止裸数值直出。 */
 char *gw_syscall_error_response(cJSON *request_id, airy_err_t err);

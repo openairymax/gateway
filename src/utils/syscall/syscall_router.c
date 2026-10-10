@@ -62,6 +62,71 @@ int syscall_svc_call_unwrap(const char *ns, const char *method, const char *para
 }
 
 /**
+ * @brief daemon 转发调用尾唯一机制件：承接 params 所有权并派发一次调用。
+ *
+ * @param ns         命名空间（"sched"/"mem"/"agent"）
+ * @param method     daemon 方法名
+ * @param params     参数对象（本函数接管所有权，总是释放）
+ * @param out_result [out] 原始 result JSON（OWNER，AIRY_FREE）；NULL 表示丢弃
+ * @return AIRY_SUCCESS 成功；否则为契约错误码
+ */
+airy_err_t syscall_raw(const char *ns, const char *method, cJSON *params, char **out_result)
+{
+    if (out_result)
+        *out_result = NULL;
+
+    char *params_str = cJSON_PrintUnformatted(params);
+    cJSON_Delete(params);
+    if (!params_str)
+        return AIRY_ERR_OUT_OF_MEMORY;
+
+    char *result_str = NULL;
+    int rc = syscall_svc_call_unwrap(ns, method, params_str, AIRY_DAEMON_RPC_TIMEOUT_MS,
+                                     &result_str);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS) {
+        AIRY_FREE(result_str);
+        return (airy_err_t)rc;
+    }
+
+    if (out_result)
+        *out_result = result_str;
+    else
+        AIRY_FREE(result_str);
+    return AIRY_SUCCESS;
+}
+
+/**
+ * @brief 在 syscall_raw 之上解析 result JSON，供各域提取返回字段。
+ *
+ * @param out_rc [out] 失败时的契约错误码（成功置 AIRY_SUCCESS）；可为 NULL
+ * @return 已解析的 result 对象（OWNER，cJSON_Delete）；失败返回 NULL
+ */
+cJSON *syscall_fetch(const char *ns, const char *method, cJSON *params, airy_err_t *out_rc)
+{
+    char *result_str = NULL;
+    airy_err_t rc = syscall_raw(ns, method, params, &result_str);
+    if (rc != AIRY_SUCCESS) {
+        if (out_rc)
+            *out_rc = rc;
+        return NULL;
+    }
+
+    cJSON *result = cJSON_Parse(result_str);
+    AIRY_FREE(result_str);
+    if (!result) {
+        SVC_LOG_ERROR("syscall %s.%s: malformed result JSON", ns, method);
+        if (out_rc)
+            *out_rc = AIRY_ERR_GENERIC_FAIL;
+        return NULL;
+    }
+
+    if (out_rc)
+        *out_rc = AIRY_SUCCESS;
+    return result;
+}
+
+/**
  * @brief C-5 收敛：syscall 契约错误统一出口（五域 route 共用，禁止副本漂移）。
  *
  * 契约码先语义化（符号名 + 可读描述）再进入 JSON-RPC error.message，
