@@ -164,31 +164,6 @@ struct MHD_Response *create_http_response_ex(http_gateway_t *gateway,
 }
 
 /**
-  * @brief Build an HTTP response (legacy-compatible variant)
-  * @param status_code HTTP status code
-  * @param content Response content
-  * @param content_len Content length
- * @return MHD response object
- * @deprecated Use create_http_response_ex() for CORS-safe handling
- */
-struct MHD_Response *create_http_response(int status_code, const char *content, size_t content_len)
-{
-    struct MHD_Response *response =
-        MHD_create_response_from_buffer(content_len, (void *)content, MHD_RESPMEM_MUST_COPY);
-
-    if (!response) {
-        return NULL;
-    }
-
-    MHD_add_response_header(response, "Content-Type", "application/json");
-    MHD_add_response_header(response, "Server", "AgentRT-gateway/1.0");
-
-    gateway_apply_security_headers(response);
-
-    return response;
-}
-
-/**
   * @brief Parse a JSON request body
  * @param gateway Gateway instance
   * @param context Request context
