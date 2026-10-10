@@ -119,25 +119,11 @@ airy_err_t airy_sys_agent_spawn(const char *spec, char **out_agent_id)
         cJSON_AddStringToObject(params, "agent_spec", spec);
     }
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.spawn） */
-    int rc = syscall_svc_call_unwrap("agent", "spawn", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS)
+    airy_err_t rc = AIRY_SUCCESS;
+    cJSON *result = syscall_fetch("agent", "spawn", params, &rc);
+    if (!result)
         return rc;
-
-    cJSON *result = cJSON_Parse(result_str);
-    AIRY_FREE(result_str);
-    if (!result) {
-        SVC_LOG_ERROR("airy_sys_agent_spawn: malformed result JSON");
-        return AIRY_ERR_GENERIC_FAIL;
-    }
     cJSON *aid = cJSON_GetObjectItem(result, "agent_id");
     if (!cJSON_IsString(aid)) {
         cJSON_Delete(result);
@@ -156,18 +142,8 @@ airy_err_t airy_sys_agent_terminate(const char *agent_id)
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "agent_id", agent_id);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.terminate） */
-    int rc = syscall_svc_call_unwrap("agent", "terminate", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    AIRY_FREE(result_str);
-    return rc;
+    return syscall_raw("agent", "terminate", params, NULL);
 }
 
 airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t len,
@@ -191,25 +167,11 @@ airy_err_t airy_sys_agent_invoke(const char *agent_id, const char *input, size_t
     cJSON_AddStringToObject(params, "input", input_str);
     AIRY_FREE(input_str);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.invoke） */
-    int rc = syscall_svc_call_unwrap("agent", "invoke", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS)
+    airy_err_t rc = AIRY_SUCCESS;
+    cJSON *result = syscall_fetch("agent", "invoke", params, &rc);
+    if (!result)
         return rc;
-
-    cJSON *result = cJSON_Parse(result_str);
-    AIRY_FREE(result_str);
-    if (!result) {
-        SVC_LOG_ERROR("airy_sys_agent_invoke: malformed result JSON");
-        return AIRY_ERR_GENERIC_FAIL;
-    }
     cJSON *out_field = cJSON_GetObjectItem(result, "output");
     if (!cJSON_IsString(out_field)) {
         cJSON_Delete(result);
@@ -228,19 +190,11 @@ airy_err_t airy_sys_agent_list(char ***agent_ids, size_t *count)
     *agent_ids = NULL;
     *count = 0;
 
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（agent.list） */
-    int rc = syscall_svc_call_unwrap("agent", "list", "{}", AIRY_DAEMON_RPC_TIMEOUT_MS,
-                                     &result_str);
-    if (rc != AIRY_SUCCESS)
+    airy_err_t rc = AIRY_SUCCESS;
+    cJSON *result = syscall_fetch("agent", "list", cJSON_CreateObject(), &rc);
+    if (!result)
         return rc;
-
-    cJSON *result = cJSON_Parse(result_str);
-    AIRY_FREE(result_str);
-    if (!result) {
-        SVC_LOG_ERROR("airy_sys_agent_list: malformed result JSON");
-        return AIRY_ERR_GENERIC_FAIL;
-    }
     cJSON *arr = cJSON_GetObjectItem(result, "agent_ids");
     if (!cJSON_IsArray(arr)) {
         cJSON_Delete(result);

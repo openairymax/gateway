@@ -61,30 +61,17 @@ airy_err_t airy_sys_telemetry_metrics(char **out_metrics)
     uint64_t total_tasks = 0;
     uint64_t agent_count = 0;
     {
-        cJSON *params = cJSON_CreateObject();
-        char *params_str = cJSON_PrintUnformatted(params);
-        cJSON_Delete(params);
-        if (params_str) {
-            char *result_str = NULL;
-            /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.get_stats） */
-            int rc = syscall_svc_call_unwrap("sched", "get_stats", params_str,
-                                             AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-            AIRY_FREE(params_str);
-            if (rc == AIRY_SUCCESS && result_str) {
-                cJSON *root = cJSON_Parse(result_str);
-                AIRY_FREE(result_str);
-                if (root) {
-                    cJSON *tt = cJSON_GetObjectItem(root, "total_tasks");
-                    cJSON *ac = cJSON_GetObjectItem(root, "agent_count");
-                    if (cJSON_IsNumber(tt))
-                        total_tasks = (uint64_t)tt->valuedouble;
-                    if (cJSON_IsNumber(ac))
-                        agent_count = (uint64_t)ac->valuedouble;
-                    cJSON_Delete(root);
-                }
-            } else {
-                AIRY_FREE(result_str);
-            }
+        /* 架构约束（2026-08-25）：统一经 syscall 派发（sched.get_stats）。
+         * best-effort：daemon 不可达或回执畸形时降级为 0（out_rc 传 NULL）。 */
+        cJSON *root = syscall_fetch("sched", "get_stats", cJSON_CreateObject(), NULL);
+        if (root) {
+            cJSON *tt = cJSON_GetObjectItem(root, "total_tasks");
+            cJSON *ac = cJSON_GetObjectItem(root, "agent_count");
+            if (cJSON_IsNumber(tt))
+                total_tasks = (uint64_t)tt->valuedouble;
+            if (cJSON_IsNumber(ac))
+                agent_count = (uint64_t)ac->valuedouble;
+            cJSON_Delete(root);
         }
     }
 

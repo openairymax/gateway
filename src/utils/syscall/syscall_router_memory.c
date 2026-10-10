@@ -135,25 +135,11 @@ airy_err_t airy_sys_memory_write(const void *data, size_t len, const char *metad
             cJSON_AddStringToObject(params, "metadata", metadata);
     }
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.write） */
-    int rc = syscall_svc_call_unwrap("mem", "write", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS)
+    airy_err_t rc = AIRY_SUCCESS;
+    cJSON *result = syscall_fetch("mem", "write", params, &rc);
+    if (!result)
         return rc;
-
-    cJSON *result = cJSON_Parse(result_str);
-    AIRY_FREE(result_str);
-    if (!result) {
-        SVC_LOG_ERROR("airy_sys_memory_write: malformed result JSON");
-        return AIRY_ERR_GENERIC_FAIL;
-    }
     cJSON *rid = cJSON_GetObjectItem(result, "record_id");
     if (!cJSON_IsString(rid)) {
         cJSON_Delete(result);
@@ -178,25 +164,11 @@ airy_err_t airy_sys_memory_search(const char *query, uint32_t limit, char ***rec
     cJSON_AddStringToObject(params, "query", query ? query : "");
     cJSON_AddNumberToObject(params, "limit", (double)limit);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.search） */
-    int rc = syscall_svc_call_unwrap("mem", "search", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS)
+    airy_err_t rc = AIRY_SUCCESS;
+    cJSON *result = syscall_fetch("mem", "search", params, &rc);
+    if (!result)
         return rc;
-
-    cJSON *result = cJSON_Parse(result_str);
-    AIRY_FREE(result_str);
-    if (!result) {
-        SVC_LOG_ERROR("airy_sys_memory_search: malformed result JSON");
-        return AIRY_ERR_GENERIC_FAIL;
-    }
     cJSON *arr = cJSON_GetObjectItem(result, "results");
     if (!cJSON_IsArray(arr)) {
         cJSON_Delete(result);
@@ -243,25 +215,11 @@ airy_err_t airy_sys_memory_get(const char *record_id, void **out_data, size_t *o
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "record_id", record_id);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.get） */
-    int rc = syscall_svc_call_unwrap("mem", "get", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS)
+    airy_err_t rc = AIRY_SUCCESS;
+    cJSON *result = syscall_fetch("mem", "get", params, &rc);
+    if (!result)
         return rc;
-
-    cJSON *result = cJSON_Parse(result_str);
-    AIRY_FREE(result_str);
-    if (!result) {
-        SVC_LOG_ERROR("airy_sys_memory_get: malformed result JSON");
-        return AIRY_ERR_GENERIC_FAIL;
-    }
     cJSON *data = cJSON_GetObjectItem(result, "data");
     cJSON *len_field = cJSON_GetObjectItem(result, "length");
     if (!cJSON_IsString(data)) {
@@ -290,16 +248,6 @@ airy_err_t airy_sys_memory_delete(const char *record_id)
     cJSON *params = cJSON_CreateObject();
     cJSON_AddStringToObject(params, "record_id", record_id);
 
-    char *params_str = cJSON_PrintUnformatted(params);
-    cJSON_Delete(params);
-    if (!params_str)
-        return AIRY_ERR_OUT_OF_MEMORY;
-
-    char *result_str = NULL;
     /* 架构约束（2026-08-25）：统一经 syscall 派发（mem.delete） */
-    int rc = syscall_svc_call_unwrap("mem", "delete", params_str,
-                                     AIRY_DAEMON_RPC_TIMEOUT_MS, &result_str);
-    AIRY_FREE(params_str);
-    AIRY_FREE(result_str);
-    return rc;
+    return syscall_raw("mem", "delete", params, NULL);
 }
