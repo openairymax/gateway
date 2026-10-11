@@ -142,8 +142,24 @@ char *gw_syscall_error_response(cJSON *request_id, airy_err_t err)
 }
 
 /**
-  * @brief Route a system call request
+ * @brief L4 SSoT 收敛：route 尾统一回执（五域共用，禁止复刻样板）。
+ *
+ * 承接 result 所有权：失败释放并转契约错误响应，成功封装为 success
+ * 响应（result 所有权移交序列化层）。
  */
+char *gw_route_reply(cJSON *request_id, airy_err_t err, cJSON *result)
+{
+    if (err != AIRY_SUCCESS) {
+        cJSON_Delete(result);
+        return gw_syscall_error_response(request_id, err);
+    }
+
+    return jsonrpc_create_success_response(request_id, result);
+}
+
+/**
+  * @brief Route a system call request
+  */
 char *gateway_syscall_route(const char *method, cJSON *params, cJSON *request_id)
 {
     if (!method || strlen(method) == 0) {
