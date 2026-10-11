@@ -20,6 +20,7 @@
 #include "error.h"
 #include "gateway_rate_limiter.h"
 #include "gateway_utils.h"
+#include "logging.h"
 #include "airy_memory.h"
 #include "platform.h"
 
@@ -308,6 +309,48 @@ void gateway_rate_limiter_get_default_config(gateway_rate_limit_config_t *config
     config->requests_per_hour = 360000;
     config->burst_size = 150;
     config->cleanup_interval_sec = 300;
+}
+
+/**
+  * @brief Parse a positive bounded unsigned value from an env var
+  *
+  * @return true if the variable is set and valid, false otherwise
+  */
+static bool parse_env_u32(const char *name, long max, uint32_t *out)
+{
+    const char *raw = getenv(name);
+    if (!raw)
+        return false;
+
+    long v = strtol(raw, NULL, 10);
+    if (v > 0 && v <= max) {
+        *out = (uint32_t)v;
+        return true;
+    }
+
+    AIRY_LOG_WARN("ignoring invalid %s: %s", name, raw);
+    return false;
+}
+
+gateway_rate_limiter_t *gw_rate_from_env(void)
+{
+    const char *enabled = getenv("GATEWAY_RATE_LIMIT_ENABLED");
+    if (!enabled || strcmp(enabled, "true") != 0)
+        return NULL;
+
+    gateway_rate_limit_config_t config;
+    gateway_rate_limiter_get_default_config(&config);
+    config.enabled = true;
+
+    /* RPM ceiling is the RPS ceiling (100000) times 60. */
+    (void)parse_env_u32("GATEWAY_RATE_LIMIT_RPS", 100000, &config.requests_per_second);
+    (void)parse_env_u32("GATEWAY_RATE_LIMIT_RPM", 6000000, &config.requests_per_minute);
+
+    gateway_rate_limiter_t *limiter = gateway_rate_limiter_create(&config);
+    if (limiter)
+        AIRY_LOG_INFO("gateway rate limiting enabled (rps=%u, rpm=%u)",
+                      config.requests_per_second, config.requests_per_minute);
+    return limiter;
 }
 
 gateway_rate_limiter_t *gateway_rate_limiter_create(const gateway_rate_limit_config_t *config)

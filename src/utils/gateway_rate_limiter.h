@@ -105,6 +105,23 @@ void gateway_rate_limiter_reset_client(gateway_rate_limiter_t *limiter, const ch
  */
 void gateway_rate_limiter_get_default_config(gateway_rate_limit_config_t *config);
 
+/**
+  * @brief Build a rate limiter from gateway environment variables
+  *
+  * Centralized assembly shared by every gateway transport (HTTP/1.1,
+  * HTTP/2, WebSocket): returns NULL unless GATEWAY_RATE_LIMIT_ENABLED is
+  * exactly "true". The optional GATEWAY_RATE_LIMIT_RPS and
+  * GATEWAY_RATE_LIMIT_RPM variables override the defaults and are
+  * range-validated; invalid values are ignored with a warning.
+  *
+  * @return Rate limiter instance, or NULL when disabled or on failure
+  *
+  * @ownership Caller must release via gateway_rate_limiter_destroy()
+  * @threadsafe yes
+  * @since 0.1.19
+  */
+gateway_rate_limiter_t *gw_rate_from_env(void);
+
 #ifdef __cplusplus
 }
 #endif
