@@ -28,6 +28,35 @@
 #define GW_RUN_FWD_TIMEOUT_MS 600000
 
 /**
+ * @brief agent 域转发管道单源：params 序列化 -> SYS_SVC_CALL 派发 ->
+ *        响应解析 -> jsonrpc_emit（响应 id 重写为请求 id）。
+ * @return jsonrpc 响应文本（调用方接管所有权）；失败返回 jsonrpc_error 文本。
+ */
+static char *agent_svc_forward(cJSON *root, const char *method, long timeout_ms)
+{
+    cJSON *id = cJSON_GetObjectItem(root, "id");
+    cJSON *params = cJSON_GetObjectItem(root, "params");
+
+    char *params_str = params ? cJSON_PrintUnformatted(params) : AIRY_STRDUP("{}");
+    if (!params_str)
+        return jsonrpc_error(-32603, "Out of memory", id);
+
+    /* 架构约束 2026-08-25 "必须走 syscall": agent 域经 SYS_SVC_CALL 派发 */
+    char *resp = NULL;
+    airy_err_t rc = airy_sys_svc_call("agent", method, params_str, timeout_ms, &resp);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS || !resp)
+        return jsonrpc_error(-32603, "Agent service unreachable", id);
+
+    cJSON *rroot = cJSON_Parse(resp);
+    AIRY_FREE(resp);
+    if (!rroot)
+        return jsonrpc_error(-32603, "Agent service returned invalid response", id);
+
+    return jsonrpc_emit(rroot, id);
+}
+
+/**
  * @brief agent.run 转发：解析最小入参契约（prompt 存在性校验），其余
  *        参数原样透传 agent_d "run"，响应 id 重写为请求 id。
  */
@@ -52,30 +81,10 @@ char *handle_agent_run(cJSON *root, gateway_business_ctx_t *ctx)
                 prompt = c->valuestring;
         }
     }
-    if (!prompt || !*prompt) {
+    if (!prompt || !*prompt)
         return jsonrpc_error(-32602, "Invalid params: missing prompt", id);
-    }
 
-    char *params_str = params ? cJSON_PrintUnformatted(params) : AIRY_STRDUP("{}");
-    if (!params_str) {
-        return jsonrpc_error(-32603, "Out of memory", id);
-    }
-
-    /* 架构约束 2026-08-25 "必须走 syscall": agent.run 经 SYS_SVC_CALL 派发 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call("agent", "run", params_str, GW_RUN_FWD_TIMEOUT_MS, &resp);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS || !resp) {
-        return jsonrpc_error(-32603, "Agent service unreachable", id);
-    }
-
-    cJSON *rroot = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!rroot) {
-        return jsonrpc_error(-32603, "Agent service returned invalid response", id);
-    }
-
-    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
+    return agent_svc_forward(root, "run", GW_RUN_FWD_TIMEOUT_MS);
 }
 
 /**
@@ -88,29 +97,8 @@ char *handle_agent_cancel(cJSON *root, gateway_business_ctx_t *ctx)
     cJSON *id = cJSON_GetObjectItem(root, "id");
     cJSON *params = cJSON_GetObjectItem(root, "params");
     cJSON *sid = params ? cJSON_GetObjectItem(params, "session_id") : NULL;
-    if (!cJSON_IsString(sid) || !sid->valuestring || !*sid->valuestring) {
+    if (!cJSON_IsString(sid) || !sid->valuestring || !*sid->valuestring)
         return jsonrpc_error(-32602, "Invalid params: missing session_id", id);
-    }
 
-    char *params_str = params ? cJSON_PrintUnformatted(params) : AIRY_STRDUP("{}");
-    if (!params_str) {
-        return jsonrpc_error(-32603, "Out of memory", id);
-    }
-
-    /* 架构约束 2026-08-25 "必须走 syscall": agent.run_cancel 经 SYS_SVC_CALL 派发 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call("agent", "run_cancel", params_str, GW_TOOL_TIMEOUT_MS,
-                                      &resp);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS || !resp) {
-        return jsonrpc_error(-32603, "Agent service unreachable", id);
-    }
-
-    cJSON *rroot = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!rroot) {
-        return jsonrpc_error(-32603, "Agent service returned invalid response", id);
-    }
-
-    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
+    return agent_svc_forward(root, "run_cancel", GW_TOOL_TIMEOUT_MS);
 }
