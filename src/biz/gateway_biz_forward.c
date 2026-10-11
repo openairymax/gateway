@@ -84,6 +84,46 @@ char *jsonrpc_emit(cJSON *rroot, const cJSON *req_id)
 }
 
 /**
+ * @brief 域转发管道单源：params 序列化 -> SYS_SVC_CALL 派发 -> 响应解析 ->
+ *        jsonrpc_emit（响应 id 重写为请求 id）。
+ * @param svc_label 错误消息服务标签（"Memory"/"Tool"/"LLM"）；NULL 用通用 "Service"
+ * @return jsonrpc 响应文本（调用方接管所有权）；失败返回 jsonrpc_error 文本
+ */
+static char *svc_forward(cJSON *root, const char *ns, const char *method,
+                         const cJSON *params, uint32_t timeout_ms,
+                         const char *svc_label)
+{
+    cJSON *id = cJSON_GetObjectItem(root, "id");
+
+    char *params_str = params ? cJSON_PrintUnformatted(params) : AIRY_STRDUP("{}");
+    if (!params_str)
+        return jsonrpc_error(-32603, "Out of memory", id);
+
+    /* 架构约束 2026-08-25 "必须走 syscall": 命名域转发统一经 SYS_SVC_CALL
+     * 派发（钩子按命名空间路由到对应 daemon 端点，见 gateway_biz_svcdispatch.c）。 */
+    char *resp = NULL;
+    airy_err_t rc = airy_sys_svc_call(ns, method, params_str, timeout_ms, &resp);
+    AIRY_FREE(params_str);
+    if (rc != AIRY_SUCCESS || !resp) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "%s service unreachable",
+                 svc_label ? svc_label : "Service");
+        return jsonrpc_error(-32603, msg, id);
+    }
+
+    cJSON *rroot = cJSON_Parse(resp);
+    AIRY_FREE(resp);
+    if (!rroot) {
+        char msg[96];
+        snprintf(msg, sizeof(msg), "%s service returned invalid response",
+                 svc_label ? svc_label : "Service");
+        return jsonrpc_error(-32603, msg, id);
+    }
+
+    return jsonrpc_emit(rroot, id);
+}
+
+/**
  * @brief Generic daemon internal service call (legacy entry)
  *
  * Thin wrapper kept for zero call-site churn: the transport (L2-first per
@@ -143,30 +183,13 @@ int gw_acl_check_tool(const gateway_business_ctx_t *ctx, const char *tool_name)
  */
 char *handle_ns_forward(cJSON *root, const gw_ns_forward_rule_t *rule)
 {
-    cJSON *id = cJSON_GetObjectItem(root, "id");
     if (!rule || !rule->ns || !rule->method || !*rule->method)
-        return jsonrpc_error(-32601, "Method not found", id);
+        return jsonrpc_error(-32601, "Method not found",
+                             cJSON_GetObjectItem(root, "id"));
 
-    cJSON *params = cJSON_GetObjectItem(root, "params");
-    char *params_str = params ? cJSON_PrintUnformatted(params) : AIRY_STRDUP("{}");
-    if (!params_str)
-        return jsonrpc_error(-32603, "Out of memory", id);
-
-    /* 架构约束 2026-08-25 "必须走 syscall": 命名空间转发统一经 SYS_SVC_CALL
-     * 派发（钩子按命名空间路由到对应 daemon 端点，见 gateway_biz_svcdispatch.c）。 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call(rule->ns, rule->method, params_str,
-                                      (uint32_t)rule->timeout_ms, &resp);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS || !resp)
-        return jsonrpc_error(-32603, "Service unreachable", id);
-
-    cJSON *rroot = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!rroot)
-        return jsonrpc_error(-32603, "Service returned invalid response", id);
-
-    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
+    return svc_forward(root, rule->ns, rule->method,
+                       cJSON_GetObjectItem(root, "params"),
+                       (uint32_t)rule->timeout_ms, NULL);
 }
 
 /**
@@ -197,30 +220,7 @@ char *handle_mem_call(cJSON *root)
         return jsonrpc_error(-32001, "Memory service access disabled", id);
     }
 
-    char *params_str = NULL;
-    if (params) {
-        params_str = cJSON_PrintUnformatted(params);
-    } else {
-        params_str = AIRY_STRDUP("{}");
-    }
-    if (!params_str) {
-        return jsonrpc_error(-32603, "Out of memory", id);
-    }
-
-    /* 架构约束 2026-08-25 "必须走 syscall": mem.* 经 SYS_SVC_CALL 派发 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call("mem", mem_method, params_str, GW_TOOL_TIMEOUT_MS, &resp);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS || !resp) {
-        return jsonrpc_error(-32603, "Memory service unreachable", id);
-    }
-
-    cJSON *rroot = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!rroot) {
-        return jsonrpc_error(-32603, "Memory service returned invalid response", id);
-    }
-    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
+    return svc_forward(root, "mem", mem_method, params, GW_TOOL_TIMEOUT_MS, "Memory");
 }
 
 /**
@@ -233,24 +233,10 @@ char *handle_mem_call(cJSON *root)
  */
 char *handle_llm_list_models(cJSON *root, const gateway_business_ctx_t *ctx)
 {
-    cJSON *id = cJSON_GetObjectItem(root, "id");
     (void)ctx; /* 端点解析统一由 svc dispatch 钩子按命名空间完成 */
 
-    /* 架构约束 2026-08-25 "必须走 syscall": llm.list_models 经 SYS_SVC_CALL 派发 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call("llm", "list_models", "{}", GW_LLM_DEFAULT_TIMEOUT_MS,
-                                      &resp);
-    if (rc != AIRY_SUCCESS || !resp) {
-        return jsonrpc_error(-32603, "LLM service unreachable", id);
-    }
-
-    cJSON *rroot = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!rroot) {
-        return jsonrpc_error(-32603, "LLM service returned invalid response", id);
-    }
-
-    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
+    return svc_forward(root, "llm", "list_models", NULL,
+                       GW_LLM_DEFAULT_TIMEOUT_MS, "LLM");
 }
 
 /**
@@ -277,29 +263,5 @@ char *handle_tool_approval_call(cJSON *root, const gateway_business_ctx_t *ctx,
         }
     }
 
-    char *params_str = NULL;
-    if (params) {
-        params_str = cJSON_PrintUnformatted(params);
-    } else {
-        params_str = AIRY_STRDUP("{}");
-    }
-    if (!params_str) {
-        return jsonrpc_error(-32603, "Out of memory", id);
-    }
-
-    /* 架构约束 2026-08-25 "必须走 syscall": tool.pending/approve 经 SYS_SVC_CALL 派发 */
-    char *resp = NULL;
-    airy_err_t rc = airy_sys_svc_call("tool", tool_method, params_str, GW_TOOL_TIMEOUT_MS, &resp);
-    AIRY_FREE(params_str);
-    if (rc != AIRY_SUCCESS || !resp) {
-        return jsonrpc_error(-32603, "Tool service unreachable", id);
-    }
-
-    cJSON *rroot = cJSON_Parse(resp);
-    AIRY_FREE(resp);
-    if (!rroot) {
-        return jsonrpc_error(-32603, "Tool service returned invalid response", id);
-    }
-
-    return jsonrpc_emit(rroot, cJSON_GetObjectItem(root, "id"));
+    return svc_forward(root, "tool", tool_method, params, GW_TOOL_TIMEOUT_MS, "Tool");
 }
