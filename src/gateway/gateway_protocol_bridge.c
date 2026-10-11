@@ -260,6 +260,35 @@ done:
  * Request Processing Pipeline
  * ============================================================================ */
 
+static int bridge_dispatch(void *fn_raw, const gw_incoming_request_t *incoming,
+                           gw_processed_response_t *out_response, const char *label)
+{
+    void *(*handler_fn)(const void *, size_t, size_t *) =
+        (void *(*)(const void *, size_t, size_t *))(uintptr_t)fn_raw;
+    size_t resp_size = 0;
+    void *result = handler_fn(incoming->raw_data, incoming->raw_size, &resp_size);
+
+    if (result && resp_size > 0) {
+        if (resp_size > BRIDGE_MAX_RESPONSE_SIZE) {
+            airy_err_push_ex(AIRY_ERR_OVERFLOW, __FILE__, __LINE__, __func__,
+                             "%s response size %zu exceeds max %zu", label, resp_size,
+                             (size_t)BRIDGE_MAX_RESPONSE_SIZE);
+            AIRY_FREE(result);
+            return AIRY_ERR_OVERFLOW;
+        }
+        out_response->response_data = (char *)AIRY_MALLOC(resp_size + 1);
+        if (out_response->response_data) {
+            AIRY_MEMCPY(out_response->response_data, result, resp_size);
+            out_response->response_data[resp_size] = '\0';
+            out_response->response_size = resp_size;
+        }
+        AIRY_FREE(result);
+    }
+    out_response->status_code = 200;
+    out_response->transformed = false;
+    return 0;
+}
+
 int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
                                        const gw_incoming_request_t *incoming,
                                        gw_processed_response_t *out_response)
@@ -309,54 +338,15 @@ int gw_protocol_bridge_process_request(gw_protocol_bridge_handle_t bridge,
     }
 
     if (b->handlers[detection.detected_type]) {
-        void *(*handler_fn)(const void *, size_t, size_t *) =
-            (void *(*)(const void *, size_t, size_t *))(
-                uintptr_t)b->handlers[detection.detected_type];
-        size_t resp_size = 0;
-        void *result = handler_fn(incoming->raw_data, incoming->raw_size, &resp_size);
-
-        if (result && resp_size > 0) {
-            if (resp_size > BRIDGE_MAX_RESPONSE_SIZE) {
-                airy_err_push_ex(AIRY_ERR_OVERFLOW, __FILE__, __LINE__, __func__,
-                                 "handler response size %zu exceeds max %zu", resp_size,
-                                 (size_t)BRIDGE_MAX_RESPONSE_SIZE);
-                AIRY_FREE(result);
-                return AIRY_ERR_OVERFLOW;
-            }
-            out_response->response_data = (char *)AIRY_MALLOC(resp_size + 1);
-            if (out_response->response_data) {
-                AIRY_MEMCPY(out_response->response_data, result, resp_size);
-                out_response->response_data[resp_size] = '\0';
-                out_response->response_size = resp_size;
-            }
-            AIRY_FREE(result);
-        }
-        out_response->status_code = 200;
-        out_response->transformed = false;
+        int rc = bridge_dispatch(b->handlers[detection.detected_type], incoming,
+                                 out_response, "handler");
+        if (rc != 0)
+            return rc;
     } else if (b->default_handler) {
-        void *(*def_handler)(const void *, size_t, size_t *) =
-            (void *(*)(const void *, size_t, size_t *))(uintptr_t)b->default_handler;
-        size_t resp_size = 0;
-        void *result = def_handler(incoming->raw_data, incoming->raw_size, &resp_size);
-
-        if (result && resp_size > 0) {
-            if (resp_size > BRIDGE_MAX_RESPONSE_SIZE) {
-                airy_err_push_ex(AIRY_ERR_OVERFLOW, __FILE__, __LINE__, __func__,
-                                 "default_handler response size %zu exceeds max %zu", resp_size,
-                                 (size_t)BRIDGE_MAX_RESPONSE_SIZE);
-                AIRY_FREE(result);
-                return AIRY_ERR_OVERFLOW;
-            }
-            out_response->response_data = (char *)AIRY_MALLOC(resp_size + 1);
-            if (out_response->response_data) {
-                AIRY_MEMCPY(out_response->response_data, result, resp_size);
-                out_response->response_data[resp_size] = '\0';
-                out_response->response_size = resp_size;
-            }
-            AIRY_FREE(result);
-        }
-        out_response->status_code = 200;
-        out_response->transformed = false;
+        int rc = bridge_dispatch(b->default_handler, incoming, out_response,
+                                 "default_handler");
+        if (rc != 0)
+            return rc;
     } else {
         unified_message_t target_msg;
         int transform_ret = protocol_auto_transform(&source_msg, &target_msg, "jsonrpc");
