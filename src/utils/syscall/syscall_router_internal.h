@@ -112,6 +112,10 @@ cJSON *syscall_fetch(const char *ns, const char *method, cJSON *params, airy_err
  * airy_err_str 语义化后才可进入 JSON-RPC 用户面，禁止裸数值直出。 */
 char *gw_syscall_error_response(cJSON *request_id, airy_err_t err);
 
+/* L4 SSoT 收敛：route 尾统一回执（五域共用，禁止复刻样板）。承接
+ * result 所有权：失败释放并转契约错误响应，成功封装为 success 响应。 */
+char *gw_route_reply(cJSON *request_id, airy_err_t err, cJSON *result);
+
 /* Mem domain thin IPC forwarders (syscall_router_memory.c). Declared here so
  * gateway route handlers (e.g. SSE chat memory injection) can call them with
  * a real prototype instead of an implicit int-returning declaration. */

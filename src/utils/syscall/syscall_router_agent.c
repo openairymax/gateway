@@ -90,12 +90,7 @@ char *route_agent_methods(const char *method, cJSON *params, cJSON *request_id)
         }
     }
 
-    if (err != AIRY_SUCCESS) {
-        cJSON_Delete(result);
-        return gw_syscall_error_response(request_id, err);
-    }
-
-    return jsonrpc_create_success_response(request_id, result);
+    return gw_route_reply(request_id, err, result);
 }
 
 /* Agent management - Phase 3: thin IPC client forwarding to the agent_d daemon
