@@ -395,25 +395,8 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
 
     http2_init_cors_config(base);
 
-    base->rate_limiter = NULL;
-    const char *rate_limit_enabled = getenv("GATEWAY_RATE_LIMIT_ENABLED");
-    if (rate_limit_enabled && strcmp(rate_limit_enabled, "true") == 0) {
-        gateway_rate_limit_config_t rl_config;
-        gateway_rate_limiter_get_default_config(&rl_config);
-        rl_config.enabled = true;
-
-        const char *rps = getenv("GATEWAY_RATE_LIMIT_RPS");
-        if (rps) {
-            long v = strtol(rps, NULL, 10);
-            if (v > 0 && v <= 100000) {
-                rl_config.requests_per_second = (uint32_t)v;
-            } else {
-                AIRY_LOG_WARN("ignoring invalid GATEWAY_RATE_LIMIT_RPS: %s", rps);
-            }
-        }
-
-        base->rate_limiter = gateway_rate_limiter_create(&rl_config);
-    }
+    /* Centralized env-driven assembly (see gateway_rate_limiter.h). */
+    base->rate_limiter = gw_rate_from_env();
 
     base->protocol_handler = gateway_protocol_handler_create(NULL);
 
