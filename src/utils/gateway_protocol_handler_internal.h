@@ -18,6 +18,14 @@
 
 #include "gateway_protocol_handler.h"
 
+#include "airy_protocol_interface.h"
+
+#include "error.h"
+#include "airy_memory.h"
+
+#include <cjson/cJSON.h>
+
+#include <cjson_helpers.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
