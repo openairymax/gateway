@@ -18,17 +18,7 @@
 
 #include "gateway_protocol_handler_internal.h"
 
-#include "airy_protocol_interface.h"
-
-#include "error.h"
-#include "airy_memory.h"
-#include "safe_string_utils.h"
-
-#include <cjson/cJSON.h>
-
-#include <cjson_helpers.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
