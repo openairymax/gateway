@@ -59,10 +59,10 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/utils/syscall/syscall_router_telemetry.c
     ${GATEWAY_SRC_BASE}/src/utils/gateway_rpc_handler.c
     ${GATEWAY_SRC_BASE}/src/utils/gateway_rate_limiter.c
-    # gateway_protocol_handler 按功能域拆分：主处理/协议转换/协议检测（2026-08-27）
+    # gateway_protocol_handler 按功能域拆分：主处理/协议转换（2026-08-27）；
+    # 协议检测 0.1.19 单元六十并入 protocols 机制核 proto_detect_body。
     ${GATEWAY_SRC_BASE}/src/utils/gateway_protocol_handler.c
     ${GATEWAY_SRC_BASE}/src/utils/gateway_protocol_convert.c
-    ${GATEWAY_SRC_BASE}/src/utils/gateway_protocol_detect.c
 )
 
 # ============================================================================

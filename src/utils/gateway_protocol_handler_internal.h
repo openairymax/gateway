@@ -10,7 +10,8 @@
  * header carries the cross-file helper declarations:
  *   - gateway_protocol_handler.c  handler lifecycle / main handling / stats
  *   - gateway_protocol_convert.c  protocol-to-JSON-RPC conversion
- *   - gateway_protocol_detect.c   protocol signature detection
+ * Body protocol detection lives in the protocols mechanism core
+ * (protocol_detect.h, proto_detect_body).
  */
 
 #ifndef AIRY_RT_GATEWAY_PROTOCOL_HANDLER_INTERNAL_H
@@ -41,9 +42,6 @@ cJSON *gw_mcp_to_rpc(const char *request_data, size_t request_size,
                      char **out_method, char **out_id);
 cJSON *gw_a2a_to_rpc(const char *request_data, size_t request_size,
                      char **out_method, char **out_id);
-
-/* Detection domain (gateway_protocol_detect.c) */
-airy_protocol_type_t detect_protocol_internal(const char *request_data, size_t request_size);
 
 #ifdef __cplusplus
 }
