@@ -59,7 +59,6 @@ gateway/
 │   └── gateway-sources.cmake            # 与守护进程宿主共用的源文件清单
 ├── include/
 │   ├── gateway.h                        # 公共 API（生命周期 / 控制 / 查询）
-│   └── gateway_protocol_bridge.h        # 网关 ↔ 协议系统桥接接口
 ├── src/
 │   ├── gateway/                         # 传输层
 │   │   ├── gateway_api.c                # 公共 API 实现
@@ -70,7 +69,6 @@ gateway/
 │   │   ├── ws_gateway*.[ch]             # WebSocket 服务器（libwebsockets）
 │   │   ├── stdio_gateway.[ch]           # Stdio REPL 网关
 │   │   ├── gateway_auth.[ch]            # 入口鉴权
-│   │   ├── gateway_protocol_bridge.c    # 协议桥接实现
 │   │   └── gateway_hall_store.[ch]      # hall 事件记录（写入侧）
 │   ├── biz/                             # 业务委派层
 │   │   ├── gateway_business_handler.[ch]# 统一协议入口 + 业务链

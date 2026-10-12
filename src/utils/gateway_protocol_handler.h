@@ -113,41 +113,6 @@ int gateway_protocol_handler_get_stats(gateway_protocol_handler_t handler, char 
 
 /* ============================================================================ */
 /**
-  * @brief Detect the protocol type of request data
- * @param request_data Request data
-  * @param request_size Request data size
-  * @return Detected protocol type, or UNIFIED_PROTOCOL_UNKNOWN if undetectable
- */
-airy_protocol_type_t gateway_protocol_detect(const char *request_data, size_t request_size);
-
-/**
-  * @brief Detect whether the request is JSON-RPC
- * @param request_data Request data
-  * @param request_size Request data size
-  * @return 1 if JSON-RPC, 0 otherwise
- */
-int gateway_protocol_is_jsonrpc(const char *request_data, size_t request_size);
-
-/**
-  * @brief Detect whether the request is MCP
- * @param request_data Request data
-  * @param request_size Request data size
-  * @return 1 if MCP, 0 otherwise
- */
-int gateway_protocol_is_mcp(const char *request_data, size_t request_size);
-
-/**
-  * @brief Detect whether the request is A2A
- * @param request_data Request data
-  * @param request_size Request data size
-  * @return 1 if A2A, 0 otherwise
- */
-int gateway_protocol_is_a2a(const char *request_data, size_t request_size);
-
-/* ============================================================================ */
-
-/* ============================================================================ */
-/**
   * @brief Convert any protocol request to JSON-RPC
   * @param handler Protocol handler handle
   * @param request_data Raw request data
