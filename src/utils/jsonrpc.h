@@ -17,18 +17,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-
-#define JSONRPC_PARSE_ERROR (-32700)
-#define JSONRPC_INVALID_REQUEST (-32600)
-#define JSONRPC_METHOD_NOT_FOUND (-32601)
-#define JSONRPC_INVALID_PARAMS (-32602)
-#define JSONRPC_INTERNAL_ERROR (-32603)
-
-#define JSONRPC_SERVER_ERROR_BASE (-32000)
-#define JSONRPC_RATE_LIMITED (-32001)
-#define JSONRPC_AUTH_FAILED (-32002)
-#define JSONRPC_SESSION_EXPIRED (-32003)
-#define JSONRPC_SERVICE_UNAVAILABLE (-32004)
+/* Error codes & standard messages: SSoT in commons jsonrpc_helpers.h */
+#include "jsonrpc_helpers.h"
 
 /**
   * @brief Validate a JSON-RPC 2.0 request format
@@ -153,14 +143,6 @@ char *jsonrpc_create_rate_limited_response(const cJSON *id);
  */
 char *jsonrpc_create_auth_failed_response(const cJSON *id);
 
-
-/**
-  * @brief Get the standard error message
- *
-  * @param[in] code Error code
-  * @return Error message string
- */
-const char *jsonrpc_get_error_message(int code);
 
 /* ==================== Batch Requests (PROTO-004) ==================== */
 #define JSONRPC_MAX_BATCH_SIZE 64
