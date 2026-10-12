@@ -7,8 +7,8 @@
  * @brief Multi-protocol gateway request handler - protocol detection domain.
  *
  * Implements JSON signature based protocol detection (JSON-RPC / MCP /
- * A2A / LLM chat-completions) and the public detection predicates, single
- * responsibility. Split out of gateway_protocol_handler.c.
+ * A2A / LLM chat-completions), single responsibility. Split out of
+ * gateway_protocol_handler.c.
  */
 
 #include "gateway_protocol_handler.h"
@@ -52,24 +52,4 @@ airy_protocol_type_t detect_protocol_internal(const char *request_data, size_t r
 
     cJSON_Delete(json);
     return type;
-}
-
-airy_protocol_type_t gateway_protocol_detect(const char *request_data, size_t request_size)
-{
-    return detect_protocol_internal(request_data, request_size);
-}
-
-int gateway_protocol_is_jsonrpc(const char *request_data, size_t request_size)
-{
-    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_JSON_RPC ? 1 : 0;
-}
-
-int gateway_protocol_is_mcp(const char *request_data, size_t request_size)
-{
-    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_MCP ? 1 : 0;
-}
-
-int gateway_protocol_is_a2a(const char *request_data, size_t request_size)
-{
-    return detect_protocol_internal(request_data, request_size) == AIRY_PROTOCOL_A2A ? 1 : 0;
 }

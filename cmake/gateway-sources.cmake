@@ -14,7 +14,6 @@
 # 说明：
 #   - http2_gateway*.c 无条件参与编译：无 nghttp2 库时为空 TU
 #     （实现体由 #ifdef AIRY_HAS_HTTP2 守卫），两侧统一走此清单
-#   - gateway_protocol_bridge.c 属 gateway 模块，两侧统一包含
 #   - 编译期特性（GATEWAY_HAS_WS/HTTP/HTTP2、AIRY_COMPLIANCE_IMPL 豁免等）
 #     仍由各消费方 CMakeLists 按其目标独立设置，不属本清单职责
 # ============================================================================
@@ -49,7 +48,6 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/ws_gateway_message.c
     ${GATEWAY_SRC_BASE}/src/gateway/ws_gateway_callback.c
     ${GATEWAY_SRC_BASE}/src/gateway/stdio_gateway.c
-    ${GATEWAY_SRC_BASE}/src/gateway/gateway_protocol_bridge.c
     ${GATEWAY_SRC_BASE}/src/utils/jsonrpc.c
     # 2026-08-27 目录原子化：syscall 路由家族独立子目录
     ${GATEWAY_SRC_BASE}/src/utils/syscall/syscall_router.c

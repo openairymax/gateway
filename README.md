@@ -59,7 +59,6 @@ gateway/
 │   └── gateway-sources.cmake            # Source list shared with the daemon host
 ├── include/
 │   ├── gateway.h                        # Public API (lifecycle / control / query)
-│   └── gateway_protocol_bridge.h        # Gateway ↔ protocols bridge interface
 ├── src/
 │   ├── gateway/                         # Transport layer
 │   │   ├── gateway_api.c                # Public API implementation
@@ -70,7 +69,6 @@ gateway/
 │   │   ├── ws_gateway*.[ch]             # WebSocket server (libwebsockets)
 │   │   ├── stdio_gateway.[ch]           # Stdio REPL gateway
 │   │   ├── gateway_auth.[ch]            # Entry authentication
-│   │   ├── gateway_protocol_bridge.c    # Protocol bridge implementation
 │   │   └── gateway_hall_store.[ch]      # Hall event recording (write side)
 │   ├── biz/                             # Business-delegation layer
 │   │   ├── gateway_business_handler.[ch]# Unified protocol entry + business chain
