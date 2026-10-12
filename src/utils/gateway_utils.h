@@ -58,28 +58,6 @@ static inline uint64_t gateway_time_ns(void)
 #endif
 }
 
-/**
-  * @brief Compute elapsed time (nanoseconds)
- *
-  * @param start_ns Start timestamp
-  * @return Nanoseconds elapsed from start_ns to now
- */
-static inline uint64_t gateway_elapsed_ns(uint64_t start_ns)
-{
-    return gateway_time_ns() - start_ns;
-}
-
-/**
-  * @brief Convert nanoseconds to milliseconds
- *
- * @param ns Nanoseconds value
-  * @return Millisecond value
- */
-static inline uint64_t gateway_ns_to_ms(uint64_t ns)
-{
-    return ns / 1000000ULL;
-}
-
 #ifdef __cplusplus
 }
 #endif

@@ -30,9 +30,6 @@ void gw_pep_clear(void);
 int gw_pep_check(const gateway_business_ctx_t *ctx, const char *agent, const char *tool,
                  const char *action);
 
-/* 当前已对齐的权威 epoch（0 = 尚未对齐） */
-uint64_t gw_pep_epoch(void);
-
 /* 订阅 notify_d topic=airy.cupolas.epoch 主动失效
  * 缓存（SSE 长连接 + 自动重连）。进程级单次启动；fail-open——notify_d
  * 不可达仅告警重试，不影响懒对齐路径（miss RPC 携带权威 epoch 兜底）。 */
