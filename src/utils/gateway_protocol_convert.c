@@ -16,6 +16,8 @@
 
 #include "gateway_protocol_handler_internal.h"
 
+#include "jsonrpc.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -28,22 +30,11 @@ rpc_result_t create_error_result(int code, const char *message, const char *id_s
      * 避免 strdup 泄漏且与 gateway_rpc_create_error 的字面量语义统一。 */
     result.error_message = message ? message : "Unknown error";
 
-    cJSON *error_resp = cJSON_CreateObject();
-    cJSON_AddStringToObject(error_resp, "jsonrpc", "2.0");
-
-    cJSON *error_obj = cJSON_CreateObject();
-    cJSON_AddNumberToObject(error_obj, "code", code);
-    cJSON_AddStringToObject(error_obj, "message", message ? message : "Unknown error");
-    cJSON_AddItemToObject(error_resp, "error", error_obj);
-
-    if (id_str) {
-        cJSON_AddRawToObject(error_resp, "id", id_str);
-    } else {
-        cJSON_AddNullToObject(error_resp, "id");
-    }
-
-    result.response_json = cJSON_PrintUnformatted(error_resp);
-    cJSON_Delete(error_resp);
+    /* 响应文本统一走 jsonrpc 权威单点构造；id_str 为受控 JSON 字面量，
+     * 解析失败时由权威单点兜底为 id: null。 */
+    cJSON *id = id_str ? cJSON_Parse(id_str) : NULL;
+    result.response_json = jsonrpc_create_error_response(id, code, result.error_message, NULL);
+    cJSON_Delete(id);
 
     return result;
 }
