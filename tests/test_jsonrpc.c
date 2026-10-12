@@ -6,15 +6,18 @@
  * @brief JSON-RPC 2.0 协议工具单元测试
  *
  * 测试 JSON-RPC 协议工具的完整功能：
-  * - 请求验证
-  * - 响应生成
-  * - 错误处理
+ * - 请求验证
+ * - 响应生成
+ * - 错误处理
  * - 边界条件
  *
-  * Design principles:
-  *   E-8 可测试性：协议合规性验证
-  *   K-2 接口契约化：验证 JSON-RPC 2.0 标准
+ * Design principles:
+ *   E-8 可测试性：协议合规性验证
+ *   K-2 接口契约化：验证 JSON-RPC 2.0 标准
  *
+ * 2026-10-12: 随 SSoT 收敛，删除已裁断 API（get 三兄弟、
+ * 七工厂）对应的测试段；存量用例覆盖 validate/success/error
+ * 三保留面。
  */
 
 // @owner: team-B
@@ -87,14 +90,6 @@ static void test_validate_valid_request(void)
     int result = gw_jsonrpc_validate_request(json);
     ASSERT_EQ(result, 0);
 
-    const char *method = jsonrpc_get_method(json);
-    ASSERT_NOT_NULL(method);
-    ASSERT_STR_EQ(method, "test");
-
-    const cJSON *id = jsonrpc_get_id(json);
-    ASSERT_NOT_NULL(id);
-    ASSERT_EQ(id->valueint, 1);
-
     cJSON_Delete(json);
 
     TEST_PASS();
@@ -114,7 +109,7 @@ static void test_validate_request_with_params(void)
     int result = gw_jsonrpc_validate_request(json);
     ASSERT_EQ(result, 0);
 
-    const cJSON *params = jsonrpc_get_params(json);
+    const cJSON *params = cJSON_GetObjectItem(json, "params");
     ASSERT_NOT_NULL(params);
 
     cJSON *key = cJSON_GetObjectItem(params, "key");
@@ -340,189 +335,6 @@ static void test_create_error_response_with_data(void)
 }
 
 /**
-  * @brief Test parse error responses
- */
-static void test_create_parse_error_response(void)
-{
-    TEST_BEGIN("create_parse_error_response");
-
-    char *response = jsonrpc_create_parse_error_response();
-    ASSERT_NOT_NULL(response);
-
-    CJSON_PARSE_GUARD(resp_json, response, {
-        TEST_FAIL("parse response failed");
-        return;
-    });
-
-    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
-    ASSERT_NOT_NULL(error);
-
-    cJSON *code = cJSON_GetObjectItem(error, "code");
-    ASSERT_NOT_NULL(code);
-    ASSERT_EQ(code->valueint, JSONRPC_PARSE_ERROR);
-
-    cJSON_free(response);
-
-    TEST_PASS();
-}
-
-/**
-  * @brief Test invalid request responses
- */
-static void test_create_invalid_request_response(void)
-{
-    TEST_BEGIN("create_invalid_request_response");
-
-    char *response = jsonrpc_create_invalid_request_response();
-    ASSERT_NOT_NULL(response);
-
-    CJSON_PARSE_GUARD(resp_json, response, {
-        TEST_FAIL("parse response failed");
-        return;
-    });
-    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
-    cJSON *code = cJSON_GetObjectItem(error, "code");
-
-    ASSERT_EQ(code->valueint, JSONRPC_INVALID_REQUEST);
-
-    cJSON_free(response);
-
-    TEST_PASS();
-}
-
-/**
-  * @brief Test method-not-found responses
- */
-static void test_create_method_not_found_response(void)
-{
-    TEST_BEGIN("create_method_not_found_response");
-
-    cJSON *id = cJSON_CreateNumber(5);
-    char *response = jsonrpc_create_method_not_found_response(id);
-    ASSERT_NOT_NULL(response);
-
-    CJSON_PARSE_GUARD(resp_json, response, {
-        TEST_FAIL("parse response failed");
-        return;
-    });
-    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
-    cJSON *code = cJSON_GetObjectItem(error, "code");
-
-    ASSERT_EQ(code->valueint, JSONRPC_METHOD_NOT_FOUND);
-
-    cJSON_free(response);
-    cJSON_Delete(id);
-
-    TEST_PASS();
-}
-
-/**
-  * @brief Test invalid params responses
- */
-static void test_create_invalid_params_response(void)
-{
-    TEST_BEGIN("create_invalid_params_response");
-
-    cJSON *id = cJSON_CreateNumber(6);
-    char *response = jsonrpc_create_invalid_params_response(id, "Missing required field");
-    ASSERT_NOT_NULL(response);
-
-    CJSON_PARSE_GUARD(resp_json, response, {
-        TEST_FAIL("parse response failed");
-        return;
-    });
-    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
-    cJSON *code = cJSON_GetObjectItem(error, "code");
-    cJSON *message = cJSON_GetObjectItem(error, "message");
-
-    ASSERT_EQ(code->valueint, JSONRPC_INVALID_PARAMS);
-    ASSERT_STR_EQ(message->valuestring, "Invalid params");
-
-    cJSON_free(response);
-    cJSON_Delete(id);
-
-    TEST_PASS();
-}
-
-/**
-  * @brief Test internal error responses
- */
-static void test_create_internal_error_response(void)
-{
-    TEST_BEGIN("create_internal_error_response");
-
-    cJSON *id = cJSON_CreateNumber(7);
-    char *response = jsonrpc_create_internal_error_response(id, "Unexpected error");
-    ASSERT_NOT_NULL(response);
-
-    CJSON_PARSE_GUARD(resp_json, response, {
-        TEST_FAIL("parse response failed");
-        return;
-    });
-    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
-    cJSON *code = cJSON_GetObjectItem(error, "code");
-
-    ASSERT_EQ(code->valueint, JSONRPC_INTERNAL_ERROR);
-
-    cJSON_free(response);
-    cJSON_Delete(id);
-
-    TEST_PASS();
-}
-
-/**
-  * @brief Test rate-limit responses
- */
-static void test_create_rate_limited_response(void)
-{
-    TEST_BEGIN("create_rate_limited_response");
-
-    cJSON *id = cJSON_CreateNumber(8);
-    char *response = jsonrpc_create_rate_limited_response(id);
-    ASSERT_NOT_NULL(response);
-
-    CJSON_PARSE_GUARD(resp_json, response, {
-        TEST_FAIL("parse response failed");
-        return;
-    });
-    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
-    cJSON *code = cJSON_GetObjectItem(error, "code");
-
-    ASSERT_EQ(code->valueint, JSONRPC_RATE_LIMITED);
-
-    cJSON_free(response);
-    cJSON_Delete(id);
-
-    TEST_PASS();
-}
-
-/**
-  * @brief Test auth-failure responses
- */
-static void test_create_auth_failed_response(void)
-{
-    TEST_BEGIN("create_auth_failed_response");
-
-    cJSON *id = cJSON_CreateNumber(9);
-    char *response = jsonrpc_create_auth_failed_response(id);
-    ASSERT_NOT_NULL(response);
-
-    CJSON_PARSE_GUARD(resp_json, response, {
-        TEST_FAIL("parse response failed");
-        return;
-    });
-    cJSON *error = cJSON_GetObjectItem(resp_json, "error");
-    cJSON *code = cJSON_GetObjectItem(error, "code");
-
-    ASSERT_EQ(code->valueint, JSONRPC_AUTH_FAILED);
-
-    cJSON_free(response);
-    cJSON_Delete(id);
-
-    TEST_PASS();
-}
-
-/**
   * @brief Test standard error message lookup
  */
 static void test_get_error_message(void)
@@ -563,15 +375,6 @@ static void test_null_input_handling(void)
 
     int result = gw_jsonrpc_validate_request(NULL);
     ASSERT_TRUE(result < 0);
-
-    const char *method = jsonrpc_get_method(NULL);
-    ASSERT_NULL(method);
-
-    const cJSON *params = jsonrpc_get_params(NULL);
-    ASSERT_NULL(params);
-
-    const cJSON *id = jsonrpc_get_id(NULL);
-    ASSERT_NULL(id);
 
     TEST_PASS();
 }
@@ -620,13 +423,6 @@ int main(int argc, char **argv)
     printf("[Error Response Tests]\n");
     test_create_error_response();
     test_create_error_response_with_data();
-    test_create_parse_error_response();
-    test_create_invalid_request_response();
-    test_create_method_not_found_response();
-    test_create_invalid_params_response();
-    test_create_internal_error_response();
-    test_create_rate_limited_response();
-    test_create_auth_failed_response();
     printf("\n");
 
     printf("[Error Message Tests]\n");

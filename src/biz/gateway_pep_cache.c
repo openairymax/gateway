@@ -98,14 +98,6 @@ void gw_pep_init(void)
     s_epoch = 0;
 }
 
-void gw_pep_clear(void)
-{
-    lock_pep();
-    __builtin_memset(s_pep, 0, sizeof(s_pep));
-    s_epoch = 0;
-    unlock_pep();
-}
-
 /* 降级路径：PDP 不可达时回退本地 ACL（保持既有 fail-closed 语义） */
 static int fallback_acl(const char *agent, const char *tool, const char *action)
 {

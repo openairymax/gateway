@@ -438,18 +438,6 @@ const gw_cap_t *gw_cap_find(const char *cap_key)
     return NULL;
 }
 
-size_t gw_cap_count(void)
-{
-    return GW_CAP_COUNT;
-}
-
-const gw_cap_t *gw_cap_at(size_t index)
-{
-    if (index >= GW_CAP_COUNT)
-        return NULL;
-    return &GW_CAP_REGISTRY[index];
-}
-
 int gw_cap_ns_timeout(const char *ns)
 {
     if (!ns)

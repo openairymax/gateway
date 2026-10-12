@@ -36,7 +36,7 @@ The `gateway` library is intended to be embedded and launched by a host process 
 | Inward dispatch | Route JSON-RPC methods to the syscall interface, or forward business calls (`agent.run`, `tools/call`, embeddings, task scheduling) to backend service endpoints |
 | Streaming | Server-Sent Events for chat stream, agent run stream, and hall event watch |
 | Boundary security | Entry authentication (fail-closed, loopback-aware), token-bucket rate limiting (per IP / per API key), URL sanitization, CORS |
-| Operations | `/health`, `/metrics`, and JSON statistics snapshot via `gateway_get_stats()` |
+| Operations | `/health` and `/metrics` endpoints |
 
 ## Composition
 
@@ -77,7 +77,7 @@ gateway/
 │   │   ├── gateway_pep_cache.[ch]       # PEP cache
 │   │   └── gateway_svc_adapter.c        # Service adapter
 │   └── utils/                           # Shared utilities
-│       ├── jsonrpc.[ch]                 # JSON-RPC 2.0 validate / respond / batch
+│       ├── jsonrpc.[ch]                 # JSON-RPC 2.0 validate / respond
 │       ├── syscall/                     # JSON-RPC method → syscall dispatch
 │       ├── gateway_rpc_handler.[ch]     # Shared RPC handling for all transports
 │       ├── gateway_protocol_*.[ch]      # Protocol detect / convert / handler
@@ -104,39 +104,32 @@ The static route table (see `src/gateway/http_gateway_routes.c`):
 
 ### Public API
 
-Lifecycle and control (see `include/gateway.h`):
+The public surface (`include/gateway.h`) is intentionally minimal —
+lifecycle only. Instances are created by the transport constructors
+declared in `src/gateway/*.h` and shared with the daemon host via
+`cmake/gateway-sources.cmake`:
 
-| Function | Description |
-|----------|-------------|
-| `gateway_http_create(host, port)` | Create an HTTP gateway instance |
-| `gateway_ws_create(host, port)` | Create a WebSocket gateway instance |
-| `gateway_stdio_create()` | Create a Stdio gateway instance (blocking REPL after start) |
-| `gateway_start(gw)` | Start the gateway (HTTP/WS non-blocking; Stdio blocking) |
-| `gateway_stop(gw)` | Gracefully stop the gateway |
-| `gateway_destroy(gw)` | Destroy the instance and release resources |
-| `gateway_set_handler(gw, handler, user_data)` | Install a custom request-handler callback |
-| `gateway_register_endpoint(gw, method, path, handler, user_data)` | Register a dynamic HTTP endpoint |
-| `gateway_get_type(gw)` | Get the gateway type (`HTTP` / `WS` / `STDIO`) |
-| `gateway_is_running(gw)` | Check whether the gateway is running |
-| `gateway_get_stats(gw, out_json)` | Get a JSON statistics snapshot (caller frees) |
-| `gateway_get_name(gw)` | Get the gateway name |
+| Function | Declared in | Description |
+|----------|-------------|-------------|
+| `http_gateway_create(host, port)` | `src/gateway/http_gateway.h` | Create an HTTP/1.1 gateway instance |
+| `http2_gateway_create(host, port)` | `src/gateway/http2_gateway.h` | Create an HTTP/2 gateway instance (POSIX only) |
+| `ws_gateway_create(host, port)` | `src/gateway/ws_gateway.h` | Create a WebSocket gateway instance |
+| `stdio_gateway_create()` | `src/gateway/stdio_gateway.h` | Create a Stdio gateway instance (blocking REPL after start) |
+| `gateway_start(gw)` | `include/gateway.h` | Start the gateway (HTTP/WS non-blocking; Stdio blocking) |
+| `gateway_destroy(gw)` | `include/gateway.h` | Destroy the instance and release resources (stops a running gateway automatically) |
 
 ```c
 #include "gateway.h"
+#include "http_gateway.h"
 
 int main(void) {
-    gateway_t *gw = gateway_http_create("0.0.0.0", 8080);
+    gateway_t *gw = http_gateway_create("0.0.0.0", 8080);
     if (!gw) return 1;
 
     gateway_start(gw);
+    /* the gateway serves until destroyed */
 
-    char *stats = NULL;
-    gateway_get_stats(gw, &stats);   /* caller frees */
-    printf("Stats: %s\n", stats);
-    free(stats);
-
-    gateway_stop(gw);
-    gateway_destroy(gw);
+    gateway_destroy(gw);   /* stops + frees */
     return 0;
 }
 ```

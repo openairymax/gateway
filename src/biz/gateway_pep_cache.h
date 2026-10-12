@@ -24,7 +24,6 @@ extern "C" {
 #endif
 
 void gw_pep_init(void);
-void gw_pep_clear(void);
 
 /* 返回 0 = allow，非 0 = deny（fail-closed） */
 int gw_pep_check(const gateway_business_ctx_t *ctx, const char *agent, const char *tool,

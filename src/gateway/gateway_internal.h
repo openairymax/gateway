@@ -57,21 +57,17 @@ void gw_handler_bind(gateway_handler_slot_t *slot, gateway_internal_handler_t ha
 
 typedef struct gateway_ops {
     int (*start)(void *impl);
-    void (*stop)(void *impl);
     void (*destroy)(void *impl);
-    const char *(*get_name)(void *impl);
-    int (*get_stats)(void *impl, char **out_json);
-    bool (*is_running)(void *impl);
-    int (*set_handler)(void *impl, gateway_internal_handler_t handler, void *user_data);
 } gateway_ops_t;
 
-/* 完整布局仅内部翻译单元可见；gateway_t 名字由公共头 opaque typedef 提供。 */
+/* 完整布局仅内部翻译单元可见；gateway_t 名字由公共头 opaque typedef 提供。
+ * handler_slot 是四类传输唯一的请求回调槽：宿主经 gw_handler_bind() 注入，
+ * impl 经 owner 回指消费，不再各自散落 handler 字段。 */
 struct gateway {
     const gateway_ops_t *ops;
     void *impl;
     gateway_type_t type;
-    gateway_request_handler_t public_handler;
-    void *public_handler_data;
+    gateway_handler_slot_t handler_slot;
 };
 
 #ifdef __cplusplus

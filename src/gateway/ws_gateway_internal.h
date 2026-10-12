@@ -62,7 +62,7 @@ struct ws_gateway {
 
     gateway_rate_limiter_t *rate_limiter;
 
-    gateway_handler_slot_t handler_slot;
+    gateway_t *owner; /* 回指外层句柄，回调槽见 struct gateway.handler_slot */
 
     atomic_bool running;
 

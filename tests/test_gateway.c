@@ -6,23 +6,23 @@
  * @brief Gateway 模块单元测试（匹配当前公共 API）
  *
  * 测试网关模块的核心功能：
- * - 网关创建/销毁生命周期（HTTP/WS/stdio）
- * - 公共 API 接口调用（start/stop/set_handler/stats）
- * - 类型查询和状态检查
+ * - 类型枚举与错误码契约
+ * - 生命周期接口（start/destroy）
  * - NULL 安全验证（E-6 错误可追溯：非法输入不得崩溃）
  *
  * 2026-08-20：重写匹配当前 include/gateway.h 公共 API
  * （旧版 gateway_create/gateway_create_interface 已随网关重构移除，
  * 原测试因引用已删除符号被禁用）。
+ * 2026-10-12：公共 API 收敛为 start/destroy 两操作，删除已裁断
+ * 门面（stop/stats/set_handler/is_running/get_type/get_name/
+ * register_endpoint/三 create）对应的测试段。
  */
 
 // @owner: team-B
 #include "gateway.h"
 #include "error.h"
 
-#include <assert.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static int g_tests_run = 0;
@@ -100,120 +100,8 @@ static void test_null_safety(void)
 {
     TEST_BEGIN("null_pointer_safety");
 
-    /* lifecycle APIs */
     ASSERT_NE(gateway_start(NULL), AIRY_SUCCESS);
-    ASSERT_NE(gateway_stop(NULL), AIRY_SUCCESS);
-    ASSERT_NE(gateway_get_stats(NULL, NULL), AIRY_SUCCESS);
-    ASSERT_NE(gateway_set_handler(NULL, NULL, NULL), AIRY_SUCCESS);
-    ASSERT_NE(gateway_register_endpoint(NULL, "GET", "/x", NULL, NULL), AIRY_SUCCESS);
-
-    /* query APIs */
-    ASSERT_FALSE(gateway_is_running(NULL));
-    ASSERT_EQ(gateway_get_type(NULL), GATEWAY_TYPE_HTTP);
-
-    const char *name = gateway_get_name(NULL);
-    ASSERT_NOT_NULL(name);
-    ASSERT_TRUE(strcmp(name, "unknown") == 0);
-
-    ASSERT_NULL(gateway_http_create(NULL, 8080));
-    ASSERT_NULL(gateway_ws_create(NULL, 8081));
-
     gateway_destroy(NULL);
-
-    TEST_PASS();
-}
-
-/**
- * @brief Test the HTTP gateway creation interface
- */
-static void test_http_gateway_create(void)
-{
-    TEST_BEGIN("http_gateway_create_interface");
-
-    gateway_t *gw = gateway_http_create("127.0.0.1", 18080);
-    if (!gw) {
-        /* 端口可能被占用或运行环境受限：非阻塞跳过创建断言，仅验证
-         * NULL 语义（测试不依赖真实网络监听）。 */
-        printf("(skip: http create unavailable) ");
-        TEST_PASS();
-        return;
-    }
-    ASSERT_EQ(gateway_get_type(gw), GATEWAY_TYPE_HTTP);
-    ASSERT_FALSE(gateway_is_running(gw));
-
-    const char *name = gateway_get_name(gw);
-    ASSERT_NOT_NULL(name);
-
-    /* start 后 is_running 应为 true（后台线程启动）；
-     * 环境受限时 start 可能失败，此处只验证接口可调用不崩溃。 */
-    int rc = gateway_start(gw);
-    (void)rc;
-    gateway_stop(gw);
-    gateway_destroy(gw);
-
-    TEST_PASS();
-}
-
-/**
- * @brief Test the stdio gateway creation interface
- */
-static void test_stdio_gateway_create(void)
-{
-    TEST_BEGIN("stdio_gateway_create_interface");
-
-    gateway_t *gw = gateway_stdio_create();
-    if (gw) {
-        ASSERT_EQ(gateway_get_type(gw), GATEWAY_TYPE_STDIO);
-        ASSERT_FALSE(gateway_is_running(gw));
-        const char *name = gateway_get_name(gw);
-        ASSERT_NOT_NULL(name);
-        gateway_destroy(gw);
-    }
-
-    TEST_PASS();
-}
-
-/**
- * @brief Verify gateway_get_stats returns valid JSON (or NULL-safe error)
- */
-static void test_stats_interface(void)
-{
-    TEST_BEGIN("gateway_get_stats_interface");
-
-    gateway_t *gw = gateway_http_create("127.0.0.1", 19090);
-    if (!gw) {
-        printf("(skip: http create unavailable) ");
-        TEST_PASS();
-        return;
-    }
-    char *stats = NULL;
-    ASSERT_EQ(gateway_get_stats(gw, &stats), 0);
-    ASSERT_NOT_NULL(stats);
-    ASSERT_TRUE(strstr(stats, "status") != NULL);
-    free(stats);
-    gateway_destroy(gw);
-
-    TEST_PASS();
-}
-
-/**
- * @brief Verify gateway_set_handler round-trips handler pointer
- */
-static void test_set_handler(void)
-{
-    TEST_BEGIN("gateway_set_handler_interface");
-
-    gateway_t *gw = gateway_http_create("127.0.0.1", 19191);
-    if (!gw) {
-        printf("(skip: http create unavailable) ");
-        TEST_PASS();
-        return;
-    }
-    /* handler 回读验证：通过 set_handler 后内部状态被保存
-     * （网关无公开 getter，此处验证调用成功且 NULL 可清除） */
-    ASSERT_EQ(gateway_set_handler(gw, NULL, NULL), 0);
-    ASSERT_EQ(gateway_set_handler(NULL, NULL, NULL) != 0, 1);
-    gateway_destroy(gw);
 
     TEST_PASS();
 }
@@ -235,13 +123,6 @@ int main(int argc, char **argv)
 
     printf("[Safety Tests]\n");
     test_null_safety();
-    printf("\n");
-
-    printf("[Interface Tests]\n");
-    test_http_gateway_create();
-    test_stdio_gateway_create();
-    test_stats_interface();
-    test_set_handler();
     printf("\n");
 
     printf("========================================\n");

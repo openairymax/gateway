@@ -220,7 +220,7 @@ typedef struct {
 } http_handler_adapter_t;
 
 /**
-  * @brief Internal callback wrapper (matches the internal gateway_request_handler_t signature)
+  * @brief Internal callback wrapper (internal transport handler signature)
   * @param request cJSON request object
   * @param user_data Pointer to http_handler_adapter_t
   * @return JSON response string (caller frees), or NULL
@@ -282,17 +282,20 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
     AIRY_MEMSET(&result, 0, sizeof(result)); /* 防止 OOM 分支读取未初始化 response_json */
 
     if (gateway->protocol_handler && context->body_buf && context->body_len > 0) {
-        internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler_slot.handler,
-                                                .internal_data = gateway->handler_slot.data};
+        internal_to_public_adapter_t adapter = {
+            .internal_handler = gateway->owner->handler_slot.handler,
+            .internal_data = gateway->owner->handler_slot.data};
         result = gateway_protocol_handle_request(gateway->protocol_handler, context->body_buf,
                                                  context->body_len, AIRY_PROTOCOL_COUNT,
                                                  internal_handler_public_wrapper, &adapter);
     } else if (context->json_request) {
-        internal_to_public_adapter_t adapter = {.internal_handler = gateway->handler_slot.handler,
-                                                .internal_data = gateway->handler_slot.data};
+        internal_to_public_adapter_t adapter = {
+            .internal_handler = gateway->owner->handler_slot.handler,
+            .internal_data = gateway->owner->handler_slot.data};
         result = gateway_rpc_handle_request(context->json_request, internal_handler_public_wrapper,
                                             &adapter);
-    } else if (context->body_buf && context->body_len > 0 && gateway->handler_slot.handler) {
+    } else if (context->body_buf && context->body_len > 0 &&
+               gateway->owner->handler_slot.handler) {
         /* Raw non-JSON-RPC body (OpenAI/MCP/A2A): pass the HTTP context
          * (method/path + NUL-terminated body copy) to the protocol entry
          * handler for detection and routing (translated uniformly by
@@ -313,7 +316,8 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
             http_req.body = body_copy;
             http_req.body_len = context->body_len;
 
-            char *resp = gateway->handler_slot.handler(&http_req, gateway->handler_slot.data);
+            char *resp = gateway->owner->handler_slot.handler(&http_req,
+                                                              gateway->owner->handler_slot.data);
             AIRY_MEMSET(&result, 0, sizeof(result));
             if (resp) {
                 result.response_json = resp;
@@ -577,8 +581,6 @@ static void http_gateway_destroy(void *gateway_impl)
 
     http_gateway_stop(gateway);
 
-    gw_handler_bind(&gateway->handler_slot, NULL, NULL);
-
     if (gateway->host) {
         AIRY_FREE(gateway->host);
     }
@@ -607,87 +609,11 @@ static void http_gateway_destroy(void *gateway_impl)
         gateway->protocol_handler = NULL;
     }
 
-    if (gateway->dynamic_endpoints) {
-        for (size_t i = 0; i < gateway->dynamic_endpoint_count; i++) {
-            AIRY_FREE(gateway->dynamic_endpoints[i].method);
-            AIRY_FREE(gateway->dynamic_endpoints[i].path);
-        }
-        AIRY_FREE(gateway->dynamic_endpoints);
-        gateway->dynamic_endpoints = NULL;
-    }
-    gateway->dynamic_endpoint_count = 0;
-    gateway->dynamic_endpoint_capacity = 0;
-
     AIRY_FREE(gateway);
-}
-static const char *http_gateway_get_name(void *gateway_impl)
-{
-    return "HTTP Gateway";
-}
-static airy_err_t http_gateway_get_stats(void *gateway_impl, char **out_json)
-{
-    http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
-    if (!gateway || !out_json)
-        return AIRY_EINVAL;
-
-    cJSON *stats = cJSON_CreateObject();
-    if (!stats)
-        return AIRY_ENOMEM;
-    cJSON_AddNumberToObject(stats, "requests_total", (double)atomic_load(&gateway->requests_total));
-    cJSON_AddNumberToObject(stats, "requests_failed",
-                            (double)atomic_load(&gateway->requests_failed));
-    cJSON_AddNumberToObject(stats, "bytes_received", (double)atomic_load(&gateway->bytes_received));
-    cJSON_AddNumberToObject(stats, "bytes_sent", (double)atomic_load(&gateway->bytes_sent));
-
-    char *json_str = cJSON_Print(stats);
-    cJSON_Delete(stats);
-
-    if (!json_str)
-        return AIRY_ENOMEM;
-    *out_json = json_str;
-    return AIRY_SUCCESS;
-}
-
-/**
-  * @brief Check whether the HTTP gateway is running
-  * @param gateway_impl Gateway implementation pointer
-  * @return true if running, false if stopped or invalid
- */
-static bool http_gateway_is_running(void *gateway_impl)
-{
-    http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
-    if (!gateway)
-        return false;
-    return atomic_load(&gateway->running);
-}
-
-/**
-  * @brief Set the request handler callback
- *
-  * Two callback modes are supported:
-  * 1. Internal mode: pass a (void*, void*) -> char* callback directly
-  * 2. Public mode (recommended): pass via gateway_set_handler(),
-  *    an adapter auto-converts the public signature to the internal one
- */
-static airy_err_t http_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler,
-                                           void *user_data)
-{
-    http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
-    if (!gateway)
-        return AIRY_EINVAL;
-
-    gw_handler_bind(&gateway->handler_slot, handler, user_data);
-
-    return AIRY_SUCCESS;
 }
 
 static const gateway_ops_t http_gateway_ops = {.start = http_gateway_start,
-                                               .stop = http_gateway_stop,
-                                               .destroy = http_gateway_destroy,
-                                               .get_name = http_gateway_get_name,
-                                               .get_stats = http_gateway_get_stats,
-                                               .is_running = http_gateway_is_running,
-                                               .set_handler = http_gateway_set_handler};
+                                               .destroy = http_gateway_destroy};
 
 gateway_t *http_gateway_create(const char *host, uint16_t port)
 {
@@ -802,45 +728,9 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
     gw->ops = &http_gateway_ops;
     gw->impl = gateway;
     gw->type = GATEWAY_TYPE_HTTP;
+    gateway->owner = gw;
 
     return gw;
-}
-
-int http_gateway_register_endpoint(http_gateway_t *gateway, const char *method, const char *path,
-                                   gateway_endpoint_handler_t handler, void *user_data)
-{
-    if (!gateway || !method || !path || !handler) {
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__,
-                         "http_gateway_register_endpoint: failed");
-        return AIRY_ERR_UNKNOWN;
-    }
-
-    if (gateway->dynamic_endpoint_count >= gateway->dynamic_endpoint_capacity) {
-        size_t new_cap =
-            gateway->dynamic_endpoint_capacity == 0 ? 8 : gateway->dynamic_endpoint_capacity * 2;
-        http_dynamic_endpoint_t *new_arr =
-            AIRY_REALLOC(gateway->dynamic_endpoints, new_cap * sizeof(http_dynamic_endpoint_t));
-        if (!new_arr) {
-            return AIRY_ERR_INVALID_PARAM;
-        }
-        gateway->dynamic_endpoints = new_arr;
-        gateway->dynamic_endpoint_capacity = new_cap;
-    }
-
-    http_dynamic_endpoint_t *slot = &gateway->dynamic_endpoints[gateway->dynamic_endpoint_count];
-    slot->method = AIRY_STRDUP(method);
-    slot->path = AIRY_STRDUP(path);
-    if (!slot->method || !slot->path) {
-        AIRY_FREE(slot->method);
-        AIRY_FREE(slot->path);
-        return AIRY_ERR_INVALID_PARAM;
-    }
-    slot->handler = handler;
-    slot->user_data = user_data;
-
-    gateway->dynamic_endpoint_count++;
-
-    return 0;
 }
 
 #endif /* GATEWAY_HAS_HTTP */

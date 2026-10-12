@@ -36,7 +36,7 @@
 | 向内派发 | 将 JSON-RPC 方法路由至 syscall 接口，或将业务调用（`agent.run`、`tools/call`、embeddings、任务调度）转发至后端服务端点 |
 | 流式 | 基于 Server-Sent Events 的聊天流、智能体运行流与 hall 事件观察 |
 | 边界安全 | 入口鉴权（默认拒绝、回环感知）、令牌桶限流（按 IP / 按 API Key）、URL 净化、CORS |
-| 运维 | `/health`、`/metrics`，以及通过 `gateway_get_stats()` 获取的 JSON 统计快照 |
+| 运维 | `/health` 与 `/metrics` 端点 |
 
 ## 构成
 
@@ -77,7 +77,7 @@ gateway/
 │   │   ├── gateway_pep_cache.[ch]       # PEP 缓存
 │   │   └── gateway_svc_adapter.c        # 服务适配器
 │   └── utils/                           # 共享工具
-│       ├── jsonrpc.[ch]                 # JSON-RPC 2.0 验证 / 响应 / 批量
+│       ├── jsonrpc.[ch]                 # JSON-RPC 2.0 验证 / 响应
 │       ├── syscall/                     # JSON-RPC 方法 → syscall 派发
 │       ├── gateway_rpc_handler.[ch]     # 各传输共享的 RPC 处理
 │       ├── gateway_protocol_*.[ch]      # 协议检测 / 转换 / 处理器
@@ -104,39 +104,31 @@ gateway/
 
 ### 公共 API
 
-生命周期与控制（见 `include/gateway.h`）：
+公共面（`include/gateway.h`）刻意保持最小——仅生命周期。实例由
+`src/gateway/*.h` 声明的传输层构造函数创建，并通过
+`cmake/gateway-sources.cmake` 与守护进程宿主共享：
 
-| 函数 | 说明 |
-|------|------|
-| `gateway_http_create(host, port)` | 创建 HTTP 网关实例 |
-| `gateway_ws_create(host, port)` | 创建 WebSocket 网关实例 |
-| `gateway_stdio_create()` | 创建 Stdio 网关实例（start 后阻塞式 REPL） |
-| `gateway_start(gw)` | 启动网关（HTTP/WS 非阻塞，Stdio 阻塞） |
-| `gateway_stop(gw)` | 优雅停止网关 |
-| `gateway_destroy(gw)` | 销毁实例并释放资源 |
-| `gateway_set_handler(gw, handler, user_data)` | 安装自定义请求处理回调 |
-| `gateway_register_endpoint(gw, method, path, handler, user_data)` | 注册动态 HTTP 端点 |
-| `gateway_get_type(gw)` | 获取网关类型（`HTTP` / `WS` / `STDIO`） |
-| `gateway_is_running(gw)` | 检查网关是否运行中 |
-| `gateway_get_stats(gw, out_json)` | 获取 JSON 统计快照（调用方释放） |
-| `gateway_get_name(gw)` | 获取网关名称 |
+| 函数 | 声明位置 | 说明 |
+|------|----------|------|
+| `http_gateway_create(host, port)` | `src/gateway/http_gateway.h` | 创建 HTTP/1.1 网关实例 |
+| `http2_gateway_create(host, port)` | `src/gateway/http2_gateway.h` | 创建 HTTP/2 网关实例（仅 POSIX） |
+| `ws_gateway_create(host, port)` | `src/gateway/ws_gateway.h` | 创建 WebSocket 网关实例 |
+| `stdio_gateway_create()` | `src/gateway/stdio_gateway.h` | 创建 Stdio 网关实例（start 后阻塞式 REPL） |
+| `gateway_start(gw)` | `include/gateway.h` | 启动网关（HTTP/WS 非阻塞，Stdio 阻塞） |
+| `gateway_destroy(gw)` | `include/gateway.h` | 销毁实例并释放资源（运行中自动停止） |
 
 ```c
 #include "gateway.h"
+#include "http_gateway.h"
 
 int main(void) {
-    gateway_t *gw = gateway_http_create("0.0.0.0", 8080);
+    gateway_t *gw = http_gateway_create("0.0.0.0", 8080);
     if (!gw) return 1;
 
     gateway_start(gw);
+    /* 网关持续服务直至销毁 */
 
-    char *stats = NULL;
-    gateway_get_stats(gw, &stats);   /* 调用方释放 */
-    printf("Stats: %s\n", stats);
-    free(stats);
-
-    gateway_stop(gw);
-    gateway_destroy(gw);
+    gateway_destroy(gw);   /* 停止 + 释放 */
     return 0;
 }
 ```
