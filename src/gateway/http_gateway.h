@@ -102,13 +102,6 @@ typedef struct {
     size_t body_len;
 } gateway_http_request_t;
 
-typedef struct {
-    char *method;
-    char *path;
-    gateway_endpoint_handler_t handler;
-    void *user_data;
-} http_dynamic_endpoint_t;
-
 typedef struct http_gateway {
     struct MHD_Daemon *daemon;
     uint16_t port;
@@ -119,7 +112,10 @@ typedef struct http_gateway {
      * "::" 时不启用（绑全部接口）。 */
     struct sockaddr_storage bind_addr;
 
-    gateway_handler_slot_t handler_slot;
+    /* 回指外层句柄：请求回调槽唯一存放于 struct gateway.handler_slot，
+     * 宿主经 gw_handler_bind() 注入，传输实现只经此指针消费。 */
+    gateway_t *owner;
+
     atomic_bool running;
     atomic_uint_fast64_t requests_total;
     atomic_uint_fast64_t requests_failed;
@@ -131,9 +127,6 @@ typedef struct http_gateway {
     cors_config_t cors;
     gateway_rate_limiter_t *rate_limiter;
     gateway_protocol_handler_t protocol_handler;
-    http_dynamic_endpoint_t *dynamic_endpoints;
-    size_t dynamic_endpoint_count;
-    size_t dynamic_endpoint_capacity;
 } http_gateway_t;
 
 /**
@@ -218,19 +211,6 @@ void gateway_apply_cors_headers(http_gateway_t *gateway, struct MHD_Connection *
  */
 int parse_json_request(http_gateway_t *gateway, http_request_context_t *context, const char *data,
                        size_t size);
-
-/**
-  * @brief Register a dynamic endpoint on the HTTP gateway
- *
-  * @param gateway HTTP gateway instance
-  * @param method HTTP method (copied internally)
-  * @param path URL path (copied internally)
-  * @param handler Endpoint handler callback
-  * @param user_data User data passed to the callback
-  * @return 0 on success, -1 invalid args, -2 out of memory
- */
-int http_gateway_register_endpoint(http_gateway_t *gateway, const char *method, const char *path,
-                                   gateway_endpoint_handler_t handler, void *user_data);
 
 #ifdef __cplusplus
 }

@@ -50,11 +50,6 @@ typedef struct {
 const gw_cap_t *gw_cap_find(const char *cap_key);
 
 /**
- * @brief 返回注册能力总数（供自检/门禁断言，防误删）。
- */
-size_t gw_cap_count(void);
-
-/**
  * @brief namespace 独占性门禁（边界契约执行机制）。
  *
  * 校验能力注册表 SSoT 不变量：每个 cap_key 的命名空间前缀必须已在
@@ -63,13 +58,6 @@ size_t gw_cap_count(void);
  * @return 0=通过；非 0=存在冲突（日志输出冲突条目）
  */
 int gw_cap_ns_validate(void);
-
-/**
- * @brief 按索引取注册项（供枚举/自检；index < gw_cap_count()）。
- * @param index 0-based 索引
- * @return 注册项指针；越界返回 NULL
- */
-const gw_cap_t *gw_cap_at(size_t index);
 
 /**
  * @brief 按命名空间取转发超时（ms；未知命名空间返回默认 90s）。

@@ -147,8 +147,6 @@ static void ws_gateway_destroy(void *gateway_impl)
 
     ws_gateway_stop(gateway);
 
-    gw_handler_bind(&gateway->handler_slot, NULL, NULL);
-
     if (gateway->host) {
         AIRY_FREE(gateway->host);
     }
@@ -161,66 +159,8 @@ static void ws_gateway_destroy(void *gateway_impl)
     AIRY_FREE(gateway);
 }
 
-static const char *ws_gateway_get_name(void *gateway_impl)
-{
-    return "WebSocket Gateway";
-}
-
-static bool ws_gateway_is_running(void *gateway_impl)
-{
-    ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
-    if (!gateway)
-        return false;
-    return atomic_load(&gateway->running);
-}
-
-static airy_err_t ws_gateway_get_stats(void *gateway_impl, char **out_json)
-{
-    ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
-    if (!gateway || !out_json)
-        return AIRY_EINVAL;
-
-    cJSON *stats = cJSON_CreateObject();
-    if (!stats)
-        return AIRY_ENOMEM;
-
-    cJSON_AddNumberToObject(stats, "connections_total",
-                            (double)atomic_load(&gateway->connections_total));
-    cJSON_AddNumberToObject(stats, "connections_active",
-                            (double)atomic_load(&gateway->connections_active));
-    cJSON_AddNumberToObject(stats, "messages_total", (double)atomic_load(&gateway->messages_total));
-    cJSON_AddNumberToObject(stats, "bytes_sent", (double)atomic_load(&gateway->bytes_sent));
-    cJSON_AddNumberToObject(stats, "bytes_received", (double)atomic_load(&gateway->bytes_received));
-
-    char *json_str = cJSON_Print(stats);
-    cJSON_Delete(stats);
-
-    if (!json_str)
-        return AIRY_ENOMEM;
-
-    *out_json = json_str;
-    return AIRY_SUCCESS;
-}
-
-static airy_err_t ws_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler,
-                                         void *user_data)
-{
-    ws_gateway_t *gateway = (ws_gateway_t *)gateway_impl;
-    if (!gateway)
-        return AIRY_EINVAL;
-
-    gw_handler_bind(&gateway->handler_slot, handler, user_data);
-
-    return AIRY_SUCCESS;
-}
-
 static const gateway_ops_t ws_gateway_ops = {.start = ws_gateway_start,
-                                             .stop = ws_gateway_stop,
-                                             .destroy = ws_gateway_destroy,
-                                             .get_name = ws_gateway_get_name,
-                                             .get_stats = ws_gateway_get_stats,
-                                             .is_running = ws_gateway_is_running,
-                                             .set_handler = ws_gateway_set_handler};
+                                             .destroy = ws_gateway_destroy};
 
 /**
   * @brief Create a WebSocket gateway instance
@@ -279,8 +219,7 @@ gateway_t *ws_gateway_create(const char *host, uint16_t port)
     gw->ops = &ws_gateway_ops;
     gw->impl = gateway;
     gw->type = GATEWAY_TYPE_WS;
-    gw->public_handler = NULL;
-    gw->public_handler_data = NULL;
+    gateway->owner = gw;
 
     return gw;
 }

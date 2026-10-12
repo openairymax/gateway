@@ -46,15 +46,6 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
     return hall_evt_write(task_id, category, node_id, content_json);
 }
 
-void gw_hall_task_id_now(char *out, size_t out_sz)
-{
-    if (!out || out_sz == 0)
-        return;
-    char ts[HALL_EVT_TS_LEN];
-    hall_clock_utc(ts, sizeof(ts));
-    snprintf(out, out_sz, "gw-%s", ts);
-}
-
 /* ── hall watch (read side, SSE push) ─────────────────────────────── */
 
 typedef struct {

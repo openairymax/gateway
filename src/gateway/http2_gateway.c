@@ -29,11 +29,6 @@
 static int http2_gateway_start_impl(void *impl);
 static void http2_gateway_stop_impl(void *impl);
 static void http2_gateway_destroy_impl(void *impl);
-static const char *http2_gateway_get_name_impl(void *impl);
-static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json);
-static bool http2_gateway_is_running_impl(void *impl);
-static airy_err_t http2_gateway_set_handler_impl(void *impl, gateway_internal_handler_t handler,
-                                                 void *user_data);
 
 static airy_err_t http2_gateway_start_impl(void *impl)
 {
@@ -182,8 +177,6 @@ static void http2_gateway_destroy_impl(void *impl)
 
     http_gateway_t *base = &gw->base;
 
-    gw_handler_bind(&base->handler_slot, NULL, NULL);
-
     if (base->host) {
         AIRY_FREE(base->host);
     }
@@ -210,93 +203,7 @@ static void http2_gateway_destroy_impl(void *impl)
         base->protocol_handler = NULL;
     }
 
-    if (base->dynamic_endpoints) {
-        for (size_t i = 0; i < base->dynamic_endpoint_count; i++) {
-            AIRY_FREE(base->dynamic_endpoints[i].method);
-            AIRY_FREE(base->dynamic_endpoints[i].path);
-        }
-        AIRY_FREE(base->dynamic_endpoints);
-        base->dynamic_endpoints = NULL;
-    }
-    base->dynamic_endpoint_count = 0;
-    base->dynamic_endpoint_capacity = 0;
-
     AIRY_FREE(gw);
-}
-
-static const char *http2_gateway_get_name_impl(void *impl)
-{
-    (void)impl;
-    return "HTTP/2 Gateway";
-}
-
-static airy_err_t http2_gateway_get_stats_impl(void *impl, char **out_json)
-{
-    http2_gateway_t *gw = (http2_gateway_t *)impl;
-    if (!gw || !out_json)
-        return AIRY_EINVAL;
-
-    /* P2: session_count is written by the event-loop thread and read here
-     * (stats thread). Read it once with a relaxed atomic load; all writers
-     * already use plain stores which the compiler lowers to atomic on the
-     * target platforms. */
-    size_t session_count = __atomic_load_n(&gw->session_count, __ATOMIC_RELAXED);
-
-#ifdef AIRY_HAS_CJSON
-    cJSON *stats = cJSON_CreateObject();
-    if (!stats)
-        return AIRY_ENOMEM;
-
-    cJSON_AddNumberToObject(stats, "requests_total", (double)atomic_load(&gw->base.requests_total));
-    cJSON_AddNumberToObject(stats, "requests_failed",
-                            (double)atomic_load(&gw->base.requests_failed));
-    cJSON_AddNumberToObject(stats, "bytes_received", (double)atomic_load(&gw->base.bytes_received));
-    cJSON_AddNumberToObject(stats, "bytes_sent", (double)atomic_load(&gw->base.bytes_sent));
-    cJSON_AddNumberToObject(stats, "active_sessions", (double)session_count);
-    cJSON_AddNumberToObject(stats, "max_concurrent_streams", (double)gw->max_concurrent_streams);
-    cJSON_AddStringToObject(stats, "protocol", "h2");
-
-    char *json_str = cJSON_PrintUnformatted(stats);
-    cJSON_Delete(stats);
-
-    if (!json_str)
-        return AIRY_ENOMEM;
-    *out_json = json_str;
-#else
-    /* P2: previously a static buffer shared across threads, causing the
-     * stats strings to overwrite each other; use a stack-local buffer. */
-    char buf[256];
-    snprintf(buf, sizeof(buf),
-             "{\"requests_total\":%llu,\"requests_failed\":%llu,\"bytes_received\":%llu,"
-             "\"bytes_sent\":%llu,\"active_sessions\":%zu,\"protocol\":\"h2\"}",
-             (unsigned long long)atomic_load(&gw->base.requests_total),
-             (unsigned long long)atomic_load(&gw->base.requests_failed),
-             (unsigned long long)atomic_load(&gw->base.bytes_received),
-             (unsigned long long)atomic_load(&gw->base.bytes_sent), session_count);
-    *out_json = AIRY_STRDUP(buf);
-#endif
-
-    return AIRY_SUCCESS;
-}
-
-static bool http2_gateway_is_running_impl(void *impl)
-{
-    http2_gateway_t *gw = (http2_gateway_t *)impl;
-    if (!gw)
-        return false;
-    return atomic_load(&gw->running);
-}
-
-static airy_err_t http2_gateway_set_handler_impl(void *impl, gateway_internal_handler_t handler,
-                                                 void *user_data)
-{
-    http2_gateway_t *gw = (http2_gateway_t *)impl;
-    if (!gw)
-        return AIRY_EINVAL;
-
-    gw_handler_bind(&gw->base.handler_slot, handler, user_data);
-
-    return AIRY_SUCCESS;
 }
 
 /**
@@ -304,12 +211,7 @@ static airy_err_t http2_gateway_set_handler_impl(void *impl, gateway_internal_ha
  */
 static const gateway_ops_t http2_gateway_ops = {
     .start = http2_gateway_start_impl,
-    .stop = http2_gateway_stop_impl,
     .destroy = http2_gateway_destroy_impl,
-    .get_name = http2_gateway_get_name_impl,
-    .get_stats = http2_gateway_get_stats_impl,
-    .is_running = http2_gateway_is_running_impl,
-    .set_handler = http2_gateway_set_handler_impl,
 };
 
 /**
@@ -400,10 +302,6 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
 
     base->protocol_handler = gateway_protocol_handler_create(NULL);
 
-    base->dynamic_endpoints = NULL;
-    base->dynamic_endpoint_count = 0;
-    base->dynamic_endpoint_capacity = 0;
-
     gw->listen_fd = -1;
     gw->sessions = NULL;
     gw->session_count = 0;
@@ -454,8 +352,7 @@ gateway_t *http2_gateway_create(const char *host, uint16_t port)
     gateway->ops = &http2_gateway_ops;
     gateway->impl = gw;
     gateway->type = GATEWAY_TYPE_HTTP;
-    gateway->public_handler = NULL;
-    gateway->public_handler_data = NULL;
+    base->owner = gateway;
 
     AIRY_LOG_INFO("HTTP/2 gateway created on %s:%u", host, port);
 

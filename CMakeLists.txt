@@ -208,9 +208,8 @@ if(AIRY_HAS_CJSON)
 endif()
 
 if(AIRY_HAS_MICROHTTPD)
-    # http_gateway.c 的实现包在 #ifdef GATEWAY_HAS_HTTP 内；缺此宏时
-    # http_gateway_register_endpoint 等符号无定义，gateway_api.c 引用导致
-    # test_gateway/gateway_d 链接失败（libgateway.a 按需拉取，需与定义同步）
+    # http_gateway.c 的实现包在 #ifdef GATEWAY_HAS_HTTP 内，
+    # 该宏控制 HTTP 传输实现是否编入 libgateway.a
     target_compile_definitions(gateway PRIVATE GATEWAY_HAS_HTTP=1)
     if(libmicrohttpd_FOUND)
         target_link_libraries(gateway PRIVATE microhttpd)

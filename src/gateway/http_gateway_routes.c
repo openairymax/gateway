@@ -362,84 +362,6 @@ static http_route_handler_t find_http_route(const char *method, const char *path
 }
 
 /**
-  * @brief Search and handle dynamically registered endpoints (CC=4)
- *
-  * Bridge MHD request/response to gateway_endpoint_request_t / gateway_endpoint_response_t,
-  * call the user handler, then bridge the response back to MHD.
- *
-  * @param gateway HTTP gateway instance
-  * @param connection MHD connection object
-  * @param context Request context
- * @param method HTTP method
- * @param url Request URL
- * @return MHD_YES/MHD_NO
- */
-static int handle_dynamic_endpoint_route(http_gateway_t *gateway, struct MHD_Connection *connection,
-                                         http_request_context_t *context, const char *method,
-                                         const char *url)
-{
-    const http_dynamic_endpoint_t *matched = NULL;
-
-    for (size_t i = 0; i < gateway->dynamic_endpoint_count; i++) {
-        const http_dynamic_endpoint_t *ep = &gateway->dynamic_endpoints[i];
-        if (strcmp(method, ep->method) == 0 && strcmp(url, ep->path) == 0) {
-            matched = ep;
-            break;
-        }
-    }
-
-    if (!matched) {
-        return MHD_NO;
-    }
-
-    gateway_endpoint_request_t req = {.method = method,
-                                      .path = url,
-                                      .body = context->body_buf,
-                                      .body_len = context->body_len,
-                                      .user_data = matched->user_data};
-
-    gateway_endpoint_response_t resp = {.status_code = 500,
-                                        .content_type = "application/json",
-                                        .body = NULL,
-                                        .body_len = 0};
-
-    int handler_ret = matched->handler(&req, &resp);
-
-    struct MHD_Response *response = NULL;
-    int ret = MHD_NO;
-
-    if (handler_ret == 0 && resp.body) {
-        response = MHD_create_response_from_buffer(resp.body_len, (void *)resp.body,
-                                                   MHD_RESPMEM_MUST_COPY);
-        if (response) {
-            MHD_add_response_header(response, "Content-Type", resp.content_type);
-            gateway_apply_security_headers(response);
-            gateway_apply_cors_headers(gateway, connection, response);
-            ret = MHD_queue_response(connection, resp.status_code, response);
-            MHD_destroy_response(response);
-        }
-        atomic_fetch_add(&gateway->requests_total, 1);
-        atomic_fetch_add(&gateway->bytes_sent, resp.body_len);
-    } else {
-        const char *err_body = "{\"error\":\"Internal server error\"}";
-        response = MHD_create_response_from_buffer(strlen(err_body), (void *)err_body,
-                                                   MHD_RESPMEM_PERSISTENT);
-        if (response) {
-            MHD_add_response_header(response, "Content-Type", "application/json");
-            gateway_apply_security_headers(response);
-            gateway_apply_cors_headers(gateway, connection, response);
-            ret = MHD_queue_response(connection, 500, response);
-            MHD_destroy_response(response);
-        }
-        atomic_fetch_add(&gateway->requests_failed, 1);
-    }
-
-    AIRY_FREE(resp.body);
-
-    return ret;
-}
-
-/**
   * @brief HTTP request entry point
  *
   * Processing flow (4 phases):
@@ -579,11 +501,6 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
             }
         }
         return handle_post_jsonrpc(gateway, connection, context);
-    }
-
-    int dynamic_ret = handle_dynamic_endpoint_route(gateway, connection, context, method, url);
-    if (dynamic_ret != MHD_NO) {
-        return dynamic_ret;
     }
 
     int (*route_handler)(http_gateway_t *, struct MHD_Connection *, http_request_context_t *) =

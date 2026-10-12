@@ -70,13 +70,6 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
                         const char *content_json);
 
 /**
- * @brief Generate a gateway session task ID ("gw-" + UTC timestamp), e.g.
- *        "gw-20260816T120000000". Used for SSE chat sessions that carry no
- *        client-supplied session_id.
- */
-void gw_hall_task_id_now(char *out, size_t out_sz);
-
-/**
  * @brief Read a hall event file and flatten its envelope into the compact
  *        event JSON consumed by every hall.* read endpoint.
  *

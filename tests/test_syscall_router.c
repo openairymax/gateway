@@ -101,8 +101,8 @@ static void test_route_task_methods(void)
     cJSON_AddStringToObject(params, "name", "test_task");
     cJSON *request = create_jsonrpc_request_with_params("airy_sys_task_submit", params);
 
-    char *response =
-        gateway_syscall_route("airy_sys_task_submit", params, (cJSON *)jsonrpc_get_id(request));
+    char *response = gateway_syscall_route("airy_sys_task_submit", params,
+                                           cJSON_GetObjectItemCaseSensitive(request, "id"));
     ASSERT_NOT_NULL(response);
 
     CJSON_PARSE_GUARD(resp_json, response, {

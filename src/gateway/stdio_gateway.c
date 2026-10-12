@@ -49,7 +49,7 @@
   * @brief Stdio gateway internal structure
  */
 typedef struct stdio_gateway {
-    gateway_handler_slot_t handler_slot;
+    gateway_t *owner; /* 回指外层句柄，回调槽见 struct gateway.handler_slot */
 
     atomic_bool running;
 
@@ -103,8 +103,9 @@ static char *handle_jsonrpc(stdio_gateway_t *gateway, const char *json_str)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
     rpc_result_t result = gateway_rpc_handle_request(
-        request, (int (*)(const char *, char **, void *))gateway->handler_slot.handler,
-        gateway->handler_slot.data);
+        request,
+        (int (*)(const char *, char **, void *))gateway->owner->handler_slot.handler,
+        gateway->owner->handler_slot.data);
 #pragma GCC diagnostic pop
 
     return rpc_take_resp(&result);
@@ -262,8 +263,6 @@ static void stdio_gateway_destroy(void *gateway_impl)
 
     stdio_gateway_stop(gateway);
 
-    gw_handler_bind(&gateway->handler_slot, NULL, NULL);
-
     AIRY_FREE(gateway->input_buffer);
     gateway->input_buffer = NULL;
     gateway->input_buffer_size = 0;
@@ -271,65 +270,8 @@ static void stdio_gateway_destroy(void *gateway_impl)
     AIRY_FREE(gateway);
 }
 
-static const char *stdio_gateway_get_name(void *gateway_impl)
-{
-    return "Stdio Gateway";
-}
-
-static bool stdio_gateway_is_running(void *gateway_impl)
-{
-    stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
-    if (!gateway)
-        return false;
-    return atomic_load(&gateway->running);
-}
-
-static airy_err_t stdio_gateway_get_stats(void *gateway_impl, char **out_json)
-{
-    stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
-    if (!gateway || !out_json)
-        return AIRY_EINVAL;
-
-    cJSON *stats = cJSON_CreateObject();
-    if (!stats)
-        return AIRY_ENOMEM;
-    cJSON_AddNumberToObject(stats, "commands_total", (double)atomic_load(&gateway->commands_total));
-    cJSON_AddNumberToObject(stats, "commands_failed",
-                            (double)atomic_load(&gateway->commands_failed));
-    cJSON_AddNumberToObject(stats, "bytes_received", (double)atomic_load(&gateway->bytes_received));
-    cJSON_AddNumberToObject(stats, "bytes_sent", (double)atomic_load(&gateway->bytes_sent));
-
-    char *json_str = cJSON_Print(stats);
-    cJSON_Delete(stats);
-
-    if (!json_str)
-        return AIRY_ENOMEM;
-    *out_json = json_str;
-    return AIRY_SUCCESS;
-}
-
-/**
-  * @brief Set the request handler callback
- */
-static airy_err_t stdio_gateway_set_handler(void *gateway_impl, gateway_internal_handler_t handler,
-                                            void *user_data)
-{
-    stdio_gateway_t *gateway = (stdio_gateway_t *)gateway_impl;
-    if (!gateway)
-        return AIRY_EINVAL;
-
-    gw_handler_bind(&gateway->handler_slot, handler, user_data);
-
-    return AIRY_SUCCESS;
-}
-
 static const gateway_ops_t stdio_gateway_ops = {.start = stdio_gateway_start,
-                                                .stop = stdio_gateway_stop,
-                                                .destroy = stdio_gateway_destroy,
-                                                .get_name = stdio_gateway_get_name,
-                                                .get_stats = stdio_gateway_get_stats,
-                                                .is_running = stdio_gateway_is_running,
-                                                .set_handler = stdio_gateway_set_handler};
+                                                .destroy = stdio_gateway_destroy};
 
 gateway_t *stdio_gateway_create(void)
 {
@@ -368,8 +310,7 @@ gateway_t *stdio_gateway_create(void)
     gw->ops = &stdio_gateway_ops;
     gw->impl = gateway;
     gw->type = GATEWAY_TYPE_STDIO;
-    gw->public_handler = NULL;
-    gw->public_handler_data = NULL;
+    gateway->owner = gw;
 
     return gw;
 }
