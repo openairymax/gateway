@@ -72,31 +72,6 @@ void gateway_rate_limiter_destroy(gateway_rate_limiter_t *limiter);
 bool gateway_rate_limiter_allow(gateway_rate_limiter_t *limiter, const char *client_key);
 
 /**
-  * @brief Get the current limit state (for monitoring)
- *
- * @param limiter Rate limiter instance
-  * @param total_allowed Output: total allowed requests
-  * @param total_rejected Output: total rejected requests
-  * @param active_clients Output: active client count
- *
- * @threadsafe yes
- * @since 1.0.0
- */
-void gateway_rate_limiter_get_stats(const gateway_rate_limiter_t *limiter, uint64_t *total_allowed,
-                                    uint64_t *total_rejected, uint32_t *active_clients);
-
-/**
-  * @brief Reset the counters of a given client
- *
- * @param limiter Rate limiter instance
-  * @param client_key Client identifier
- *
- * @threadsafe yes
- * @since 1.0.0
- */
-void gateway_rate_limiter_reset_client(gateway_rate_limiter_t *limiter, const char *client_key);
-
-/**
   * @brief Get the default configuration
  *
   * @param config Output configuration structure

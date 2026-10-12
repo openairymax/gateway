@@ -124,27 +124,6 @@ typedef struct http2_gateway {
  */
 gateway_t *http2_gateway_create(const char *host, uint16_t port);
 
-/**
-  * @brief Start HTTP/2 gateway
- *
- * Creates the listening socket and starts the event-loop thread.
- *
- * @param gw HTTP/2 gateway instance
- * @return AIRY_SUCCESS on success, negative error code on failure
- */
-int http2_gateway_start(http2_gateway_t *gw);
-
-/**
-  * @brief Stop HTTP/2 gateway
- *
- * Sets the running flag to false, closes the listening socket and waits for
- * the event-loop thread to exit.
- *
- * @param gw HTTP/2 gateway instance
- * @return AIRY_SUCCESS on success
- */
-int http2_gateway_stop(http2_gateway_t *gw);
-
 #ifdef __cplusplus
 }
 #endif
