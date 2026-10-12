@@ -9,14 +9,16 @@
  *
  * SEC-017 compliance: every feature is a real implementation, no stubs.
  * Keeps the handler instance lifecycle, the adaptive multi-protocol main
- * dispatch, statistics and configuration. Protocol detection and
- * conversion live in gateway_protocol_detect.c /
+ * dispatch, statistics and configuration. Body protocol detection lives in
+ * the protocols mechanism core (proto_detect_body); conversion lives in
  * gateway_protocol_convert.c.
  */
 
 #include "gateway_protocol_handler.h"
 
 #include "gateway_protocol_handler_internal.h"
+
+#include "protocol_detect.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -101,7 +103,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
       * AIRY_PROTOCOL_A2A keeps the old re-check-when-content-mismatches semantics. */
     if ((protocol_type == AIRY_PROTOCOL_COUNT || protocol_type == AIRY_PROTOCOL_A2A) &&
         handler->config.enable_protocol_detection) {
-        detected_type = detect_protocol_internal(request_data, request_size);
+        detected_type = proto_detect_body(request_data, request_size);
 
         if (detected_type == AIRY_PROTOCOL_COUNT && handler->config.default_protocol) {
 
