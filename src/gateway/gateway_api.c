@@ -16,6 +16,26 @@ void gw_handler_bind(gateway_handler_slot_t *slot, gateway_internal_handler_t ha
     slot->data = user_data;
 }
 
+int gw_handler_adapt(const char *request_json, char **response_json, void *user_data)
+{
+    gateway_handler_adapter_t *adapter = (gateway_handler_adapter_t *)user_data;
+    if (!adapter || !adapter->internal_handler) {
+        *response_json = NULL;
+        airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
+                         "adapter or internal handler is NULL");
+        return AIRY_ERR_NULL_POINTER;
+    }
+    char *resp = adapter->internal_handler((void *)request_json, adapter->internal_data);
+    if (resp) {
+        *response_json = resp;
+        return 0;
+    }
+    *response_json = NULL;
+    airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
+                     "internal handler returned NULL");
+    return AIRY_ERR_NULL_POINTER;
+}
+
 void gateway_destroy(gateway_t *gw)
 {
     if (!gw)

@@ -55,6 +55,18 @@ typedef struct gateway_handler_slot {
 void gw_handler_bind(gateway_handler_slot_t *slot, gateway_internal_handler_t handler,
                      void *user_data);
 
+/* 适配器：把内部 handler 签名适配为协议层 (request_json, response_json) 回调
+ * 签名。HTTP/1.1 与 HTTP/2 两条传输共用同一装配语义，唯一权威实现为
+ * gateway_api.c 的 gw_handler_adapt()。 */
+typedef struct gateway_handler_adapter {
+    gateway_internal_handler_t internal_handler;
+    void *internal_data;
+} gateway_handler_adapter_t;
+
+/* 以 user_data 指向的 gateway_handler_adapter_t 调用内部 handler，
+ * 结果经 response_json 回传；空适配器或内部 handler 返回空均报错返回。 */
+int gw_handler_adapt(const char *request_json, char **response_json, void *user_data);
+
 typedef struct gateway_ops {
     int (*start)(void *impl);
     void (*destroy)(void *impl);

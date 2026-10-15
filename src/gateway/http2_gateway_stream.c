@@ -3,7 +3,8 @@
 
 /**
  * @file http2_gateway_stream.c
- * @brief HTTP/2 gateway stream domain (stream context lifecycle, body buffering, header copy, handler adaption).
+ * @brief HTTP/2 gateway stream domain (stream context lifecycle, body
+ * buffering, header copy).
  */
 
 // @owner: team-B
@@ -105,31 +106,6 @@ int http2_stream_set_header_str(char **dst, const uint8_t *value, size_t vlen)
     AIRY_FREE(*dst);
     *dst = copy;
     return 0;
-}
-
-/**
-  * @brief Adapter: converts gateway_internal_handler_t to the protocol_handle_request callback signature
- */
-int http2_internal_handler_adapter(const char *request_json, char **response_json,
-                                   void *user_data)
-{
-    http2_handler_adapter_t *adapter = (http2_handler_adapter_t *)user_data;
-    if (!adapter || !adapter->internal_handler) {
-        *response_json = NULL;
-        airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
-                         "adapter or internal handler is NULL");
-        return AIRY_ERR_NULL_POINTER;
-    }
-
-    char *resp = adapter->internal_handler((void *)request_json, adapter->internal_data);
-    if (resp) {
-        *response_json = resp;
-        return 0;
-    }
-    *response_json = NULL;
-    airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
-                     "internal handler returned NULL");
-    return AIRY_ERR_NULL_POINTER;
 }
 
 #endif /* AIRY_HAS_HTTP2 */
