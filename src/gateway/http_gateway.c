@@ -246,30 +246,6 @@ static char *__attribute__((used)) http_handler_adapter(void *request, void *use
     return response_json;
 }
 
-typedef struct {
-    gateway_internal_handler_t internal_handler;
-    void *internal_data;
-} internal_to_public_adapter_t;
-
-static int internal_handler_public_wrapper(const char *request_json, char **response_json,
-                                           void *user_data)
-{
-    internal_to_public_adapter_t *adapter = (internal_to_public_adapter_t *)user_data;
-    if (!adapter || !adapter->internal_handler) {
-        *response_json = NULL;
-        airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: null pointer");
-        return AIRY_ERR_UNKNOWN;
-    }
-    char *resp = adapter->internal_handler((void *)request_json, adapter->internal_data);
-    if (resp) {
-        *response_json = resp;
-        return 0;
-    }
-    *response_json = NULL;
-    airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__, "if: null pointer");
-    return AIRY_ERR_NULL_POINTER;
-}
-
 /**
   * @brief Handle a JSON-RPC request (via the unified RPC handler)
  * @param gateway Gateway instance
@@ -282,18 +258,17 @@ char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *co
     AIRY_MEMSET(&result, 0, sizeof(result)); /* 防止 OOM 分支读取未初始化 response_json */
 
     if (gateway->protocol_handler && context->body_buf && context->body_len > 0) {
-        internal_to_public_adapter_t adapter = {
+        gateway_handler_adapter_t adapter = {
             .internal_handler = gateway->owner->handler_slot.handler,
             .internal_data = gateway->owner->handler_slot.data};
         result = gateway_protocol_handle_request(gateway->protocol_handler, context->body_buf,
                                                  context->body_len, AIRY_PROTOCOL_COUNT,
-                                                 internal_handler_public_wrapper, &adapter);
+                                                 gw_handler_adapt, &adapter);
     } else if (context->json_request) {
-        internal_to_public_adapter_t adapter = {
+        gateway_handler_adapter_t adapter = {
             .internal_handler = gateway->owner->handler_slot.handler,
             .internal_data = gateway->owner->handler_slot.data};
-        result = gateway_rpc_handle_request(context->json_request, internal_handler_public_wrapper,
-                                            &adapter);
+        result = gateway_rpc_handle_request(context->json_request, gw_handler_adapt, &adapter);
     } else if (context->body_buf && context->body_len > 0 &&
                gateway->owner->handler_slot.handler) {
         /* Raw non-JSON-RPC body (OpenAI/MCP/A2A): pass the HTTP context

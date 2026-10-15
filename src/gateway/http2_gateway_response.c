@@ -3,7 +3,8 @@
 
 /**
  * @file http2_gateway_response.c
- * @brief HTTP/2 gateway response domain (data provider callback, submission, JSON-RPC/health/preflight).
+ * @brief HTTP/2 gateway response domain (data provider callback,
+ * submission, JSON-RPC/health/preflight).
  */
 
 // @owner: team-B
@@ -132,13 +133,13 @@ char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
     http_gateway_t *base = &gw->base;
 
     if (base->protocol_handler && ctx->request_body && ctx->request_body_len > 0) {
-        http2_handler_adapter_t adapter = {.internal_handler = base->owner->handler_slot.handler,
-                                           .internal_data = base->owner->handler_slot.data};
+        gateway_handler_adapter_t adapter = {
+            .internal_handler = base->owner->handler_slot.handler,
+            .internal_data = base->owner->handler_slot.data};
 
         rpc_result_t result = gateway_protocol_handle_request(
             base->protocol_handler, (const char *)ctx->request_body, ctx->request_body_len,
-            AIRY_PROTOCOL_COUNT,
-            base->owner->handler_slot.handler ? http2_internal_handler_adapter : NULL,
+            AIRY_PROTOCOL_COUNT, base->owner->handler_slot.handler ? gw_handler_adapt : NULL,
             base->owner->handler_slot.handler ? &adapter : NULL);
 
         return rpc_take_resp(&result);
@@ -153,7 +154,8 @@ char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
 char *http2_handle_health(void)
 {
     return AIRY_STRDUP(
-        "{\"status\":\"healthy\",\"service\":\"gateway\",\"protocol\":\"h2\",\"version\":\"" GATEWAY_VERSION "\"}");
+        "{\"status\":\"healthy\",\"service\":\"gateway\",\"protocol\":\"h2\","
+        "\"version\":\"" GATEWAY_VERSION "\"}");
 }
 
 /**

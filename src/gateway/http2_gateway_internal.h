@@ -58,24 +58,11 @@
 #define HTTP2_LISTEN_BACKLOG 128 /**< listen backlog */
 #define HTTP2_INITIAL_WINDOW_SIZE 65535
 
-/**
-  * @brief Internal handler adapter.
- *
- * Adapts gateway_internal_handler_t (internal signature) to the custom_handler
- * signature required by gateway_protocol_handle_request.
- */
-typedef struct {
-    gateway_internal_handler_t internal_handler;
-    void *internal_data;
-} http2_handler_adapter_t;
-
 /* Helpers shared across files (was static; now external linkage) **/
 http2_stream_context_t *http2_stream_create(int32_t stream_id);
 void http2_stream_destroy(http2_stream_context_t *ctx);
 int http2_stream_append_body(http2_stream_context_t *ctx, const uint8_t *data, size_t len);
 int http2_stream_set_header_str(char **dst, const uint8_t *value, size_t vlen);
-int http2_internal_handler_adapter(const char *request_json, char **response_json,
-                                   void *user_data);
 ssize_t http2_data_source_read_callback(nghttp2_session *session, int32_t stream_id,
                                         uint8_t *buf, size_t length, uint32_t *data_flags,
                                         nghttp2_data_source *source, void *user_data);
