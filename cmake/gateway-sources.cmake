@@ -48,7 +48,6 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/ws_gateway_message.c
     ${GATEWAY_SRC_BASE}/src/gateway/ws_gateway_callback.c
     ${GATEWAY_SRC_BASE}/src/gateway/stdio_gateway.c
-    ${GATEWAY_SRC_BASE}/src/utils/jsonrpc.c
     # 2026-08-27 目录原子化：syscall 路由家族独立子目录
     ${GATEWAY_SRC_BASE}/src/utils/syscall/syscall_router.c
     ${GATEWAY_SRC_BASE}/src/utils/syscall/syscall_router_agent.c

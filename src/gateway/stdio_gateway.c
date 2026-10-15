@@ -15,7 +15,7 @@
 
 #include "../utils/gateway_rpc_handler.h"
 #include "../utils/gateway_utils.h"
-#include "../utils/jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "syscall_router.h"
 #include "logging.h"
 #ifdef AIRY_HAS_CJSON

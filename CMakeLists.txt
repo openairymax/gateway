@@ -46,7 +46,6 @@ set(GATEWAY_HEADERS
     src/gateway/http2_gateway.h
     src/gateway/ws_gateway.h
     src/gateway/stdio_gateway.h
-    src/utils/jsonrpc.h
     src/utils/syscall/syscall_router.h
     src/utils/gateway_utils.h
     src/utils/gateway_protocol_handler.h
@@ -183,8 +182,9 @@ target_include_directories(gateway
         ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
 )
 
-# P0.18.1: svc_common 提供 jsonrpc_get_error_message（jsonrpc_helpers.c），
-# gateway/src/utils/jsonrpc.c:167 调用此符号，故 gateway 依赖 svc_common。
+# P0.18.1: svc_common 提供 jsonrpc_helpers 母件（create_success/create_error/
+# validate_strict，0.1.19 u76 自 gateway/src/utils/jsonrpc.c 下沉归一），
+# gateway 消费这些符号，故 gateway 依赖 svc_common。
 # 架构约束 2026-08-25 "必须走 syscall": gateway 的 airy_sys_* 方法面经
 # airy_sys_svc_call()（SYS_SVC_CALL）派发，故 gateway 依赖 atoms/syscall
 # （airy_syscall 归档；仅 svc_dispatch.o 被拉取，其余 airy_sys_* 由本库
@@ -252,7 +252,6 @@ install(FILES
     src/gateway/http2_gateway.h
     src/gateway/ws_gateway.h
     src/gateway/stdio_gateway.h
-    src/utils/jsonrpc.h
     src/utils/syscall/syscall_router.h
     DESTINATION include/agentrt/gateway
 )
@@ -282,11 +281,7 @@ if(BUILD_TESTS AND NOT WIN32)
     target_link_libraries(test_syscall_router gateway)
     add_test(NAME syscall_router_test COMMAND test_syscall_router)
 
-    # jsonrpc 协议测试 (17个用例)
-    add_executable(test_jsonrpc tests/test_jsonrpc.c)
-    target_compile_definitions(test_jsonrpc PRIVATE AIRY_COMPLIANCE_IMPL)
-    target_link_libraries(test_jsonrpc gateway)
-    add_test(NAME jsonrpc_test COMMAND test_jsonrpc)
+    # jsonrpc 协议测试 (0.1.19 u76 随母件归一迁至 commons/tests/unit/test_jsonrpc.c)
 
     # gateway_rpc_handler 统一RPC处理模块测试 (14个用例)
     add_executable(test_rpc_handler tests/test_gateway_rpc_handler.c)

@@ -16,7 +16,7 @@
 #include "../utils/gateway_rate_limiter.h"
 #include "../utils/gateway_rpc_handler.h"
 #include "../utils/gateway_utils.h"
-#include "../utils/jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "airy_memory.h"
 #include "logging.h"
 

@@ -32,7 +32,7 @@ typedef struct cJSON cJSON;
 
 #include "atomic_compat.h"
 #include "http_gateway.h"
-#include "jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "syscall_router.h"
 #include "syscalls.h"
 

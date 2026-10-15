@@ -14,7 +14,7 @@
 #include "daemon_rpc_client.h"
 #include "error.h"
 #include "hindex.h"
-#include "jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "logging.h"
 #include "airy_memory.h"
 #include "platform.h"

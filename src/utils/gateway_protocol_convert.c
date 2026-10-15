@@ -16,7 +16,7 @@
 
 #include "gateway_protocol_handler_internal.h"
 
-#include "jsonrpc.h"
+#include "jsonrpc_helpers.h"
 
 #include <stdio.h>
 #include <string.h>

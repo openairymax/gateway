@@ -19,7 +19,7 @@
 #include "gateway_rpc_handler.h"
 #include "gateway_utils.h"
 #include "http_gateway.h"
-#include "jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "logging.h"
 #include "airy_memory.h"
 #include "platform.h"
