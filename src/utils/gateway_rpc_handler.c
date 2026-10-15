@@ -13,7 +13,7 @@
 #include "gateway_rpc_handler.h"
 
 #include "error.h"
-#include "jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "airy_memory.h"
 #include "syscall_router.h"
 

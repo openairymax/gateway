@@ -14,7 +14,7 @@
 #include "ws_gateway_internal.h"
 
 #include "gateway_utils.h"
-#include "jsonrpc.h"
+#include "jsonrpc_helpers.h"
 
 #include "airy_memory.h"
 #include "error.h"

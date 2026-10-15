@@ -17,7 +17,7 @@
  */
 
 // @owner: team-B
-#include "jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "syscall_router.h"
 
 #include "error.h"

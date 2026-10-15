@@ -18,7 +18,7 @@
 #include "../utils/gateway_rate_limiter.h"
 #include "../utils/gateway_rpc_handler.h"
 #include "../utils/gateway_utils.h"
-#include "../utils/jsonrpc.h"
+#include "jsonrpc_helpers.h"
 #include "syscall_router.h"
 #include "error.h"
 #include "airy_memory.h"
@@ -196,7 +196,7 @@ int parse_json_request(http_gateway_t *gateway, http_request_context_t *context,
         return 0;
     }
 
-    if (gw_jsonrpc_validate_request(context->json_request) != 0) {
+    if (jsonrpc_validate_strict(context->json_request) != 0) {
         /* Valid JSON but not JSON-RPC (e.g. OpenAI chat/completions):
           * keep upload_data for the protocol entry handler to route */
         cJSON_Delete(context->json_request);
