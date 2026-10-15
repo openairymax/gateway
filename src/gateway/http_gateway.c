@@ -580,35 +580,7 @@ static void http_gateway_destroy(void *gateway_impl)
     http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
 
     http_gateway_stop(gateway);
-
-    if (gateway->host) {
-        AIRY_FREE(gateway->host);
-    }
-
-    if (gateway->cors.allowed_methods) {
-        AIRY_FREE(gateway->cors.allowed_methods);
-    }
-    if (gateway->cors.allowed_headers) {
-        AIRY_FREE(gateway->cors.allowed_headers);
-    }
-    if (gateway->cors.allowed_origins) {
-        for (size_t i = 0; i < gateway->cors.allowed_origins_count; i++) {
-            if (gateway->cors.allowed_origins[i]) {
-                AIRY_FREE(gateway->cors.allowed_origins[i]);
-            }
-        }
-        AIRY_FREE(gateway->cors.allowed_origins);
-    }
-
-    if (gateway->rate_limiter) {
-        gateway_rate_limiter_destroy(gateway->rate_limiter);
-    }
-
-    if (gateway->protocol_handler) {
-        gateway_protocol_handler_destroy(gateway->protocol_handler);
-        gateway->protocol_handler = NULL;
-    }
-
+    http_gateway_base_destroy(gateway);
     AIRY_FREE(gateway);
 }
 
@@ -626,101 +598,20 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
         return NULL;
     }
 
-    gateway->port = port;
-    gateway->host = AIRY_STRDUP(host);
-
-    if (!gateway->host) {
+    if (!http_gateway_base_init(gateway, host, port)) {
         AIRY_FREE(gateway);
         return NULL;
     }
 
-    atomic_init(&gateway->running, false);
-    atomic_init(&gateway->requests_total, 0);
-    atomic_init(&gateway->requests_failed, 0);
-    atomic_init(&gateway->bytes_received, 0);
-    atomic_init(&gateway->bytes_sent, 0);
-
-    gateway->max_request_size = 1 * 1024 * 1024; /* 1MB */
-    const char *env_max_size = getenv("GATEWAY_MAX_REQUEST_SIZE");
-    if (env_max_size) {
-        long size = strtol(env_max_size, NULL, 10);
-        if (size > 0 && size <= 100 * 1024 * 1024) {
-            gateway->max_request_size = (size_t)size;
-        }
-    }
-
-    gateway->cors.allow_all_origins = false;
-    gateway->cors.allowed_origins = NULL;
-    gateway->cors.allowed_origins_count = 0;
-    gateway->cors.allowed_methods = AIRY_STRDUP("POST, GET, OPTIONS");
-    gateway->cors.allowed_headers = AIRY_STRDUP("Content-Type, Authorization");
-    gateway->cors.max_age = 3600;
-
-    const char *cors_mode = getenv("GATEWAY_CORS_MODE");
-    if (cors_mode && strcmp(cors_mode, "dev") == 0) {
-        gateway->cors.allow_all_origins = true;
-    }
-
-    const char *cors_origins = getenv("GATEWAY_CORS_ORIGINS");
-    if (cors_origins && !gateway->cors.allow_all_origins) {
-
-        char *origins_copy = AIRY_STRDUP(cors_origins);
-        if (origins_copy) {
-            size_t count = 1;
-            for (char *p = origins_copy; *p; p++) {
-                if (*p == ',')
-                    count++;
-            }
-
-            if (count <= SIZE_MAX / sizeof(char *)) {
-                gateway->cors.allowed_origins = (char **)airy_malloc_array(count, sizeof(char *));
-                if (gateway->cors.allowed_origins) {
-                    char *saveptr = NULL;
-                    char *token = strtok_r(origins_copy, ",", &saveptr);
-                    size_t i = 0;
-                    while (token && i < count) {
-                        gateway->cors.allowed_origins[i++] = AIRY_STRDUP(token);
-                        token = strtok_r(NULL, ",", &saveptr);
-                    }
-                    gateway->cors.allowed_origins_count = i;
-                }
-            }
-            AIRY_FREE(origins_copy);
-        }
-    }
-
-    /* Centralized env-driven assembly (see gateway_rate_limiter.h). */
-    gateway->rate_limiter = gw_rate_from_env();
-
-    /* Initialize the multi-protocol handler (off by default)
-     *
-      * Protocol detection/translation lives in gateway_d's adapter (D2); avoid a double translation layer here
-      * Set GATEWAY_PROTOCOL_HANDLER=true only to enable gateway-level conversion. */
-    gateway->protocol_handler = NULL;
+    /* HTTP/1.1 侧协议处理器按需启用；HTTP/2 侧无条件启用。 */
     const char *proto_handler_env = getenv("GATEWAY_PROTOCOL_HANDLER");
     if (proto_handler_env && strcmp(proto_handler_env, "true") == 0) {
         gateway->protocol_handler = gateway_protocol_handler_create(NULL);
-        if (!gateway->protocol_handler) {
-        }
     }
 
     gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
-        AIRY_FREE(gateway->cors.allowed_methods);
-        AIRY_FREE(gateway->cors.allowed_headers);
-        if (gateway->cors.allowed_origins) {
-            for (size_t i = 0; i < gateway->cors.allowed_origins_count; i++) {
-                AIRY_FREE(gateway->cors.allowed_origins[i]);
-            }
-            AIRY_FREE(gateway->cors.allowed_origins);
-        }
-        if (gateway->protocol_handler) {
-            gateway_protocol_handler_destroy(gateway->protocol_handler);
-        }
-        if (gateway->rate_limiter) {
-            gateway_rate_limiter_destroy(gateway->rate_limiter);
-        }
-        AIRY_FREE(gateway->host);
+        http_gateway_base_destroy(gateway);
         AIRY_FREE(gateway);
         return NULL;
     }

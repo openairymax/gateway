@@ -28,6 +28,8 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_auth.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_hall_store.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway.c
+    # HTTP 家族（HTTP/1.1 与 HTTP/2）共用基类生命周期 SSoT（无条件编译）
+    ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_base.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_routes.c
     ${GATEWAY_SRC_BASE}/src/gateway/http_gateway_sse.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_hall_watch.c

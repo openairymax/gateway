@@ -141,6 +141,30 @@ typedef struct http_gateway {
 gateway_t *http_gateway_create(const char *host, uint16_t port);
 
 /**
+  * @brief Initialize the transport-neutral fields of an HTTP family base
+ *
+ * Shared by the HTTP/1.1 and HTTP/2 transports (http2_gateway_t.base is the
+ * leading member). Assembles the host copy, atomic counters, max_request_size
+ * and the CORS / rate-limiter configuration. The protocol_handler is left to
+ * the caller because the two transports assemble it with different policies.
+ *
+ * @param base Base instance, zero-initialized by the caller
+ * @param host Listen address (non-NULL)
+ * @param port Listen port
+ * @return true on success, false on allocation failure
+  */
+bool http_gateway_base_init(http_gateway_t *base, const char *host, uint16_t port);
+
+/**
+  * @brief Release the fields initialized by http_gateway_base_init()
+ *
+ * Does not free @p base itself; the caller owns the enclosing allocation.
+ *
+  * @param base Base instance, or NULL
+  */
+void http_gateway_base_destroy(http_gateway_t *base);
+
+/**
   * @brief Handle a JSON-RPC request
  */
 char *handle_jsonrpc_request(http_gateway_t *gateway, http_request_context_t *context);
