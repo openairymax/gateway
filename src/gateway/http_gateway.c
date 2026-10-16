@@ -555,7 +555,7 @@ static void http_gateway_destroy(void *gateway_impl)
     http_gateway_t *gateway = (http_gateway_t *)gateway_impl;
 
     http_gateway_stop(gateway);
-    http_gateway_base_destroy(gateway);
+    http_base_destroy(gateway);
     AIRY_FREE(gateway);
 }
 
@@ -573,7 +573,7 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
         return NULL;
     }
 
-    if (!http_gateway_base_init(gateway, host, port)) {
+    if (!http_base_init(gateway, host, port)) {
         AIRY_FREE(gateway);
         return NULL;
     }
@@ -586,7 +586,7 @@ gateway_t *http_gateway_create(const char *host, uint16_t port)
 
     gateway_t *gw = AIRY_MALLOC(sizeof(gateway_t));
     if (!gw) {
-        http_gateway_base_destroy(gateway);
+        http_base_destroy(gateway);
         AIRY_FREE(gateway);
         return NULL;
     }
