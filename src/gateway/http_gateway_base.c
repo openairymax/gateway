@@ -27,7 +27,7 @@
 #include <string.h>
 
 /* max_request_size：默认 1MB，GATEWAY_MAX_REQUEST_SIZE 覆盖（上限 100MB）。 */
-static void http_base_max_size_init(http_gateway_t *base)
+static void http_base_max_init(http_gateway_t *base)
 {
     base->max_request_size = 1 * 1024 * 1024;
     const char *env_max_size = getenv("GATEWAY_MAX_REQUEST_SIZE");
@@ -82,7 +82,7 @@ static void http_base_cors_init(http_gateway_t *base)
     }
 }
 
-bool http_gateway_base_init(http_gateway_t *base, const char *host, uint16_t port)
+bool http_base_init(http_gateway_t *base, const char *host, uint16_t port)
 {
     base->port = port;
     base->host = AIRY_STRDUP(host);
@@ -96,14 +96,14 @@ bool http_gateway_base_init(http_gateway_t *base, const char *host, uint16_t por
     atomic_init(&base->bytes_received, 0);
     atomic_init(&base->bytes_sent, 0);
 
-    http_base_max_size_init(base);
+    http_base_max_init(base);
     http_base_cors_init(base);
     base->rate_limiter = gw_rate_from_env();
 
     return true;
 }
 
-void http_gateway_base_destroy(http_gateway_t *base)
+void http_base_destroy(http_gateway_t *base)
 {
     if (base->host) {
         AIRY_FREE(base->host);

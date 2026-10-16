@@ -153,16 +153,16 @@ gateway_t *http_gateway_create(const char *host, uint16_t port);
  * @param port Listen port
  * @return true on success, false on allocation failure
   */
-bool http_gateway_base_init(http_gateway_t *base, const char *host, uint16_t port);
+bool http_base_init(http_gateway_t *base, const char *host, uint16_t port);
 
 /**
-  * @brief Release the fields initialized by http_gateway_base_init()
+  * @brief Release the fields initialized by http_base_init()
  *
  * Does not free @p base itself; the caller owns the enclosing allocation.
  *
   * @param base Base instance, or NULL
   */
-void http_gateway_base_destroy(http_gateway_t *base);
+void http_base_destroy(http_gateway_t *base);
 
 /**
   * @brief Handle a JSON-RPC request
