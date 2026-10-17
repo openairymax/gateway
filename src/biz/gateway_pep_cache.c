@@ -18,6 +18,7 @@
 #include "gateway_aipc_client.h" /* southbound A-IPC unified client face */
 #include "airy_memory.h"
 #include "daemon_security.h"
+#include "ipc_backoff.h" /* 0.1.19 §3.6 D7: 重连退避 + 失败窗口聚合 */
 #include "logging.h"
 
 #include "platform.h"
@@ -39,6 +40,11 @@
 #define GW_PEP_AGENT_LEN 64
 #define GW_PEP_TOOL_LEN 64
 #define GW_PEP_ACTION_LEN 32
+
+/* 0.1.19 §3.6 D7: epoch 订阅线程重连退避 + 失败日志窗口聚合参数 */
+#define GW_PEP_BK_BASE_MS 200u
+#define GW_PEP_BK_CAP_MS 5000u
+#define GW_PEP_AGG_WIN_SEC 60u
 
 typedef struct {
     uint32_t hash;
@@ -283,6 +289,22 @@ typedef struct {
     char path[256];
 } epoch_watch_arg_t;
 
+/* 失败告警降噪（0.1.19 §3.6 D7）：60s 窗口内同一 target 仅记首条，
+ * 下窗首条附带上窗被抑制的累计次数。返回 true 表示本条已记录。 */
+static bool pep_fail_log(ipc_agg_t *agg, uint32_t retry_ms, const char *what, const char *path)
+{
+    uint64_t prev = 0;
+    uint64_t now = (uint64_t)(airy_time_wall_ms() / 1000);
+    if (!ipc_agg_feed(agg, now, &prev))
+        return false;
+    if (prev > 1)
+        AIRY_LOG_WARN("gateway PEP: %s (%s), retry in %ums, %llu repeats suppressed", what, path,
+                      retry_ms, (unsigned long long)(prev - 1));
+    else
+        AIRY_LOG_WARN("gateway PEP: %s (%s), retry in %ums", what, path, retry_ms);
+    return true;
+}
+
 /* notify_d SSE 长连接订阅线程（detached）：读帧 → 解析 → 主动失效。
  * 断线/无活动超时自动重连（尽力而为，fail-open）。 */
 static void *epoch_watch_main(void *arg)
@@ -292,6 +314,11 @@ static void *epoch_watch_main(void *arg)
         AIRY_LOG_WARN("gateway PEP: epoch watch arg lost, observer stopped");
         return NULL;
     }
+
+    ipc_bkoff_t bo;
+    ipc_agg_t agg;
+    ipc_bkoff_init(&bo, GW_PEP_BK_BASE_MS, GW_PEP_BK_CAP_MS);
+    ipc_agg_init(&agg, GW_PEP_AGG_WIN_SEC);
 
     for (;;) {
         /* SSE 握手：notify_d 将本连接注册为长连接订阅客户端。
@@ -306,18 +333,22 @@ static void *epoch_watch_main(void *arg)
                           "X-Client-Id: gateway-pep\r\n"
                           "\r\n");
         if (hl <= 0 || hl >= (int)sizeof(hdr)) {
-            AIRY_LOG_WARN("gateway PEP: epoch watch handshake build failed, retry in 2s");
-            airy_sleep_ms(2000);
+            uint32_t delay = ipc_bkoff_next(&bo);
+            pep_fail_log(&agg, delay, "epoch watch handshake build failed", a->path);
+            airy_sleep_ms(delay);
             continue;
         }
         int fd = gw_aipc_subscribe(a->path, hdr, (size_t)hl);
         if (fd < 0) {
-            AIRY_LOG_WARN("gateway PEP: notify_d unreachable (%s), retry in 2s", a->path);
-            airy_sleep_ms(2000);
+            uint32_t delay = ipc_bkoff_next(&bo);
+            pep_fail_log(&agg, delay, "notify_d unreachable", a->path);
+            airy_sleep_ms(delay);
             continue;
         }
 
         AIRY_LOG_INFO("gateway PEP: epoch watch subscribed via %s", a->path);
+        ipc_bkoff_reset(&bo);
+        ipc_agg_reset(&agg);
 
         char buf[2048];
         size_t used = 0;
@@ -372,8 +403,9 @@ static void *epoch_watch_main(void *arg)
             }
         }
         close(fd);
-        AIRY_LOG_WARN("gateway PEP: epoch watch disconnected, reconnecting");
-        airy_sleep_ms(2000);
+        uint32_t delay = ipc_bkoff_next(&bo);
+        pep_fail_log(&agg, delay, "epoch watch disconnected, reconnecting", a->path);
+        airy_sleep_ms(delay);
     }
     return NULL;
 }
