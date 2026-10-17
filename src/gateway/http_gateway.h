@@ -117,6 +117,9 @@ typedef struct http_gateway {
     gateway_t *owner;
 
     atomic_bool running;
+    /* 传输代次：进程内唯一、随网关创建时刻取值，经 /health 发布。
+     * 客户端据此判定对端是否重启（epoch 变化即代次失效）。 */
+    uint64_t epoch_s;
     atomic_uint_fast64_t requests_total;
     atomic_uint_fast64_t requests_failed;
     atomic_uint_fast64_t bytes_received;

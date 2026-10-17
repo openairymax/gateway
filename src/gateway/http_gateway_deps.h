@@ -32,6 +32,7 @@
 #include <cjson/cJSON.h>
 #endif
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #ifdef _WIN32

@@ -180,10 +180,17 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
                         http_request_context_t *context)
 {
 
-    const char *health_json =
-        "{\"status\":\"healthy\",\"service\":\"gateway\",\"version\":\"" GATEWAY_VERSION "\"}";
+    char health_json[192];
+    int n = snprintf(health_json, sizeof(health_json),
+                     "{\"status\":\"healthy\",\"service\":\"gateway\",\"version\":\""
+                     GATEWAY_VERSION "\",\"epoch\":%llu}",
+                     (unsigned long long)gateway->epoch_s);
+    if (n <= 0 || (size_t)n >= sizeof(health_json)) {
+        return MHD_NO;
+    }
+
     struct MHD_Response *response =
-        create_http_response_ex(gateway, connection, 200, health_json, strlen(health_json));
+        create_http_response_ex(gateway, connection, 200, health_json, (size_t)n);
 
     atomic_fetch_add(&gateway->requests_total, 1);
 
