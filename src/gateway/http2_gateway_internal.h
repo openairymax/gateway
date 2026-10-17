@@ -72,7 +72,7 @@ void http2_free_response_headers(nghttp2_nv *nva, size_t count);
 int http2_submit_response_impl(nghttp2_session *session, http2_stream_context_t *ctx,
                                http2_gateway_t *gw);
 char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx);
-char *http2_handle_health(void);
+char *http2_handle_health(const http_gateway_t *base);
 char *http2_handle_preflight(void);
 void http2_process_request(nghttp2_session *session, int32_t stream_id, void *user_data);
 int http2_on_begin_headers(nghttp2_session *session, const nghttp2_frame *frame, void *user_data);

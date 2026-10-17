@@ -12,6 +12,8 @@
 #include "http2_gateway.h"
 #include "http2_gateway_internal.h"
 
+#include <stdio.h>
+
 #ifdef AIRY_HAS_HTTP2
 
 /**
@@ -151,11 +153,17 @@ char *http2_handle_jsonrpc(http2_gateway_t *gw, http2_stream_context_t *ctx)
 /**
   * @brief Handle health check requests GET /health
  */
-char *http2_handle_health(void)
+char *http2_handle_health(const http_gateway_t *base)
 {
-    return AIRY_STRDUP(
-        "{\"status\":\"healthy\",\"service\":\"gateway\",\"protocol\":\"h2\","
-        "\"version\":\"" GATEWAY_VERSION "\"}");
+    char buf[192];
+    int n = snprintf(buf, sizeof(buf),
+                     "{\"status\":\"healthy\",\"service\":\"gateway\",\"protocol\":\"h2\","
+                     "\"version\":\"" GATEWAY_VERSION "\",\"epoch\":%llu}",
+                     (unsigned long long)(base ? base->epoch_s : 0));
+    if (n <= 0 || (size_t)n >= sizeof(buf)) {
+        return NULL;
+    }
+    return AIRY_STRDUP(buf);
 }
 
 /**

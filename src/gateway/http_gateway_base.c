@@ -25,6 +25,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* max_request_size：默认 1MB，GATEWAY_MAX_REQUEST_SIZE 覆盖（上限 100MB）。 */
 static void http_base_max_init(http_gateway_t *base)
@@ -95,6 +96,7 @@ bool http_base_init(http_gateway_t *base, const char *host, uint16_t port)
     atomic_init(&base->requests_failed, 0);
     atomic_init(&base->bytes_received, 0);
     atomic_init(&base->bytes_sent, 0);
+    base->epoch_s = (uint64_t)time(NULL);
 
     http_base_max_init(base);
     http_base_cors_init(base);

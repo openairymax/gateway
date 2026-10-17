@@ -65,7 +65,7 @@ void http2_process_request(nghttp2_session *session, int32_t stream_id, void *us
     } else if (ctx->method && strcmp(ctx->method, "GET") == 0) {
         if (ctx->path && strcmp(ctx->path, "/health") == 0) {
             AIRY_LOG_DEBUG("health check request (stream_id=%d)", ctx->stream_id);
-            response_json = http2_handle_health();
+            response_json = http2_handle_health(&gw->base);
         } else {
             AIRY_LOG_WARN("GET path not found: %s (stream_id=%d)", ctx->path ? ctx->path : "(null)",
                      ctx->stream_id);
