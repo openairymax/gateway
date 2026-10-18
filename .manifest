@@ -1,0 +1,824 @@
+{
+  "manifest_version": 1,
+  "module": "gateway",
+  "generator": "tools/codegen/gateway_gen.py",
+  "facades": [
+    "ingress",
+    "execute",
+    "state",
+    "governance"
+  ],
+  "slots": [
+    "route",
+    "authz",
+    "stream",
+    "validate",
+    "dispatch"
+  ],
+  "defaults": {
+    "timeout_ms": 90000,
+    "version": 1
+  },
+  "sock_bindings": [
+    "llm",
+    "tool",
+    "agent",
+    "mem",
+    "sched",
+    "think",
+    "a2a",
+    "notify",
+    "market",
+    "hook",
+    "monit",
+    "channel",
+    "cupolas",
+    "maths"
+  ],
+  "l2_methods": [
+    "shutdown",
+    "get_stats",
+    "health_check"
+  ],
+  "namespaces": [
+    {
+      "ns": "agent",
+      "owner": "agent",
+      "route": true,
+      "daemon": "agent_d",
+      "sock": "agent",
+      "caps": [
+        {
+          "name": "run",
+          "kind": "agent_run",
+          "perm": "cap:agent.run"
+        },
+        {
+          "name": "cancel",
+          "kind": "agent_run",
+          "perm": "cap:agent.control"
+        },
+        {
+          "name": "spawn",
+          "perm": "cap:agent.control"
+        },
+        {
+          "name": "terminate",
+          "perm": "cap:agent.control"
+        },
+        {
+          "name": "invoke",
+          "perm": "cap:agent.control"
+        },
+        {
+          "name": "list"
+        },
+        {
+          "name": "count"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "llm",
+      "owner": "llm",
+      "route": true,
+      "daemon": "llm_d",
+      "sock": "llm",
+      "caps": [
+        {
+          "name": "complete"
+        },
+        {
+          "name": "list_models",
+          "kind": "llm_list"
+        },
+        {
+          "name": "count_tokens"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "tool",
+      "owner": "tool",
+      "route": true,
+      "daemon": "tool_d",
+      "sock": "tool",
+      "caps": [
+        {
+          "name": "pending",
+          "kind": "tool_approve"
+        },
+        {
+          "name": "approve",
+          "kind": "tool_approve"
+        },
+        {
+          "name": "register"
+        },
+        {
+          "name": "list_tools"
+        },
+        {
+          "name": "get_tool"
+        },
+        {
+          "name": "execute_tool"
+        },
+        {
+          "name": "execute"
+        },
+        {
+          "name": "list"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "plugin",
+      "owner": "tool",
+      "route": true,
+      "daemon": "tool_d",
+      "sock": "tool",
+      "prefix": "plugin",
+      "l2_pass": false,
+      "caps": [
+        {
+          "name": "load",
+          "perm": "cap:plugin.admin"
+        },
+        {
+          "name": "unload",
+          "perm": "cap:plugin.admin"
+        },
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "execute"
+        },
+        {
+          "name": "get_metadata"
+        },
+        {
+          "name": "get_state"
+        },
+        {
+          "name": "get_stats"
+        },
+        {
+          "name": "list"
+        },
+        {
+          "name": "install",
+          "perm": "cap:plugin.admin"
+        },
+        {
+          "name": "uninstall",
+          "perm": "cap:plugin.admin"
+        },
+        {
+          "name": "health_check"
+        }
+      ]
+    },
+    {
+      "ns": "sched",
+      "owner": "sched",
+      "route": true,
+      "daemon": "sched_d",
+      "sock": "sched",
+      "caps": [
+        {
+          "name": "register_agent"
+        },
+        {
+          "name": "unregister_agent"
+        },
+        {
+          "name": "schedule_task"
+        },
+        {
+          "name": "get_task"
+        },
+        {
+          "name": "cancel",
+          "perm": "cap:sched.admin"
+        },
+        {
+          "name": "dag_submit"
+        },
+        {
+          "name": "dag_status"
+        },
+        {
+          "name": "dag_list"
+        },
+        {
+          "name": "dag_cancel",
+          "perm": "cap:sched.admin"
+        },
+        {
+          "name": "checkpoint_save",
+          "perm": "cap:sched.admin"
+        },
+        {
+          "name": "submit"
+        },
+        {
+          "name": "query"
+        },
+        {
+          "name": "get_stats"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "plan"
+        },
+        {
+          "name": "absorb"
+        },
+        {
+          "name": "roadmap_status"
+        }
+      ]
+    },
+    {
+      "ns": "roadmap",
+      "owner": "sched",
+      "route": false
+    },
+    {
+      "ns": "think",
+      "owner": "think",
+      "route": true,
+      "daemon": "think_d",
+      "sock": "think",
+      "timeout_ms": 120000,
+      "caps": [
+        {
+          "name": "process"
+        },
+        {
+          "name": "orchestrate"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        },
+        {
+          "name": "lang_process"
+        },
+        {
+          "name": "lang_postprocess"
+        },
+        {
+          "name": "lang_stats"
+        },
+        {
+          "name": "review"
+        }
+      ]
+    },
+    {
+      "ns": "mem",
+      "owner": "mem",
+      "route": true,
+      "daemon": "mem_d",
+      "sock": "mem",
+      "caps": [
+        {
+          "name": "write",
+          "kind": "mem"
+        },
+        {
+          "name": "search",
+          "kind": "mem"
+        },
+        {
+          "name": "get",
+          "kind": "mem"
+        },
+        {
+          "name": "delete",
+          "kind": "mem",
+          "perm": "cap:mem.admin"
+        },
+        {
+          "name": "count",
+          "kind": "mem"
+        },
+        {
+          "name": "recent",
+          "kind": "mem"
+        },
+        {
+          "name": "evolve",
+          "kind": "mem"
+        },
+        {
+          "name": "health_check",
+          "kind": "mem"
+        },
+        {
+          "name": "get_stats",
+          "kind": "mem"
+        },
+        {
+          "name": "kb_ingest",
+          "kind": "mem"
+        },
+        {
+          "name": "kb_search",
+          "kind": "mem"
+        },
+        {
+          "name": "kb_delete",
+          "kind": "mem",
+          "perm": "cap:mem.admin"
+        },
+        {
+          "name": "kb_list",
+          "kind": "mem"
+        },
+        {
+          "name": "cache_put",
+          "kind": "mem"
+        },
+        {
+          "name": "cache_get",
+          "kind": "mem"
+        },
+        {
+          "name": "cache_del",
+          "kind": "mem"
+        },
+        {
+          "name": "cache_stats",
+          "kind": "mem"
+        },
+        {
+          "name": "ledger_append",
+          "kind": "mem"
+        },
+        {
+          "name": "ledger_window",
+          "kind": "mem"
+        },
+        {
+          "name": "ledger_budget",
+          "kind": "mem"
+        },
+        {
+          "name": "ledger_mark",
+          "kind": "mem"
+        },
+        {
+          "name": "ledger_history",
+          "kind": "mem"
+        },
+        {
+          "name": "ledger_stats",
+          "kind": "mem"
+        },
+        {
+          "name": "compress",
+          "kind": "mem"
+        }
+      ]
+    },
+    {
+      "ns": "market",
+      "owner": "market",
+      "route": true,
+      "daemon": "market_d",
+      "sock": "market",
+      "caps": [
+        {
+          "name": "register_agent"
+        },
+        {
+          "name": "search_agents"
+        },
+        {
+          "name": "install_agent"
+        },
+        {
+          "name": "register_skill"
+        },
+        {
+          "name": "search_skills"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "publish"
+        },
+        {
+          "name": "search"
+        },
+        {
+          "name": "install"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "monit",
+      "owner": "monit",
+      "route": true,
+      "daemon": "monit_d",
+      "sock": "monit",
+      "caps": [
+        {
+          "name": "record_metric"
+        },
+        {
+          "name": "get_metrics"
+        },
+        {
+          "name": "trigger_alert"
+        },
+        {
+          "name": "get_alerts"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "generate_report"
+        },
+        {
+          "name": "heartbeat"
+        },
+        {
+          "name": "metrics"
+        },
+        {
+          "name": "alert_raise"
+        },
+        {
+          "name": "alert_resolve"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "observe",
+      "owner": "monit",
+      "route": true,
+      "daemon": "monit_d",
+      "sock": "monit",
+      "prefix": "observe",
+      "l2_pass": true,
+      "caps": [
+        {
+          "name": "record_metric"
+        },
+        {
+          "name": "query_metrics"
+        },
+        {
+          "name": "get_metrics"
+        },
+        {
+          "name": "get_stats"
+        },
+        {
+          "name": "health_check"
+        }
+      ]
+    },
+    {
+      "ns": "info",
+      "owner": "monit",
+      "route": true,
+      "daemon": "monit_d",
+      "sock": "monit",
+      "prefix": "info",
+      "l2_pass": true,
+      "caps": [
+        {
+          "name": "system"
+        },
+        {
+          "name": "history"
+        },
+        {
+          "name": "health"
+        },
+        {
+          "name": "hardware"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "notify",
+      "owner": "notify",
+      "route": true,
+      "daemon": "notify_d",
+      "sock": "notify",
+      "caps": [
+        {
+          "name": "publish"
+        },
+        {
+          "name": "subscribe"
+        },
+        {
+          "name": "unsubscribe"
+        },
+        {
+          "name": "list"
+        },
+        {
+          "name": "health"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "channel",
+      "owner": "channel",
+      "route": true,
+      "daemon": "channel_d",
+      "sock": "channel",
+      "caps": [
+        {
+          "name": "ping"
+        },
+        {
+          "name": "list"
+        },
+        {
+          "name": "open"
+        },
+        {
+          "name": "close"
+        },
+        {
+          "name": "send"
+        },
+        {
+          "name": "health"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "a2a",
+      "owner": "a2a",
+      "route": true,
+      "daemon": "a2a_d",
+      "sock": "a2a",
+      "caps": [
+        {
+          "name": "register_agent"
+        },
+        {
+          "name": "unregister_agent"
+        },
+        {
+          "name": "discover_agents"
+        },
+        {
+          "name": "create_task"
+        },
+        {
+          "name": "update_task"
+        },
+        {
+          "name": "cancel_task"
+        },
+        {
+          "name": "get_task"
+        },
+        {
+          "name": "send_message"
+        },
+        {
+          "name": "count"
+        },
+        {
+          "name": "send"
+        },
+        {
+          "name": "receive"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "cupolas",
+      "owner": "cupolas",
+      "route": true,
+      "daemon": "cupolas_d",
+      "sock": "cupolas",
+      "caps": [
+        {
+          "name": "check_permission"
+        },
+        {
+          "name": "sanitize"
+        },
+        {
+          "name": "execute_command"
+        },
+        {
+          "name": "add_rule",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "audit_flush",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        },
+        {
+          "name": "vault_store",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "vault_retrieve"
+        },
+        {
+          "name": "vault_delete",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "vault_list"
+        },
+        {
+          "name": "vault_rotate",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "net_add_rule",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "net_check_access"
+        },
+        {
+          "name": "net_get_stats"
+        },
+        {
+          "name": "entitlements_load"
+        },
+        {
+          "name": "entitlements_check"
+        }
+      ]
+    },
+    {
+      "ns": "policy",
+      "owner": "cupolas",
+      "route": false,
+      "prefix": "policy",
+      "caps": [
+        {
+          "name": "load",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "activate",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "rollback",
+          "perm": "cap:cupolas.admin"
+        },
+        {
+          "name": "status"
+        }
+      ]
+    },
+    {
+      "ns": "maths",
+      "owner": "maths",
+      "route": true,
+      "daemon": "maths_d",
+      "sock": "maths",
+      "caps": [
+        {
+          "name": "health_check"
+        }
+      ]
+    },
+    {
+      "ns": "hook",
+      "owner": "hook",
+      "route": true,
+      "daemon": "notify_d",
+      "sock": "hook",
+      "caps": [
+        {
+          "name": "register"
+        },
+        {
+          "name": "unregister"
+        },
+        {
+          "name": "trigger"
+        },
+        {
+          "name": "list"
+        },
+        {
+          "name": "status"
+        },
+        {
+          "name": "stats"
+        },
+        {
+          "name": "health"
+        },
+        {
+          "name": "ping"
+        },
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        }
+      ]
+    },
+    {
+      "ns": "hall",
+      "owner": "gateway",
+      "route": false,
+      "caps": [
+        {
+          "name": "board",
+          "kind": "hall"
+        },
+        {
+          "name": "tasks",
+          "kind": "hall"
+        },
+        {
+          "name": "replay",
+          "kind": "hall"
+        },
+        {
+          "name": "stream",
+          "kind": "hall"
+        }
+      ]
+    }
+  ]
+}
