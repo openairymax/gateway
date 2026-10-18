@@ -5,9 +5,10 @@
  * @file gateway_cap_registry.h
  * @brief 统一能力网关 — 能力注册表（cap_key 单一权威源，0.1.6 P1-4）。
  *
- * gateway 对外暴露的全部能力（<ns>.<method>）在此注册表单一声明，是
- * SSoT（Unify Design）：外部可调用能力的枚举、路由目标、处理方式、超时
- * 均以此表为准。命名空间转发白名单、特殊处理器（mem/llm.list_models/
+ * gateway 对外暴露的全部能力（<ns>.<method>）由 gateway/.manifest 单一
+ * 声明（0.1.19 起为该表唯一权威源），构建期生成只读注册表并由本模块
+ * 提供查询面：外部可调用能力的枚举、路由目标、处理方式、超时均以此
+ * 为准。命名空间转发白名单、特殊处理器（mem/llm.list_models/
  * tool.pending|approve/hall/agent.run|cancel）从本表派生，禁止在表外
  * 再维护一份方法清单（防漂移）。
  *
@@ -34,12 +35,14 @@ typedef enum {
     GW_CAP_KIND_AGENT_RUN,     /* agent.run / agent.cancel 网关内编排 */
 } gw_cap_kind_t;
 
-/* 能力注册项 */
+/* 能力注册项（0.1.19：由 gateway/.manifest 构建期生成） */
 typedef struct {
     const char *cap_key;  /* 单一权威键："<ns>.<method>" */
     const char *ns;       /* 目标 daemon 命名空间 */
     const char *method;   /* L2 方法名（转发/处理的目标方法） */
     gw_cap_kind_t kind;   /* 处理方式 */
+    int version;          /* 契约版本（默认 1） */
+    const char *perm;     /* 所需权限；NULL = 默认放行 */
 } gw_cap_t;
 
 /**
@@ -53,7 +56,8 @@ const gw_cap_t *gw_cap_find(const char *cap_key);
  * @brief namespace 独占性门禁（边界契约执行机制）。
  *
  * 校验能力注册表 SSoT 不变量：每个 cap_key 的命名空间前缀必须已在
- * GW_NS_OWNER 登记独占 daemon；FWD 转发目标必须与独占归属一致。
+ * gateway/.manifest 的 namespaces 中声明归属 daemon；FWD 转发目标必须与
+ * 独占归属一致（生成期已校验，本函数为运行期纵深防御）。
  * gateway 启动期调用，冲突 fail-closed 拒启（边界从约定变启动期断言）。
  * @return 0=通过；非 0=存在冲突（日志输出冲突条目）
  */
@@ -68,7 +72,7 @@ int gw_cap_ns_timeout(const char *ns);
  * @brief 能力契约版本（0.1.6 P1-4 SSoT 契约版本校验维度）。
  * @param cap_key 能力键
  * @return 契约版本号；未登记能力返回 -1。未显式标注版本的能力
- *         视为默认契约版本 1（GW_CAP_VERSION_DEFAULT）。
+ *         取 manifest defaults.version（当前为 1）。
  */
 int gw_cap_version(const char *cap_key);
 
@@ -83,8 +87,8 @@ int gw_cap_check_version(const char *cap_key, int req_version);
 /**
  * @brief 能力所需权限（0.1.6 P1-4 SSoT 权限校验维度）。
  *
- * 仅高敏能力声明所需权限（GW_CAP_EXTRA_PERM）；未声明（返回 NULL）=
- * 无需额外权限，默认放行（llm/think/agent/tool/mem 等核心链路）。
+ * 仅高敏能力在 manifest 声明 perm；未声明（返回 NULL）= 无需额外权限，
+ * 默认放行（llm/think/agent/tool/mem 等核心链路）。
  * 已声明权限须经 daemon_security ACL 检查（fail-closed：未注册规则拒绝，
  * 管理员在 permission_rules.yaml 显式授权）。
  *

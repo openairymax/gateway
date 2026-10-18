@@ -3,17 +3,17 @@
 
 /**
  * @file gateway_cap_registry.c
- * @brief 统一能力网关 — 能力注册表实现（0.1.6 P1-4）。
+ * @brief 统一能力网关 — 能力注册表与命名空间策略查询面。
  *
- * 能力注册表是网关对外暴露能力的唯一权威枚举（SSoT）。表项来源于
- * 原 gateway_biz_forward.c 的 15 个命名空间白名单数组 + 各特殊处理器，
- * 收敛为单一声明；任何外部可调用能力必须在此登记（fail-closed）。
- *
- * 表内顺序：按命名空间分组，FWD 转发项在前、特殊项随命名空间就近放置。
- * 查询为线性查找（能力数 < 200，注册表常驻只读，线性查找开销可忽略）。
+ * 0.1.19 起，能力注册表、命名空间归属、超时、wire 前缀与 L2 透传语义
+ * 统一由 gateway/.manifest 声明，构建期经 tools/codegen/gateway_gen.py
+ * 生成只读表（gateway_policy_gen.inc）。本文件不含策略数据，仅提供
+ * 查询与不变量校验：表外能力一律 fail-closed 拒绝。
  */
 
 #include "gateway_cap_registry.h"
+
+#include "gateway_policy.h"
 
 #include "gateway_biz_internal.h"
 
@@ -22,314 +22,116 @@
 
 #include "gateway_hall_store.h"
 
+#include <stddef.h>
 #include <string.h>
 
-/* 命名空间转发超时（ms）——与 02-l2-service-protocol.md 各 daemon 默认
- * 超时对齐（0.1.6 P1-4 收敛为单表，防散落定义漂移）。 */
-static const struct {
-    const char *ns;
-    int timeout_ms;
-} GW_NS_TIMEOUT[] = {
-    {"llm", GW_LLM_DEFAULT_TIMEOUT_MS},
-    {"think", GW_THINK_TIMEOUT_MS},
-    {"agent", GW_TOOL_TIMEOUT_MS},
-    {"tool", GW_TOOL_TIMEOUT_MS},
-    {"a2a", GW_LLM_DEFAULT_TIMEOUT_MS},
-    {"plugin", GW_TOOL_TIMEOUT_MS},
-    {"notify", GW_TOOL_TIMEOUT_MS},
-    {"market", GW_TOOL_TIMEOUT_MS},
-    {"hook", GW_TOOL_TIMEOUT_MS},
-    {"sched", GW_TOOL_TIMEOUT_MS},
-    {"monit", GW_TOOL_TIMEOUT_MS},
-    {"channel", GW_TOOL_TIMEOUT_MS},
-    {"cupolas", GW_TOOL_TIMEOUT_MS},
-    {"mem", GW_TOOL_TIMEOUT_MS},
-};
+#include "gateway_policy_gen.inc"
 
-/* 统一能力注册表（SSoT）：cap_key 唯一，格式 "<ns>.<method>"。
- * 注意：特殊处理项（MEM/LLM_LIST/TOOL_APPROVE/HALL/AGENT_RUN）的
- * method 字段为网关内部处理子名，仅作人类可读登记；路由仍由
- * gateway_business_handler.c 的专用分支承担。 */
-static const gw_cap_t GW_CAP_REGISTRY[] = {
-    /* ── llm（转发 + list_models 特殊） ─────────────────────────── */
-    {"llm.complete", "llm", "complete", GW_CAP_KIND_FWD},
-    {"llm.list_models", "llm", "list_models", GW_CAP_KIND_LLM_LIST},
-    {"llm.count_tokens", "llm", "count_tokens", GW_CAP_KIND_FWD},
-    {"llm.health_check", "llm", "health_check", GW_CAP_KIND_FWD},
-    {"llm.get_stats", "llm", "get_stats", GW_CAP_KIND_FWD},
+_Static_assert(GW_NS_POLICY_N <= GW_NS_POL_MAX,
+               "gateway namespace policy exceeds GW_NS_POL_MAX");
 
-    /* ── think（双思考） ────────────────────────────────────────── */
-    {"think.process", "think", "process", GW_CAP_KIND_FWD},
-    {"think.orchestrate", "think", "orchestrate", GW_CAP_KIND_FWD},
-    {"think.health_check", "think", "health_check", GW_CAP_KIND_FWD},
-    {"think.get_stats", "think", "get_stats", GW_CAP_KIND_FWD},
-    /* 推理语言网关服务面（CLI 经 gateway 消费，禁直连内核） */
-    {"think.lang_process", "think", "lang_process", GW_CAP_KIND_FWD},
-    {"think.lang_postprocess", "think", "lang_postprocess", GW_CAP_KIND_FWD},
-    {"think.lang_stats", "think", "lang_stats", GW_CAP_KIND_FWD},
-    /* 执行复核服务面（t2/t1-f 语义判断策略收拢到 think_d） */
-    {"think.review", "think", "review", GW_CAP_KIND_FWD},
+const gw_ns_pol_t *gw_ns_pol(const char *ns)
+{
+    char buf[32];
+    size_t n;
 
-    /* ── agent（编排特殊 + 转发） ───────────────────────────────── */
-    {"agent.run", "agent", "run", GW_CAP_KIND_AGENT_RUN},
-    {"agent.cancel", "agent", "cancel", GW_CAP_KIND_AGENT_RUN},
-    {"agent.spawn", "agent", "spawn", GW_CAP_KIND_FWD},
-    {"agent.terminate", "agent", "terminate", GW_CAP_KIND_FWD},
-    {"agent.invoke", "agent", "invoke", GW_CAP_KIND_FWD},
-    {"agent.list", "agent", "list", GW_CAP_KIND_FWD},
-    {"agent.count", "agent", "count", GW_CAP_KIND_FWD},
-    {"agent.health_check", "agent", "health_check", GW_CAP_KIND_FWD},
-    {"agent.get_stats", "agent", "get_stats", GW_CAP_KIND_FWD},
+    if (!ns)
+        return NULL;
+    n = strlen(ns);
+    if (n == 0 || n >= sizeof(buf))
+        return NULL;
+    AIRY_MEMCPY(buf, ns, n);
+    buf[n] = '\0';
+    if (buf[n - 1] == '.') {
+        buf[--n] = '\0';
+        if (n == 0)
+            return NULL;
+    }
+    for (size_t i = 0; i < GW_NS_POLICY_N; ++i) {
+        if (strcmp(buf, GW_NS_POLICY[i].ns) == 0)
+            return &GW_NS_POLICY[i];
+    }
+    return NULL;
+}
 
-    /* ── tool（审批特殊 + 转发） ────────────────────────────────── */
-    {"tool.pending", "tool", "pending", GW_CAP_KIND_TOOL_APPROVE},
-    {"tool.approve", "tool", "approve", GW_CAP_KIND_TOOL_APPROVE},
-    {"tool.register", "tool", "register", GW_CAP_KIND_FWD},
-    {"tool.list_tools", "tool", "list_tools", GW_CAP_KIND_FWD},
-    {"tool.get_tool", "tool", "get_tool", GW_CAP_KIND_FWD},
-    {"tool.execute_tool", "tool", "execute_tool", GW_CAP_KIND_FWD},
-    {"tool.execute", "tool", "execute", GW_CAP_KIND_FWD},
-    {"tool.list", "tool", "list", GW_CAP_KIND_FWD},
-    {"tool.health_check", "tool", "health_check", GW_CAP_KIND_FWD},
-    {"tool.get_stats", "tool", "get_stats", GW_CAP_KIND_FWD},
+int gw_ns_slot(const gw_ns_pol_t *pol)
+{
+    ptrdiff_t idx;
 
-    /* ── mem（特殊：AIRY_GATEWAY_MEM_PUBLIC 门控） ──────────────── */
-    {"mem.write", "mem", "write", GW_CAP_KIND_MEM},
-    {"mem.search", "mem", "search", GW_CAP_KIND_MEM},
-    {"mem.get", "mem", "get", GW_CAP_KIND_MEM},
-    {"mem.delete", "mem", "delete", GW_CAP_KIND_MEM},
-    {"mem.count", "mem", "count", GW_CAP_KIND_MEM},
-    {"mem.recent", "mem", "recent", GW_CAP_KIND_MEM},
-    {"mem.evolve", "mem", "evolve", GW_CAP_KIND_MEM},
-    {"mem.health_check", "mem", "health_check", GW_CAP_KIND_MEM},
-    {"mem.get_stats", "mem", "get_stats", GW_CAP_KIND_MEM},
-    {"mem.kb_ingest", "mem", "kb_ingest", GW_CAP_KIND_MEM},
-    {"mem.kb_search", "mem", "kb_search", GW_CAP_KIND_MEM},
-    {"mem.kb_delete", "mem", "kb_delete", GW_CAP_KIND_MEM},
-    {"mem.kb_list", "mem", "kb_list", GW_CAP_KIND_MEM},
-    {"mem.cache_put", "mem", "cache_put", GW_CAP_KIND_MEM},
-    {"mem.cache_get", "mem", "cache_get", GW_CAP_KIND_MEM},
-    {"mem.cache_del", "mem", "cache_del", GW_CAP_KIND_MEM},
-    {"mem.cache_stats", "mem", "cache_stats", GW_CAP_KIND_MEM},
-    {"mem.ledger_append", "mem", "ledger_append", GW_CAP_KIND_MEM},
-    {"mem.ledger_window", "mem", "ledger_window", GW_CAP_KIND_MEM},
-    {"mem.ledger_budget", "mem", "ledger_budget", GW_CAP_KIND_MEM},
-    {"mem.ledger_mark", "mem", "ledger_mark", GW_CAP_KIND_MEM},
-    {"mem.ledger_history", "mem", "ledger_history", GW_CAP_KIND_MEM},
-    {"mem.ledger_stats", "mem", "ledger_stats", GW_CAP_KIND_MEM},
-    {"mem.compress", "mem", "compress", GW_CAP_KIND_MEM},
+    if (!pol)
+        return -1;
+    idx = pol - GW_NS_POLICY;
+    if (idx < 0 || (size_t)idx >= GW_NS_POLICY_N)
+        return -1;
+    return (int)idx;
+}
 
-    /* ── a2a（Agent-to-Agent） ──────────────────────────────────── */
-    {"a2a.register_agent", "a2a", "register_agent", GW_CAP_KIND_FWD},
-    {"a2a.unregister_agent", "a2a", "unregister_agent", GW_CAP_KIND_FWD},
-    {"a2a.discover_agents", "a2a", "discover_agents", GW_CAP_KIND_FWD},
-    {"a2a.create_task", "a2a", "create_task", GW_CAP_KIND_FWD},
-    {"a2a.update_task", "a2a", "update_task", GW_CAP_KIND_FWD},
-    {"a2a.cancel_task", "a2a", "cancel_task", GW_CAP_KIND_FWD},
-    {"a2a.get_task", "a2a", "get_task", GW_CAP_KIND_FWD},
-    {"a2a.send_message", "a2a", "send_message", GW_CAP_KIND_FWD},
-    {"a2a.count", "a2a", "count", GW_CAP_KIND_FWD},
-    {"a2a.send", "a2a", "send", GW_CAP_KIND_FWD},
-    {"a2a.receive", "a2a", "receive", GW_CAP_KIND_FWD},
-    {"a2a.health_check", "a2a", "health_check", GW_CAP_KIND_FWD},
-    {"a2a.get_stats", "a2a", "get_stats", GW_CAP_KIND_FWD},
+int gw_l2_method(const char *method)
+{
+    if (!method)
+        return 0;
+    for (size_t i = 0; i < GW_L2_METHODS_N; ++i) {
+        if (strcmp(method, GW_L2_METHODS[i]) == 0)
+            return 1;
+    }
+    return 0;
+}
 
-    /* ── plugin（plugin_d → tool_d 整编，旧 plugin.* 保留
-     *    转发：目标 daemon=tool，方法=plugin_* 前缀，tool_d 登记） ── */
-    {"plugin.load", "tool", "plugin_load", GW_CAP_KIND_FWD},
-    {"plugin.unload", "tool", "plugin_unload", GW_CAP_KIND_FWD},
-    {"plugin.start", "tool", "plugin_start", GW_CAP_KIND_FWD},
-    {"plugin.stop", "tool", "plugin_stop", GW_CAP_KIND_FWD},
-    {"plugin.execute", "tool", "plugin_execute", GW_CAP_KIND_FWD},
-    {"plugin.get_metadata", "tool", "plugin_get_metadata", GW_CAP_KIND_FWD},
-    {"plugin.get_state", "tool", "plugin_get_state", GW_CAP_KIND_FWD},
-    {"plugin.get_stats", "tool", "plugin_get_stats", GW_CAP_KIND_FWD},
-    {"plugin.list", "tool", "plugin_list", GW_CAP_KIND_FWD},
-    {"plugin.install", "tool", "plugin_install", GW_CAP_KIND_FWD},
-    {"plugin.uninstall", "tool", "plugin_uninstall", GW_CAP_KIND_FWD},
-    {"plugin.health_check", "tool", "plugin_health_check", GW_CAP_KIND_FWD},
+const gw_cap_t *gw_cap_find(const char *cap_key)
+{
+    if (!cap_key)
+        return NULL;
+    for (size_t i = 0; i < GW_CAP_REGISTRY_N; ++i) {
+        if (strcmp(GW_CAP_REGISTRY[i].cap_key, cap_key) == 0)
+            return &GW_CAP_REGISTRY[i];
+    }
+    return NULL;
+}
 
-    /* ── info（info_d → monit_d 整编，旧 info.* 保留转发：
-     *    目标 daemon=monit、方法=info_* 前缀；L2 标准方法透传 monit 宿主） ── */
-    {"info.system", "monit", "info_system", GW_CAP_KIND_FWD},
-    {"info.history", "monit", "info_history", GW_CAP_KIND_FWD},
-    {"info.health", "monit", "info_health", GW_CAP_KIND_FWD},
-    {"info.hardware", "monit", "info_hardware", GW_CAP_KIND_FWD},
-    {"info.health_check", "monit", "health_check", GW_CAP_KIND_FWD},
-    {"info.get_stats", "monit", "get_stats", GW_CAP_KIND_FWD},
+int gw_cap_ns_timeout(const char *ns)
+{
+    const gw_ns_pol_t *pol = gw_ns_pol(ns);
 
-    /* ── notify ─────────────────────────────────────────────────── */
-    {"notify.publish", "notify", "publish", GW_CAP_KIND_FWD},
-    {"notify.subscribe", "notify", "subscribe", GW_CAP_KIND_FWD},
-    {"notify.unsubscribe", "notify", "unsubscribe", GW_CAP_KIND_FWD},
-    {"notify.list", "notify", "list", GW_CAP_KIND_FWD},
-    {"notify.health", "notify", "health", GW_CAP_KIND_FWD},
-    {"notify.health_check", "notify", "health_check", GW_CAP_KIND_FWD},
-    {"notify.get_stats", "notify", "get_stats", GW_CAP_KIND_FWD},
+    return pol ? (int)pol->timeout_ms : GW_TOOL_TIMEOUT_MS;
+}
 
-    /* ── observe（observe_d → monit_d 整编，双 Prometheus
-     *    /metrics 收敛；旧 observe.* 保留转发：方法=observe_* 前缀） ── */
-    {"observe.record_metric", "monit", "observe_record_metric", GW_CAP_KIND_FWD},
-    {"observe.query_metrics", "monit", "observe_query_metrics", GW_CAP_KIND_FWD},
-    {"observe.get_metrics", "monit", "observe_get_metrics", GW_CAP_KIND_FWD},
-    {"observe.get_stats", "monit", "get_stats", GW_CAP_KIND_FWD},
-    {"observe.health_check", "monit", "health_check", GW_CAP_KIND_FWD},
+int gw_cap_version(const char *cap_key)
+{
+    const gw_cap_t *cap = gw_cap_find(cap_key);
 
-    /* ── market ─────────────────────────────────────────────────── */
-    {"market.register_agent", "market", "register_agent", GW_CAP_KIND_FWD},
-    {"market.search_agents", "market", "search_agents", GW_CAP_KIND_FWD},
-    {"market.install_agent", "market", "install_agent", GW_CAP_KIND_FWD},
-    {"market.register_skill", "market", "register_skill", GW_CAP_KIND_FWD},
-    {"market.search_skills", "market", "search_skills", GW_CAP_KIND_FWD},
-    {"market.health_check", "market", "health_check", GW_CAP_KIND_FWD},
-    {"market.publish", "market", "publish", GW_CAP_KIND_FWD},
-    {"market.search", "market", "search", GW_CAP_KIND_FWD},
-    {"market.install", "market", "install", GW_CAP_KIND_FWD},
-    {"market.get_stats", "market", "get_stats", GW_CAP_KIND_FWD},
+    return cap ? cap->version : -1;
+}
 
-    /* ── hook ───────────────────────────────────────────────────── */
-    {"hook.register", "hook", "register", GW_CAP_KIND_FWD},
-    {"hook.unregister", "hook", "unregister", GW_CAP_KIND_FWD},
-    {"hook.trigger", "hook", "trigger", GW_CAP_KIND_FWD},
-    {"hook.list", "hook", "list", GW_CAP_KIND_FWD},
-    {"hook.status", "hook", "status", GW_CAP_KIND_FWD},
-    {"hook.stats", "hook", "stats", GW_CAP_KIND_FWD},
-    {"hook.health", "hook", "health", GW_CAP_KIND_FWD},
-    {"hook.ping", "hook", "ping", GW_CAP_KIND_FWD},
-    {"hook.health_check", "hook", "health_check", GW_CAP_KIND_FWD},
-    {"hook.get_stats", "hook", "get_stats", GW_CAP_KIND_FWD},
+int gw_cap_check_version(const char *cap_key, int req_version)
+{
+    const gw_cap_t *cap = gw_cap_find(cap_key);
 
-    /* ── sched ──────────────────────────────────────────────────── */
-    {"sched.register_agent", "sched", "register_agent", GW_CAP_KIND_FWD},
-    {"sched.unregister_agent", "sched", "unregister_agent", GW_CAP_KIND_FWD},
-    {"sched.schedule_task", "sched", "schedule_task", GW_CAP_KIND_FWD},
-    {"sched.get_task", "sched", "get_task", GW_CAP_KIND_FWD},
-    {"sched.cancel", "sched", "cancel", GW_CAP_KIND_FWD},
-    {"sched.dag_submit", "sched", "dag_submit", GW_CAP_KIND_FWD},
-    {"sched.dag_status", "sched", "dag_status", GW_CAP_KIND_FWD},
-    /* DAG 轻量看板列表：CLI /status 与
-     * TUI board 面板经此访问 sched_d 唯一实例，不再进程内嵌执行引擎 */
-    {"sched.dag_list", "sched", "dag_list", GW_CAP_KIND_FWD},
-    {"sched.dag_cancel", "sched", "dag_cancel", GW_CAP_KIND_FWD},
-    {"sched.checkpoint_save", "sched", "checkpoint_save", GW_CAP_KIND_FWD},
-    {"sched.submit", "sched", "submit", GW_CAP_KIND_FWD},
-    {"sched.query", "sched", "query", GW_CAP_KIND_FWD},
-    {"sched.get_stats", "sched", "get_stats", GW_CAP_KIND_FWD},
-    {"sched.health_check", "sched", "health_check", GW_CAP_KIND_FWD},
-    /* 蓝图三级路由与吸收回灌，
-     * CLI 不再本地持有 roadmap，经本组方法访问 sched_d 唯一实例 */
-    {"sched.plan", "sched", "plan", GW_CAP_KIND_FWD},
-    {"sched.absorb", "sched", "absorb", GW_CAP_KIND_FWD},
-    {"sched.roadmap_status", "sched", "roadmap_status", GW_CAP_KIND_FWD},
+    if (!cap)
+        return -1;
+    if (req_version <= 0)
+        return 0; /* 调用方未声明版本：仅存在性校验 */
+    return (req_version == cap->version) ? 0 : 1;
+}
 
-    /* ── monit ──────────────────────────────────────────────────── */
-    {"monit.record_metric", "monit", "record_metric", GW_CAP_KIND_FWD},
-    {"monit.get_metrics", "monit", "get_metrics", GW_CAP_KIND_FWD},
-    {"monit.trigger_alert", "monit", "trigger_alert", GW_CAP_KIND_FWD},
-    {"monit.get_alerts", "monit", "get_alerts", GW_CAP_KIND_FWD},
-    {"monit.health_check", "monit", "health_check", GW_CAP_KIND_FWD},
-    {"monit.generate_report", "monit", "generate_report", GW_CAP_KIND_FWD},
-    {"monit.heartbeat", "monit", "heartbeat", GW_CAP_KIND_FWD},
-    {"monit.metrics", "monit", "metrics", GW_CAP_KIND_FWD},
-    {"monit.alert_raise", "monit", "alert_raise", GW_CAP_KIND_FWD},
-    {"monit.alert_resolve", "monit", "alert_resolve", GW_CAP_KIND_FWD},
-    {"monit.get_stats", "monit", "get_stats", GW_CAP_KIND_FWD},
+const char *gw_cap_perm_for(const char *cap_key)
+{
+    const gw_cap_t *cap = gw_cap_find(cap_key);
 
-    /* ── channel ────────────────────────────────────────────────── */
-    {"channel.ping", "channel", "ping", GW_CAP_KIND_FWD},
-    {"channel.list", "channel", "list", GW_CAP_KIND_FWD},
-    {"channel.open", "channel", "open", GW_CAP_KIND_FWD},
-    {"channel.close", "channel", "close", GW_CAP_KIND_FWD},
-    {"channel.send", "channel", "send", GW_CAP_KIND_FWD},
-    {"channel.health", "channel", "health", GW_CAP_KIND_FWD},
-    {"channel.health_check", "channel", "health_check", GW_CAP_KIND_FWD},
-    {"channel.get_stats", "channel", "get_stats", GW_CAP_KIND_FWD},
-
-    /* ── cupolas ────────────────────────────────────────────────── */
-    {"cupolas.check_permission", "cupolas", "check_permission", GW_CAP_KIND_FWD},
-    {"cupolas.sanitize", "cupolas", "sanitize", GW_CAP_KIND_FWD},
-    {"cupolas.execute_command", "cupolas", "execute_command", GW_CAP_KIND_FWD},
-    {"cupolas.add_rule", "cupolas", "add_rule", GW_CAP_KIND_FWD},
-    {"cupolas.audit_flush", "cupolas", "audit_flush", GW_CAP_KIND_FWD},
-    {"cupolas.health_check", "cupolas", "health_check", GW_CAP_KIND_FWD},
-    {"cupolas.get_stats", "cupolas", "get_stats", GW_CAP_KIND_FWD},
-    {"cupolas.vault_store", "cupolas", "vault_store", GW_CAP_KIND_FWD},
-    {"cupolas.vault_retrieve", "cupolas", "vault_retrieve", GW_CAP_KIND_FWD},
-    {"cupolas.vault_delete", "cupolas", "vault_delete", GW_CAP_KIND_FWD},
-    {"cupolas.vault_list", "cupolas", "vault_list", GW_CAP_KIND_FWD},
-    {"cupolas.vault_rotate", "cupolas", "vault_rotate", GW_CAP_KIND_FWD},
-    {"cupolas.net_add_rule", "cupolas", "net_add_rule", GW_CAP_KIND_FWD},
-    {"cupolas.net_check_access", "cupolas", "net_check_access", GW_CAP_KIND_FWD},
-    {"cupolas.net_get_stats", "cupolas", "net_get_stats", GW_CAP_KIND_FWD},
-    {"cupolas.entitlements_load", "cupolas", "entitlements_load", GW_CAP_KIND_FWD},
-    {"cupolas.entitlements_check", "cupolas", "entitlements_check", GW_CAP_KIND_FWD},
-
-    /* ── policy（PDP 策略演化统一 RPC 面——cupolas_d 唯一
-     *    策略持有者；cap_key 用外部 namespace "policy"，转发目标为
-     *    cupolas（GW_NS_OWNER policy→cupolas），wire 方法为 daemon 侧
-     *    policy_* 裸名，与 cupolas_d 注册一致） ──────────────────── */
-    {"policy.load", "cupolas", "policy_load", GW_CAP_KIND_FWD},
-    {"policy.activate", "cupolas", "policy_activate", GW_CAP_KIND_FWD},
-    {"policy.rollback", "cupolas", "policy_rollback", GW_CAP_KIND_FWD},
-    {"policy.status", "cupolas", "policy_status", GW_CAP_KIND_FWD},
-
-    /* ── maths（maths_d 路由：GW_NS_OWNER 已登记归属，
-     *    此前无 cap 注册 → 经 gateway 完全不可达（fail-closed -32601）；
-     *    先补 /daemons 探测面，业务方法按需后续登记） ───────────── */
-    {"maths.health_check", "maths", "health_check", GW_CAP_KIND_FWD},
-
-    /* ── hall（网关内实现） ─────────────────────────────────────── */
-    {"hall.board", "hall", "board", GW_CAP_KIND_HALL},
-    {"hall.tasks", "hall", "tasks", GW_CAP_KIND_HALL},
-    {"hall.replay", "hall", "replay", GW_CAP_KIND_HALL},
-    {"hall.stream", "hall", "stream", GW_CAP_KIND_HALL},
-};
-
-#define GW_CAP_COUNT (sizeof(GW_CAP_REGISTRY) / sizeof(GW_CAP_REGISTRY[0]))
-
-/* namespace 独占归属表（15 daemon 边界契约表登记）：
- * 每个对外命名空间（cap_key 首段）唯一归属一个 daemon（owner 为 daemon
- * 短名，与 GW_CAP_REGISTRY 的 ns 字段同格式）；"gateway" = 网关内实现域
- * （无独立进程）。登记即断言：新 namespace 必须先声明归属，FWD 转发
- * 目标必须与归属一致——启动期 gw_cap_ns_validate() fail-closed 校验。 */
-static const struct {
-    const char *ns;    /* 外部命名空间前缀 */
-    const char *owner; /* 独占 daemon（gateway = 网关内实现域） */
-} GW_NS_OWNER[] = {
-    {"agent", "agent"},
-    {"llm", "llm"},
-    {"tool", "tool"},
-    {"plugin", "tool"},   /* 整编：插件域归 tool_d 独占 */
-    {"sched", "sched"},
-    {"roadmap", "sched"}, /* 蓝图路由收拢 sched_d（预留 namespace） */
-    {"think", "think"},
-    {"mem", "mem"},
-    {"market", "market"},
-    {"monit", "monit"},
-    {"observe", "monit"}, /* 整编 */
-    {"info", "monit"},    /* 整编 */
-    {"notify", "notify"},
-    {"channel", "channel"},
-    {"a2a", "a2a"},
-    {"cupolas", "cupolas"},
-    {"policy", "cupolas"}, /* M2-S3：PDP 策略演化域——policy.* 已登记转发 cupolas_d */
-    {"maths", "maths"},
-    {"hook", "hook"},
-    {"hall", "gateway"}, /* 网关内实现域（任务看板/事件流/决策链） */
-};
+    return cap ? cap->perm : NULL; /* 未声明权限 = 默认放行 */
+}
 
 /* namespace 独占性门禁（边界契约执行机制）：
  *   - 每个注册 cap_key 的命名空间前缀必须已登记归属（未登记 = 新
  *     namespace 未声明独占，fail-closed）
  *   - FWD 转发目标必须与归属 daemon 一致（namespace 归 A 独占却转发
  *     到 B，即边界漂移，fail-closed）
- * 特殊处理项（kind != FWD）为网关内路径，其 ns 字段仅作处理域标识，
- * 不参与转发目标一致性检查（hall 归网关内实现域）。
+ * 生成期已完成同一校验；启动期保留本断言作纵深防御。
  * @return 0=通过；非 0=冲突（gateway 启动期据此拒启） */
 int gw_cap_ns_validate(void)
 {
     size_t i;
-    for (i = 0; i < GW_CAP_COUNT; ++i) {
+
+    for (i = 0; i < GW_CAP_REGISTRY_N; ++i) {
         const gw_cap_t *cap = &GW_CAP_REGISTRY[i];
         const char *dot = strchr(cap->cap_key, '.');
         size_t prefix_len;
@@ -342,10 +144,10 @@ int gw_cap_ns_validate(void)
             return -1;
         }
         prefix_len = (size_t)(dot - cap->cap_key);
-        for (j = 0; j < sizeof(GW_NS_OWNER) / sizeof(GW_NS_OWNER[0]); ++j) {
-            if (strlen(GW_NS_OWNER[j].ns) == prefix_len &&
-                strncmp(GW_NS_OWNER[j].ns, cap->cap_key, prefix_len) == 0) {
-                owner = GW_NS_OWNER[j].owner;
+        for (j = 0; j < GW_NS_POLICY_N; ++j) {
+            if (strlen(GW_NS_POLICY[j].ns) == prefix_len &&
+                strncmp(GW_NS_POLICY[j].ns, cap->cap_key, prefix_len) == 0) {
+                owner = GW_NS_POLICY[j].owner;
                 break;
             }
         }
@@ -364,120 +166,6 @@ int gw_cap_ns_validate(void)
         }
     }
     return 0;
-}
-
-/* 能力契约版本（0.1.6 P1-4 SSoT 契约版本校验维度）。
- * 仅登记需版本约束的能力；未登记能力视为默认契约版本 1。
- * 契约版本变更 = 语义破坏性变更（参数/返回结构不兼容），须显式递增，
- * 并同步通知客户端更新声明版本。 */
-#define GW_CAP_VERSION_DEFAULT 1
-static const struct {
-    const char *cap_key;
-    int version;
-} GW_CAP_CONTRACT_VERSION[] = {
-    {"llm.complete", 1},
-    {"llm.list_models", 1},
-    {"think.process", 1},
-    {"agent.run", 1},
-    {"agent.cancel", 1},
-    {"tool.execute", 1},
-    {"tool.pending", 1},
-    {"tool.approve", 1},
-    {"mem.write", 1},
-    {"mem.search", 1},
-    {"plugin.execute", 1},
-};
-
-/* 高敏能力所需权限（SSoT 权限校验维度）。
- * 仅此表列出的能力在分发时做 ACL 授权检查（fail-closed：未注册规则拒绝，
- * 管理员在 permission_rules.yaml / daemon_security_add_acl_rule 显式授权）。
- * 日常核心链路能力（llm/think/mem 读等）不在表中 → 默认放行，
- * 保持现有调用行为不变。
- * agent.run 收入权限模型（默认拒绝）——外部主体经
- * 网关驱动的最高敏执行入口，独立权限 cap:agent.run；agent.cancel 归
- * 既有 cap:agent.control。本地模板 permission_rules.yaml v1.2.0 对
- * external 主体显式授权，保持单机开箱即用；生产环境默认拒绝。 */
-static const struct {
-    const char *cap_key;
-    const char *perm;
-} GW_CAP_EXTRA_PERM[] = {
-    {"agent.run", "cap:agent.run"},
-    {"agent.spawn", "cap:agent.control"},
-    {"agent.terminate", "cap:agent.control"},
-    {"agent.invoke", "cap:agent.control"},
-    {"agent.cancel", "cap:agent.control"},
-    {"plugin.load", "cap:plugin.admin"},
-    {"plugin.unload", "cap:plugin.admin"},
-    {"plugin.install", "cap:plugin.admin"},
-    {"plugin.uninstall", "cap:plugin.admin"},
-    {"mem.delete", "cap:mem.admin"},
-    {"mem.kb_delete", "cap:mem.admin"},
-    {"sched.cancel", "cap:sched.admin"},
-    {"sched.dag_cancel", "cap:sched.admin"},
-    {"sched.checkpoint_save", "cap:sched.admin"},
-    {"cupolas.add_rule", "cap:cupolas.admin"},
-    {"cupolas.audit_flush", "cap:cupolas.admin"},
-    {"cupolas.vault_store", "cap:cupolas.admin"},
-    {"cupolas.vault_delete", "cap:cupolas.admin"},
-    {"cupolas.vault_rotate", "cap:cupolas.admin"},
-    {"cupolas.net_add_rule", "cap:cupolas.admin"},
-    /* M2-S3：策略演化写操作同为管理员级（读方法 policy.status 不设限） */
-    {"policy.load", "cap:cupolas.admin"},
-    {"policy.activate", "cap:cupolas.admin"},
-    {"policy.rollback", "cap:cupolas.admin"},
-};
-
-const gw_cap_t *gw_cap_find(const char *cap_key)
-{
-    if (!cap_key)
-        return NULL;
-    for (size_t i = 0; i < GW_CAP_COUNT; ++i) {
-        if (strcmp(GW_CAP_REGISTRY[i].cap_key, cap_key) == 0)
-            return &GW_CAP_REGISTRY[i];
-    }
-    return NULL;
-}
-
-int gw_cap_ns_timeout(const char *ns)
-{
-    if (!ns)
-        return GW_TOOL_TIMEOUT_MS;
-    for (size_t i = 0; i < sizeof(GW_NS_TIMEOUT) / sizeof(GW_NS_TIMEOUT[0]); ++i) {
-        if (strcmp(GW_NS_TIMEOUT[i].ns, ns) == 0)
-            return GW_NS_TIMEOUT[i].timeout_ms;
-    }
-    return GW_TOOL_TIMEOUT_MS;
-}
-
-int gw_cap_version(const char *cap_key)
-{
-    if (!cap_key || !gw_cap_find(cap_key))
-        return -1;
-    for (size_t i = 0; i < sizeof(GW_CAP_CONTRACT_VERSION) / sizeof(GW_CAP_CONTRACT_VERSION[0]); ++i) {
-        if (strcmp(GW_CAP_CONTRACT_VERSION[i].cap_key, cap_key) == 0)
-            return GW_CAP_CONTRACT_VERSION[i].version;
-    }
-    return GW_CAP_VERSION_DEFAULT;
-}
-
-int gw_cap_check_version(const char *cap_key, int req_version)
-{
-    if (!cap_key || !gw_cap_find(cap_key))
-        return -1;
-    if (req_version <= 0)
-        return 0; /* 调用方未声明版本：仅存在性校验（由 gw_cap_find 保证） */
-    return (req_version == gw_cap_version(cap_key)) ? 0 : 1;
-}
-
-const char *gw_cap_perm_for(const char *cap_key)
-{
-    if (!cap_key || !gw_cap_find(cap_key))
-        return NULL;
-    for (size_t i = 0; i < sizeof(GW_CAP_EXTRA_PERM) / sizeof(GW_CAP_EXTRA_PERM[0]); ++i) {
-        if (strcmp(GW_CAP_EXTRA_PERM[i].cap_key, cap_key) == 0)
-            return GW_CAP_EXTRA_PERM[i].perm;
-    }
-    return NULL; /* 未声明权限 = 默认放行 */
 }
 
 void gw_cap_emit(const char *cap_key, const char *status, const char *detail)
