@@ -29,7 +29,6 @@
 
 struct gateway_protocol_handler_s {
     gateway_protocol_config_t config;
-    void *router;
 
     uint64_t total_requests;
     uint64_t jsonrpc_requests;
@@ -223,13 +222,17 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     char *response_str = NULL;
     int custom_result = 0;
 
-    if (custom_handler) {
-        custom_result = custom_handler(jsonrpc_request_str, &response_str, handler_data);
-    } else {
-        response_str =
-            AIRY_STRDUP("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"accepted\",\"message\":"
-                        "\"Request queued for processing\"},\"id\":null}");
+    if (!custom_handler) {
+        AIRY_FREE(method);
+        AIRY_FREE(jsonrpc_request_str);
+        handler->conversion_errors++;
+        rpc_result_t no_handler =
+            create_error_result(-32603, "No request handler registered", id_str ? id_str : "null");
+        AIRY_FREE(id_str);
+        return no_handler;
     }
+
+    custom_result = custom_handler(jsonrpc_request_str, &response_str, handler_data);
 
     AIRY_FREE(method);
     AIRY_FREE(id_str);
