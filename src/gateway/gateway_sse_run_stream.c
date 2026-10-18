@@ -18,7 +18,7 @@
 #include "http_gateway_sse_internal.h"
 
 /* southbound A-IPC unified client face */
-#include "biz/gateway_aipc_client.h"
+#include "gateway_aipc_client.h"
 
 #include "airy_memory.h"
 #include "airy_run_stream.h"

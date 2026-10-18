@@ -35,7 +35,7 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_hall_watch.c
     ${GATEWAY_SRC_BASE}/src/gateway/gateway_sse_run_stream.c
     # 南向 A-IPC 统一客户端面（AF_UNIX 唯一合法落点，门禁 N2）
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_aipc_client.c
+    ${GATEWAY_SRC_BASE}/src/gateway/gateway_aipc_client.c
     # http2 家族：无条件编译（缺库为空 TU，实现由 AIRY_HAS_HTTP2 守卫）
     ${GATEWAY_SRC_BASE}/src/gateway/http2_gateway.c
     ${GATEWAY_SRC_BASE}/src/gateway/http2_gateway_event.c
@@ -66,28 +66,3 @@ set(GATEWAY_COMMON_SOURCES
     ${GATEWAY_SRC_BASE}/src/utils/gateway_protocol_convert.c
 )
 
-# ============================================================================
-# GATEWAY_BIZ_SOURCES - gateway 业务处理器源码清单
-#
-# 背景：biz 处理器源码原散布在 daemons/gateway_d/src/（gateway_biz_*.c 9 文件），
-# 与 gateway/src/gateway/ 的 SSE 翻译分属两个源码域。归一将 biz
-# 物理并入 gateway 库目录（src/biz/），本清单为唯一权威源。
-#
-# 消费方：仅 daemons/gateway_d 的 airy_gateway_service 目标（依赖 daemon 公共层：
-# svc_common/daemon_security 等，不属于纯 gateway 库）。新增/删除 biz 源文件
-# 只允许改本清单，禁止在 gateway_d/CMakeLists.txt 各维护一份。
-# ============================================================================
-set(GATEWAY_BIZ_SOURCES
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_agent.c
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_backend.c
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_forward.c
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_hall.c
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_svcdispatch.c
-    # V13.2 按需激活单向通知（supervisor.activate fire-and-forget）
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_supactivate.c
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_biz_tools.c
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_business_handler.c
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_cap_registry.c
-    # PEP：裁定缓存（epoch 失效键），gateway 热路径
-    ${GATEWAY_SRC_BASE}/src/biz/gateway_pep_cache.c
-)

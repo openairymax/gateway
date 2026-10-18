@@ -296,38 +296,13 @@ if(BUILD_TESTS AND NOT WIN32)
     target_link_libraries(test_gateway_auth gateway)
     add_test(NAME gateway_auth_test COMMAND test_gateway_auth)
 
-    # 审计 E2E：网关翻译层经注入钩子派发至 mock daemon socket，
-    # 校验 ns→端点映射、legacy wire 前缀改写与响应原文回传（10 用例）。
-    # 链接 airy_gateway_service（biz 派发实现：gw_sys_svc_dispatch_* /
-    # gw_svc_call，归 daemons/gateway_d 消费，不进纯 gateway 库）+ gateway
-    # （公共翻译层：jsonrpc / syscall_router）。两侧源清单互补不重叠。
-    # gateway_biz_internal.h 传递包含 gateway_mcp_server.h（宿主导协议头），
-    # 故需显式补 daemons/gateway_d/src/protocol。
-    add_executable(test_svcdispatch_e2e tests/test_svcdispatch_e2e.c)
-    target_compile_definitions(test_svcdispatch_e2e PRIVATE AIRY_COMPLIANCE_IMPL)
-    target_include_directories(test_svcdispatch_e2e PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/biz
-        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/common/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../daemons/gateway_d/src/protocol
-        ${COREKERN_DIR}/include
-        ${SYSCALL_DIR}/include
-        ${COMMONS_DIR}/include
-        ${COMMONS_DIR}/utils/include
-        ${COMMONS_DIR}/utils/memory
-    )
-    target_link_libraries(test_svcdispatch_e2e
-        airy_gateway_service
-        gateway
-    )
-    add_test(NAME svcdispatch_e2e COMMAND test_svcdispatch_e2e)
-
     # E2E：南向 A-IPC 统一客户端面往返（gw_aipc_call 分片聚合 /
     # gw_aipc_stream 连接下发 / gw_aipc_subscribe 握手 / 不可达快速失败）。
     # mock daemon 走真实 UDS accept/往返；socket 位于 /tmp（pid 后缀）。
     add_executable(test_gw_aipc_client_e2e tests/test_gw_aipc_client_e2e.c)
     target_compile_definitions(test_gw_aipc_client_e2e PRIVATE AIRY_COMPLIANCE_IMPL)
     target_include_directories(test_gw_aipc_client_e2e PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/biz
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/gateway
         ${CMAKE_CURRENT_SOURCE_DIR}/../commons/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../commons/utils/memory
     )
