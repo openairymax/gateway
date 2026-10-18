@@ -40,13 +40,14 @@
 
 ## 构成
 
-库目标 `gateway` 由三个源码区构建：
+库目标 `gateway` 由两个源码区构建：
 
 | 区域 | 路径 | 职责 |
 |------|------|------|
-| 传输层 | `src/gateway/` | HTTP、HTTP/2、WebSocket、SSE、Stdio 服务器；入口鉴权；协议桥接；hall 事件读写 |
-| 业务委派 | `src/biz/` | 统一协议入口，`agent.run`/`tools/call`/embeddings/调度转发，能力注册表，PEP 缓存 |
+| 传输层 | `src/gateway/` | HTTP、HTTP/2、WebSocket、SSE、Stdio 服务器；入口鉴权；协议桥接；hall 事件读写；南向 A-IPC 客户端面 |
 | 共享工具 | `src/utils/` | JSON-RPC 2.0 工具、syscall 路由、RPC 处理器、协议检测/转换、限流器 |
+
+业务委派（统一协议入口，`agent.run`/`tools/call`/embeddings/调度转发，能力注册表，PEP 缓存）为产品件，位于 `products/gateway_biz/`，由网关守护进程宿主装配，不属于 gateway 机制核。
 
 同一份源文件清单通过 `cmake/gateway-sources.cmake` 与网关守护进程宿主共用。
 
@@ -69,13 +70,8 @@ gateway/
 │   │   ├── ws_gateway*.[ch]             # WebSocket 服务器（libwebsockets）
 │   │   ├── stdio_gateway.[ch]           # Stdio REPL 网关
 │   │   ├── gateway_auth.[ch]            # 入口鉴权
-│   │   └── gateway_hall_store.[ch]      # hall 事件记录（写入侧）
-│   ├── biz/                             # 业务委派层
-│   │   ├── gateway_business_handler.[ch]# 统一协议入口 + 业务链
-│   │   ├── gateway_biz_*.c              # forward / svcdispatch / hall / backend / tools / agent
-│   │   ├── gateway_cap_registry.[ch]    # 能力注册表
-│   │   ├── gateway_pep_cache.[ch]       # PEP 缓存
-│   │   └── gateway_svc_adapter.c        # 服务适配器
+│   │   ├── gateway_hall_store.[ch]      # hall 事件记录（写入侧）
+│   │   └── gateway_aipc_client.[ch]     # 南向 A-IPC 统一客户端面
 │   └── utils/                           # 共享工具
 │       ├── jsonrpc.[ch]                 # JSON-RPC 2.0 验证 / 响应
 │       ├── syscall/                     # JSON-RPC 方法 → syscall 派发

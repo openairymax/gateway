@@ -40,13 +40,14 @@ The `gateway` library is intended to be embedded and launched by a host process 
 
 ## Composition
 
-The library target `gateway` is built from three source areas:
+The library target `gateway` is built from two source areas:
 
 | Area | Path | Responsibility |
 |------|------|----------------|
-| Transports | `src/gateway/` | HTTP, HTTP/2, WebSocket, SSE, Stdio servers; endpoint authentication; protocol bridge; hall event read/write |
-| Business delegation | `src/biz/` | Unified protocol entry, `agent.run`/`tools/call`/embeddings/scheduling forwarding, capability registry, PEP cache |
+| Transports | `src/gateway/` | HTTP, HTTP/2, WebSocket, SSE, Stdio servers; endpoint authentication; protocol bridge; hall event read/write; southbound A-IPC client face |
 | Shared utilities | `src/utils/` | JSON-RPC 2.0 helpers, syscall router, RPC handler, protocol detect/convert, rate limiter |
+
+Business delegation (unified protocol entry, `agent.run`/`tools/call`/embeddings/scheduling forwarding, capability registry, PEP cache) is a product piece at `products/gateway_biz/`, assembled by the gateway daemon host and not part of the gateway mechanism core.
 
 The same source list is shared with the gateway daemon host via `cmake/gateway-sources.cmake`.
 
@@ -69,13 +70,8 @@ gateway/
 │   │   ├── ws_gateway*.[ch]             # WebSocket server (libwebsockets)
 │   │   ├── stdio_gateway.[ch]           # Stdio REPL gateway
 │   │   ├── gateway_auth.[ch]            # Entry authentication
-│   │   └── gateway_hall_store.[ch]      # Hall event recording (write side)
-│   ├── biz/                             # Business-delegation layer
-│   │   ├── gateway_business_handler.[ch]# Unified protocol entry + business chain
-│   │   ├── gateway_biz_*.c              # forward / svcdispatch / hall / backend / tools / agent
-│   │   ├── gateway_cap_registry.[ch]    # Capability registry
-│   │   ├── gateway_pep_cache.[ch]       # PEP cache
-│   │   └── gateway_svc_adapter.c        # Service adapter
+│   │   ├── gateway_hall_store.[ch]      # Hall event recording (write side)
+│   │   └── gateway_aipc_client.[ch]     # Southbound A-IPC unified client face
 │   └── utils/                           # Shared utilities
 │       ├── jsonrpc.[ch]                 # JSON-RPC 2.0 validate / respond
 │       ├── syscall/                     # JSON-RPC method → syscall dispatch
