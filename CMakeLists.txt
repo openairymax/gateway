@@ -162,7 +162,7 @@ target_include_directories(gateway
         # 0.1.19 §131: 字符串→下标哈希索引 SSoT（hindex.h），
         # syscall_router 会话索引单源化消费
         ${COMMONS_DIR}/utils/ds
-        # core/router：gateway_protocol_handler.h 消费 protocol_router.h
+        # core/router：gateway_protocol_handler.c 消费 protocol_detect.h
         # （0.1.19 单元五十九：bridge 死件清退后 registry/adapter/transformers
         # 零消费不再挂载；core/adapter 目录已不存在）
         ${PROTOCOLS_DIR}/core/router/include
