@@ -96,7 +96,6 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
     }
 
     airy_protocol_type_t detected_type = protocol_type;
-    airy_protocol_type_t llm_type = proto_interface_parse_type("openai");
 
     /* AIRY_PROTOCOL_COUNT means "unknown, auto-detect" (as the HTTP layer does);
       * AIRY_PROTOCOL_A2A keeps the old re-check-when-content-mismatches semantics. */
@@ -110,8 +109,8 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                 detected_type = AIRY_PROTOCOL_JSON_RPC;
             else if (strcmp(handler->config.default_protocol, "mcp") == 0)
                 detected_type = AIRY_PROTOCOL_MCP;
-            else if (strcmp(handler->config.default_protocol, "openai") == 0)
-                detected_type = llm_type;
+            else if (strcmp(handler->config.default_protocol, "llm") == 0)
+                detected_type = AIRY_PROTOCOL_LLM;
             else if (strcmp(handler->config.default_protocol, "a2a") == 0)
                 detected_type = AIRY_PROTOCOL_A2A;
         }
@@ -123,7 +122,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
         handler->mcp_requests++;
     else if (detected_type == AIRY_PROTOCOL_A2A)
         handler->a2a_requests++;
-    else if (detected_type == llm_type)
+    else if (proto_is_llm(detected_type))
         handler->llm_requests++;
 
     char *method = NULL;
@@ -171,7 +170,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
             return create_error_result(-32605, "A2A protocol not enabled", "null");
         }
         converted_params = gw_a2a_to_rpc(request_data, request_size, &method, &id_str);
-    } else if (detected_type == llm_type) {
+    } else if (proto_is_llm(detected_type)) {
         if (!handler->config.enable_llm_protocol) {
             AIRY_FREE(method);
             AIRY_FREE(id_str);
@@ -258,7 +257,7 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
             CJSON_PARSE_GUARD(jsonrpc_resp, response_str, { break; });
             cJSON *result_data = cJSON_GetObjectItem(jsonrpc_resp, "result");
             if (result_data) {
-                if (detected_type == llm_type) {
+                if (proto_is_llm(detected_type)) {
                     cJSON *llm_resp = cJSON_CreateObject();
                     cJSON *choices = cJSON_CreateArray();
                     cJSON *choice = cJSON_CreateObject();
@@ -322,7 +321,7 @@ int gateway_protocol_handler_get_stats(gateway_protocol_handler_t handler, char 
     cJSON_AddNumberToObject(counts, "jsonrpc_requests", (double)handler->jsonrpc_requests);
     cJSON_AddNumberToObject(counts, "mcp_requests", (double)handler->mcp_requests);
     cJSON_AddNumberToObject(counts, "a2a_requests", (double)handler->a2a_requests);
-    cJSON_AddNumberToObject(counts, "openai_requests", (double)handler->llm_requests);
+    cJSON_AddNumberToObject(counts, "llm_requests", (double)handler->llm_requests);
     cJSON_AddNumberToObject(counts, "successful_responses", (double)handler->successful_responses);
     cJSON_AddNumberToObject(counts, "conversion_errors", (double)handler->conversion_errors);
     cJSON_AddItemToObject(stats, "request_counts", counts);
@@ -332,7 +331,7 @@ int gateway_protocol_handler_get_stats(gateway_protocol_handler_t handler, char 
 
     cJSON_AddBoolToObject(stats, "mcp_enabled", handler->config.enable_mcp_protocol);
     cJSON_AddBoolToObject(stats, "a2a_enabled", handler->config.enable_a2a_protocol);
-    cJSON_AddBoolToObject(stats, "openai_enabled", handler->config.enable_llm_protocol);
+    cJSON_AddBoolToObject(stats, "llm_enabled", handler->config.enable_llm_protocol);
     cJSON_AddBoolToObject(stats, "auto_detection", handler->config.enable_protocol_detection);
 
     *stats_json = cJSON_PrintUnformatted(stats);
@@ -378,7 +377,7 @@ int gateway_protocol_handler_load_config_from_json(gateway_protocol_config_t *co
     if (cJSON_IsBool(item))
         config->enable_a2a_protocol = cJSON_IsTrue(item);
 
-    item = cJSON_GetObjectItem(root, "enable_openai_protocol");
+    item = cJSON_GetObjectItem(root, "enable_llm_protocol");
     if (cJSON_IsBool(item))
         config->enable_llm_protocol = cJSON_IsTrue(item);
 

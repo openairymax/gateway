@@ -53,13 +53,13 @@ cJSON *gw_llm_to_rpc(const char *request_data, size_t request_size,
         /* P0: url_path is NULL when the request has no "url" field (or a non-string),
           * and strstr(NULL, ...) would crash; check NULL first and use the default path */
         if (!url_path) {
-            *out_method = AIRY_STRDUP("openai.unknown");
+            *out_method = AIRY_STRDUP("llm.unknown");
         } else if (strstr(url_path, "/chat/completions")) {
-            *out_method = AIRY_STRDUP("openai.chat.completions");
+            *out_method = AIRY_STRDUP("llm.chat.completions");
         } else if (strstr(url_path, "/completions")) {
-            *out_method = AIRY_STRDUP("openai.completions");
+            *out_method = AIRY_STRDUP("llm.completions");
         } else if (strstr(url_path, "/embeddings")) {
-            *out_method = AIRY_STRDUP("openai.embeddings");
+            *out_method = AIRY_STRDUP("llm.embeddings");
         } else {
             *out_method = AIRY_STRDUP(url_path);
         }
@@ -189,7 +189,6 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
     char *method = NULL;
     char *id_str = NULL;
     cJSON *params = NULL;
-    airy_protocol_type_t llm_type = proto_interface_parse_type("openai");
 
     if (protocol_type == AIRY_PROTOCOL_JSON_RPC) {
         *jsonrpc_out = AIRY_STRNDUP(request_data, request_size);
@@ -200,7 +199,7 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
         params = gw_mcp_to_rpc(request_data, request_size, &method, &id_str);
     } else if (protocol_type == AIRY_PROTOCOL_A2A) {
         params = gw_a2a_to_rpc(request_data, request_size, &method, &id_str);
-    } else if (protocol_type == llm_type) {
+    } else if (proto_is_llm(protocol_type)) {
         params = gw_llm_to_rpc(request_data, request_size, &method, &id_str);
     } else {
         airy_err_push_ex(AIRY_ERR_NULL_POINTER, __FILE__, __LINE__, __func__,
@@ -263,7 +262,7 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         return AIRY_ERR_NULL_POINTER;
     }
 
-    if (target_protocol == proto_interface_parse_type("openai")) {
+    if (proto_is_llm(target_protocol)) {
         cJSON *llm_resp = cJSON_CreateObject();
         cJSON *choices = cJSON_CreateArray();
         cJSON *choice = cJSON_CreateObject();
