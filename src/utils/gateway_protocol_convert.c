@@ -177,6 +177,84 @@ cJSON *gw_a2a_to_rpc(const char *request_data, size_t request_size,
     return params;
 }
 
+static cJSON *gw_llm_wrap(const cJSON *result)
+{
+    cJSON *resp = cJSON_CreateObject();
+    cJSON *choices = cJSON_CreateArray();
+    cJSON *choice = cJSON_CreateObject();
+
+    cJSON_AddItemToObject(choice, "message", CJSON_DEEP_COPY(result));
+    cJSON_AddItemToArray(choices, choice);
+    cJSON_AddItemToObject(resp, "choices", choices);
+
+    cJSON *model = cJSON_GetObjectItem((cJSON *)result, "model");
+    if (model)
+        cJSON_AddItemToObject(resp, "model", CJSON_DEEP_COPY(model));
+    else
+        cJSON_AddStringToObject(resp, "model", "default");
+    cJSON_AddStringToObject(resp, "object", "chat.completion");
+    return resp;
+}
+
+static cJSON *gw_mcp_wrap(const cJSON *result)
+{
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddItemToObject(resp, "content", CJSON_DEEP_COPY(result));
+    cJSON_AddBoolToObject(resp, "isError", 0);
+    return resp;
+}
+
+static cJSON *gw_a2a_wrap(const cJSON *result)
+{
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddItemToObject(resp, "response", CJSON_DEEP_COPY(result));
+    cJSON_AddStringToObject(resp, "status", "success");
+    return resp;
+}
+
+char *gw_proto_resp(airy_protocol_type_t type, const cJSON *result)
+{
+    if (!result)
+        return NULL;
+
+    cJSON *resp = NULL;
+    if (proto_is_llm(type))
+        resp = gw_llm_wrap(result);
+    else if (type == AIRY_PROTOCOL_MCP)
+        resp = gw_mcp_wrap(result);
+    else if (type == AIRY_PROTOCOL_A2A)
+        resp = gw_a2a_wrap(result);
+    else
+        return NULL;
+
+    char *text = cJSON_PrintUnformatted(resp);
+    cJSON_Delete(resp);
+    return text;
+}
+
+char *gw_req_text(const char *method, const char *id, cJSON *params)
+{
+    cJSON *req = cJSON_CreateObject();
+    if (!req) {
+        cJSON_Delete(params);
+        return NULL;
+    }
+
+    cJSON_AddStringToObject(req, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(req, "method", method);
+    cJSON_AddItemToObject(req, "params", params);
+
+    cJSON *pid = id ? cJSON_Parse(id) : NULL;
+    if (pid)
+        cJSON_AddItemToObject(req, "id", pid);
+    else
+        cJSON_AddNullToObject(req, "id");
+
+    char *text = cJSON_PrintUnformatted(req);
+    cJSON_Delete(req);
+    return text;
+}
+
 int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
                                         const char *request_data, size_t request_size,
                                         airy_protocol_type_t protocol_type, char **jsonrpc_out)
@@ -215,23 +293,7 @@ int gateway_protocol_convert_to_jsonrpc(gateway_protocol_handler_t handler,
         return AIRY_ERR_OUT_OF_MEMORY;
     }
 
-    cJSON *jsonrpc_req = cJSON_CreateObject();
-    cJSON_AddStringToObject(jsonrpc_req, "jsonrpc", "2.0");
-    cJSON_AddStringToObject(jsonrpc_req, "method", method ? method : "converted");
-    cJSON_AddItemToObject(jsonrpc_req, "params", params);
-    if (id_str) {
-        cJSON *parsed_id = cJSON_Parse(id_str);
-        if (parsed_id) {
-            cJSON_AddItemToObject(jsonrpc_req, "id", parsed_id);
-        } else {
-            cJSON_AddNullToObject(jsonrpc_req, "id");
-        }
-    } else {
-        cJSON_AddNullToObject(jsonrpc_req, "id");
-    }
-
-    *jsonrpc_out = cJSON_PrintUnformatted(jsonrpc_req);
-    cJSON_Delete(jsonrpc_req);
+    *jsonrpc_out = gw_req_text(method ? method : "converted", id_str, params);
     AIRY_FREE(method);
     AIRY_FREE(id_str);
 
@@ -262,40 +324,9 @@ int gateway_protocol_convert_from_jsonrpc(gateway_protocol_handler_t handler,
         return AIRY_ERR_NULL_POINTER;
     }
 
-    if (proto_is_llm(target_protocol)) {
-        cJSON *llm_resp = cJSON_CreateObject();
-        cJSON *choices = cJSON_CreateArray();
-        cJSON *choice = cJSON_CreateObject();
-
-        cJSON_AddItemToObject(choice, "message", CJSON_DEEP_COPY(result));
-        cJSON_AddItemToArray(choices, choice);
-        cJSON_AddItemToObject(llm_resp, "choices", choices);
-
-        cJSON *model = cJSON_GetObjectItem(result, "model");
-        if (model) {
-            cJSON_AddItemToObject(llm_resp, "model", CJSON_DEEP_COPY(model));
-        } else {
-            cJSON_AddStringToObject(llm_resp, "model", "default");
-        }
-        cJSON_AddStringToObject(llm_resp, "object", "chat.completion");
-
-        *target_response = cJSON_PrintUnformatted(llm_resp);
-        cJSON_Delete(llm_resp);
-    } else if (target_protocol == AIRY_PROTOCOL_MCP) {
-        cJSON *mcp = cJSON_CreateObject();
-
-        cJSON_AddItemToObject(mcp, "content", CJSON_DEEP_COPY(result));
-        cJSON_AddBoolToObject(mcp, "isError", 0);
-
-        *target_response = cJSON_PrintUnformatted(mcp);
-        cJSON_Delete(mcp);
-    } else if (target_protocol == AIRY_PROTOCOL_A2A) {
-        cJSON *a2a = cJSON_CreateObject();
-        cJSON_AddItemToObject(a2a, "response", CJSON_DEEP_COPY(result));
-        cJSON_AddStringToObject(a2a, "status", "success");
-
-        *target_response = cJSON_PrintUnformatted(a2a);
-        cJSON_Delete(a2a);
+    if (proto_is_llm(target_protocol) || target_protocol == AIRY_PROTOCOL_MCP ||
+        target_protocol == AIRY_PROTOCOL_A2A) {
+        *target_response = gw_proto_resp(target_protocol, result);
     } else {
         *target_response = AIRY_STRDUP(jsonrpc_response);
     }
