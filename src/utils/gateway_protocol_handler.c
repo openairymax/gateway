@@ -69,6 +69,135 @@ void gateway_protocol_handler_destroy(gateway_protocol_handler_t handler)
     AIRY_FREE(handler);
 }
 
+static rpc_result_t gw_fail(gateway_protocol_handler_t handler, int code, const char *msg,
+                            char **method, char **id)
+{
+    rpc_result_t result = create_error_result(code, msg, *id ? *id : "null");
+    AIRY_FREE(*method);
+    AIRY_FREE(*id);
+    *method = NULL;
+    *id = NULL;
+    handler->conversion_errors++;
+    return result;
+}
+
+static airy_protocol_type_t gw_named(const char *name)
+{
+    if (!name)
+        return AIRY_PROTOCOL_COUNT;
+    if (strcmp(name, "jsonrpc") == 0)
+        return AIRY_PROTOCOL_JSON_RPC;
+    if (strcmp(name, "mcp") == 0)
+        return AIRY_PROTOCOL_MCP;
+    if (strcmp(name, "llm") == 0)
+        return AIRY_PROTOCOL_LLM;
+    if (strcmp(name, "a2a") == 0)
+        return AIRY_PROTOCOL_A2A;
+    return AIRY_PROTOCOL_COUNT;
+}
+
+static airy_protocol_type_t gw_classify(gateway_protocol_handler_t handler,
+                                        const char *request_data, size_t request_size,
+                                        airy_protocol_type_t protocol_type)
+{
+    airy_protocol_type_t detected = protocol_type;
+
+    /* AIRY_PROTOCOL_COUNT means "unknown, auto-detect" (as the HTTP layer does);
+      * AIRY_PROTOCOL_A2A keeps the old re-check-when-content-mismatches semantics. */
+    if ((protocol_type == AIRY_PROTOCOL_COUNT || protocol_type == AIRY_PROTOCOL_A2A) &&
+        handler->config.enable_protocol_detection) {
+        detected = proto_detect_body(request_data, request_size);
+        if (detected == AIRY_PROTOCOL_COUNT)
+            detected = gw_named(handler->config.default_protocol);
+    }
+
+    if (detected == AIRY_PROTOCOL_JSON_RPC)
+        handler->jsonrpc_requests++;
+    else if (detected == AIRY_PROTOCOL_MCP)
+        handler->mcp_requests++;
+    else if (detected == AIRY_PROTOCOL_A2A)
+        handler->a2a_requests++;
+    else if (proto_is_llm(detected))
+        handler->llm_requests++;
+    return detected;
+}
+
+static int gw_rpc_parts(const char *request_data, size_t request_size, char **method, char **id,
+                        cJSON **params)
+{
+    cJSON *doc = cJSON_ParseWithLength(request_data, request_size);
+    if (!doc)
+        return -32700;
+
+    cJSON *method_item = cJSON_GetObjectItem(doc, "method");
+    *method = AIRY_STRDUP(cJSON_IsString(method_item) ? method_item->valuestring : "unknown");
+
+    cJSON *id_item = cJSON_GetObjectItem(doc, "id");
+    *id = id_item ? cJSON_PrintUnformatted(id_item) : AIRY_STRDUP("null");
+
+    char *params_str = cJSON_PrintUnformatted(cJSON_GetObjectItem(doc, "params"));
+    *params = cJSON_Parse(params_str);
+    AIRY_FREE(params_str);
+    cJSON_Delete(doc);
+    return 0;
+}
+
+static const char *gw_msg(int code)
+{
+    switch (code) {
+    case -32700:
+        return "Parse error: invalid JSON-RPC";
+    case -32604:
+        return "MCP protocol not enabled";
+    case -32605:
+        return "A2A protocol not enabled";
+    case -32606:
+        return "LLM protocol not enabled";
+    default:
+        return "Unknown protocol type";
+    }
+}
+
+static int gw_convert(gateway_protocol_handler_t handler, airy_protocol_type_t detected,
+                      const char *request_data, size_t request_size, char **method, char **id,
+                      cJSON **params)
+{
+    if (detected == AIRY_PROTOCOL_JSON_RPC)
+        return gw_rpc_parts(request_data, request_size, method, id, params);
+
+    if (detected == AIRY_PROTOCOL_MCP) {
+        if (!handler->config.enable_mcp_protocol)
+            return -32604;
+        *params = gw_mcp_to_rpc(request_data, request_size, method, id);
+    } else if (detected == AIRY_PROTOCOL_A2A) {
+        if (!handler->config.enable_a2a_protocol)
+            return -32605;
+        *params = gw_a2a_to_rpc(request_data, request_size, method, id);
+    } else if (proto_is_llm(detected)) {
+        if (!handler->config.enable_llm_protocol)
+            return -32606;
+        *params = gw_llm_to_rpc(request_data, request_size, method, id);
+    } else {
+        return -32601;
+    }
+    return 0;
+}
+
+static rpc_result_t gw_wrap(airy_protocol_type_t detected, char *response_str)
+{
+    cJSON *doc = cJSON_Parse(response_str);
+    if (!doc)
+        return (rpc_result_t){response_str, 0, NULL};
+
+    char *wrapped = gw_proto_resp(detected, cJSON_GetObjectItem(doc, "result"));
+    cJSON_Delete(doc);
+    if (!wrapped)
+        return (rpc_result_t){response_str, 0, NULL};
+
+    AIRY_FREE(response_str);
+    return (rpc_result_t){wrapped, 0, NULL};
+}
+
 rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                                              const char *request_data, size_t request_size,
                                              airy_protocol_type_t protocol_type,
@@ -95,134 +224,28 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
         return create_error_result(-32603, err_msg, "null");
     }
 
-    airy_protocol_type_t detected_type = protocol_type;
-
-    /* AIRY_PROTOCOL_COUNT means "unknown, auto-detect" (as the HTTP layer does);
-      * AIRY_PROTOCOL_A2A keeps the old re-check-when-content-mismatches semantics. */
-    if ((protocol_type == AIRY_PROTOCOL_COUNT || protocol_type == AIRY_PROTOCOL_A2A) &&
-        handler->config.enable_protocol_detection) {
-        detected_type = proto_detect_body(request_data, request_size);
-
-        if (detected_type == AIRY_PROTOCOL_COUNT && handler->config.default_protocol) {
-
-            if (strcmp(handler->config.default_protocol, "jsonrpc") == 0)
-                detected_type = AIRY_PROTOCOL_JSON_RPC;
-            else if (strcmp(handler->config.default_protocol, "mcp") == 0)
-                detected_type = AIRY_PROTOCOL_MCP;
-            else if (strcmp(handler->config.default_protocol, "llm") == 0)
-                detected_type = AIRY_PROTOCOL_LLM;
-            else if (strcmp(handler->config.default_protocol, "a2a") == 0)
-                detected_type = AIRY_PROTOCOL_A2A;
-        }
-    }
-
-    if (detected_type == AIRY_PROTOCOL_JSON_RPC)
-        handler->jsonrpc_requests++;
-    else if (detected_type == AIRY_PROTOCOL_MCP)
-        handler->mcp_requests++;
-    else if (detected_type == AIRY_PROTOCOL_A2A)
-        handler->a2a_requests++;
-    else if (proto_is_llm(detected_type))
-        handler->llm_requests++;
+    airy_protocol_type_t detected =
+        gw_classify(handler, request_data, request_size, protocol_type);
 
     char *method = NULL;
     char *id_str = NULL;
     cJSON *converted_params = NULL;
 
-    if (detected_type == AIRY_PROTOCOL_JSON_RPC) {
-        cJSON *json_rpc = cJSON_ParseWithLength(request_data, request_size);
-        if (!json_rpc) {
-            handler->conversion_errors++;
-            return create_error_result(-32700, "Parse error: invalid JSON-RPC", "null");
-        }
-
-        cJSON *method_item = cJSON_GetObjectItem(json_rpc, "method");
-        if (cJSON_IsString(method_item)) {
-            method = AIRY_STRDUP(method_item->valuestring);
-        } else {
-            method = AIRY_STRDUP("unknown");
-        }
-
-        cJSON *id_item = cJSON_GetObjectItem(json_rpc, "id");
-        if (id_item) {
-            id_str = cJSON_PrintUnformatted(id_item);
-        } else {
-            id_str = AIRY_STRDUP("null");
-        }
-
-        char *params_str = cJSON_PrintUnformatted(cJSON_GetObjectItem(json_rpc, "params"));
-        converted_params = cJSON_Parse(params_str);
-        AIRY_FREE(params_str);
-        cJSON_Delete(json_rpc);
-    } else if (detected_type == AIRY_PROTOCOL_MCP) {
-        if (!handler->config.enable_mcp_protocol) {
-            AIRY_FREE(method);
-            AIRY_FREE(id_str);
-            handler->conversion_errors++;
-            return create_error_result(-32604, "MCP protocol not enabled", "null");
-        }
-        converted_params = gw_mcp_to_rpc(request_data, request_size, &method, &id_str);
-    } else if (detected_type == AIRY_PROTOCOL_A2A) {
-        if (!handler->config.enable_a2a_protocol) {
-            AIRY_FREE(method);
-            AIRY_FREE(id_str);
-            handler->conversion_errors++;
-            return create_error_result(-32605, "A2A protocol not enabled", "null");
-        }
-        converted_params = gw_a2a_to_rpc(request_data, request_size, &method, &id_str);
-    } else if (proto_is_llm(detected_type)) {
-        if (!handler->config.enable_llm_protocol) {
-            AIRY_FREE(method);
-            AIRY_FREE(id_str);
-            handler->conversion_errors++;
-            return create_error_result(-32606, "LLM protocol not enabled", "null");
-        }
-        converted_params = gw_llm_to_rpc(request_data, request_size, &method, &id_str);
-    } else {
-        AIRY_FREE(method);
-        AIRY_FREE(id_str);
-        handler->conversion_errors++;
-        return create_error_result(-32601, "Unknown protocol type", "null");
-    }
+    int cerr = gw_convert(handler, detected, request_data, request_size, &method, &id_str,
+                          &converted_params);
+    if (cerr != 0)
+        return gw_fail(handler, cerr, gw_msg(cerr), &method, &id_str);
 
     if (!converted_params) {
-
         converted_params = cJSON_CreateObject();
-        if (!converted_params) {
-            rpc_result_t result =
-                create_error_result(-32700, "Protocol conversion failed", id_str ? id_str : "null");
-            AIRY_FREE(method);
-            AIRY_FREE(id_str);
-            handler->conversion_errors++;
-            return result;
-        }
+        if (!converted_params)
+            return gw_fail(handler, -32700, "Protocol conversion failed", &method, &id_str);
     }
 
-    char *jsonrpc_request_str = NULL;
-    {
-        cJSON *jsonrpc_req = cJSON_CreateObject();
-        cJSON_AddStringToObject(jsonrpc_req, "jsonrpc", "2.0");
-        cJSON_AddStringToObject(jsonrpc_req, "method", method ? method : "unknown");
-        cJSON_AddItemToObject(jsonrpc_req, "params", converted_params);
-        if (id_str) {
-            cJSON *id_parsed = cJSON_Parse(id_str);
-            if (id_parsed) {
-                cJSON_AddItemToObject(jsonrpc_req, "id", id_parsed);
-            } else {
-                cJSON_AddNullToObject(jsonrpc_req, "id");
-            }
-        } else {
-            cJSON_AddNullToObject(jsonrpc_req, "id");
-        }
-        jsonrpc_request_str = cJSON_PrintUnformatted(jsonrpc_req);
-        cJSON_Delete(jsonrpc_req);
-    }
-
-    char *response_str = NULL;
-    int custom_result = 0;
+    char *jsonrpc_request_str = gw_req_text(method ? method : "unknown", id_str, converted_params);
+    AIRY_FREE(method);
 
     if (!custom_handler) {
-        AIRY_FREE(method);
         AIRY_FREE(jsonrpc_request_str);
         handler->conversion_errors++;
         rpc_result_t no_handler =
@@ -231,9 +254,9 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
         return no_handler;
     }
 
-    custom_result = custom_handler(jsonrpc_request_str, &response_str, handler_data);
+    char *response_str = NULL;
+    int custom_result = custom_handler(jsonrpc_request_str, &response_str, handler_data);
 
-    AIRY_FREE(method);
     AIRY_FREE(id_str);
     AIRY_FREE(jsonrpc_request_str);
 
@@ -246,61 +269,10 @@ rpc_result_t gateway_protocol_handle_request(gateway_protocol_handler_t handler,
                                    "null");
     }
 
-    rpc_result_t final_result;
-    AIRY_MEMSET(&final_result, 0, sizeof(final_result));
-    final_result.error_code = 0;
-    final_result.response_json = response_str;
+    rpc_result_t final_result = {response_str, 0, NULL};
 
-    if (detected_type != AIRY_PROTOCOL_JSON_RPC) {
-
-        do {
-            CJSON_PARSE_GUARD(jsonrpc_resp, response_str, { break; });
-            cJSON *result_data = cJSON_GetObjectItem(jsonrpc_resp, "result");
-            if (result_data) {
-                if (proto_is_llm(detected_type)) {
-                    cJSON *llm_resp = cJSON_CreateObject();
-                    cJSON *choices = cJSON_CreateArray();
-                    cJSON *choice = cJSON_CreateObject();
-                    cJSON_AddItemToObject(choice, "message", CJSON_DEEP_COPY(result_data));
-                    cJSON_AddItemToArray(choices, choice);
-                    cJSON_AddItemToObject(llm_resp, "choices", choices);
-
-                    cJSON *model_used = cJSON_GetObjectItem(result_data, "model");
-                    if (model_used) {
-                        cJSON_AddItemToObject(llm_resp, "model", CJSON_DEEP_COPY(model_used));
-                    } else {
-                        cJSON_AddStringToObject(llm_resp, "model", "default");
-                    }
-
-                    cJSON_AddStringToObject(llm_resp, "object", "chat.completion");
-
-                    char *new_response = cJSON_PrintUnformatted(llm_resp);
-                    AIRY_FREE(final_result.response_json);
-                    final_result.response_json = new_response;
-                    cJSON_Delete(llm_resp);
-                } else if (detected_type == AIRY_PROTOCOL_MCP) {
-                    cJSON *mcp_resp = cJSON_CreateObject();
-                    cJSON_AddItemToObject(mcp_resp, "content", CJSON_DEEP_COPY(result_data));
-                    cJSON_AddBoolToObject(mcp_resp, "isError", 0);
-
-                    char *new_response = cJSON_PrintUnformatted(mcp_resp);
-                    AIRY_FREE(final_result.response_json);
-                    final_result.response_json = new_response;
-                    cJSON_Delete(mcp_resp);
-                } else if (detected_type == AIRY_PROTOCOL_A2A) {
-                    cJSON *a2a_resp = cJSON_CreateObject();
-                    cJSON_AddItemToObject(a2a_resp, "response", CJSON_DEEP_COPY(result_data));
-                    cJSON_AddStringToObject(a2a_resp, "status", "success");
-
-                    char *new_response = cJSON_PrintUnformatted(a2a_resp);
-                    AIRY_FREE(final_result.response_json);
-                    final_result.response_json = new_response;
-                    cJSON_Delete(a2a_resp);
-                }
-            }
-
-        } while (0);
-    }
+    if (detected != AIRY_PROTOCOL_JSON_RPC)
+        final_result = gw_wrap(detected, response_str);
 
     handler->successful_responses++;
     return final_result;
