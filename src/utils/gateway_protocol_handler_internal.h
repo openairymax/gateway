@@ -43,6 +43,9 @@ cJSON *gw_mcp_to_rpc(const char *request_data, size_t request_size,
 cJSON *gw_a2a_to_rpc(const char *request_data, size_t request_size,
                      char **out_method, char **out_id);
 
+char *gw_proto_resp(airy_protocol_type_t type, const cJSON *result);
+char *gw_req_text(const char *method, const char *id, cJSON *params);
+
 #ifdef __cplusplus
 }
 #endif
