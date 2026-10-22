@@ -116,6 +116,122 @@ void http2_event_loop_cleanup(http2_gateway_t *gw)
     }
 }
 
+/* pollfd 装配：槽 0 固定为监听套接字，其后按会话表顺序排列 */
+static nfds_t h2e_fill(http2_gateway_t *gw, struct pollfd *fds)
+{
+    nfds_t nfds = 0;
+
+    fds[nfds].fd = gw->listen_fd;
+    fds[nfds].events = POLLIN;
+    nfds++;
+
+    for (size_t i = 0; i < gw->session_count; i++) {
+        http2_gateway_session_t *sess = gw->sessions[i];
+        short events = 0;
+
+        if (nghttp2_session_want_read(sess->session))
+            events |= POLLIN;
+        if (nghttp2_session_want_write(sess->session))
+            events |= POLLOUT;
+        if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len)
+            events |= POLLOUT;
+        if (events == 0)
+            events = POLLIN;
+
+        fds[nfds].fd = sess->fd;
+        fds[nfds].events = events;
+        nfds++;
+    }
+    return nfds;
+}
+
+/* 读事件：0 表示会话可继续，-1 表示需关闭 */
+static int h2e_read(http2_gateway_session_t *sess)
+{
+    int rc = http2_session_recv_data(sess);
+    return (rc < 0 || rc == 1) ? -1 : 0;
+}
+
+/* 单个会话的事件处理：返回 0 继续、1 移除（关闭优先于出站刷新） */
+static int h2e_session(http2_gateway_t *gw, size_t i, short revents)
+{
+    http2_gateway_session_t *sess = gw->sessions[i];
+    bool ok = true;
+
+    if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        AIRY_LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)", sess->fd, revents,
+                 (revents & POLLERR) ? "ERR " : "", (revents & POLLHUP) ? "HUP " : "",
+                 (revents & POLLNVAL) ? "NVAL" : "");
+        return 1;
+    }
+
+    if (revents & POLLIN)
+        ok = h2e_read(sess) == 0;
+    if (ok && (revents & POLLOUT))
+        ok = http2_session_send_data(sess) == 0;
+    if (ok && (revents & POLLIN))
+        ok = http2_session_send_data(sess) == 0;
+    return ok ? 0 : 1;
+}
+
+/* 监听套接字事件：返回 0 继续、-1 退出主循环 */
+static int h2e_listen(http2_gateway_t *gw, short revents)
+{
+    if (revents & POLLIN)
+        http2_event_loop_accept(gw);
+    if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        AIRY_LOG_ERROR("Listen socket error");
+        return -1;
+    }
+    return 0;
+}
+
+/* poll 结果分派：返回 0 继续、-1 退出主循环 */
+static int h2e_dispatch(http2_gateway_t *gw, struct pollfd *fds, nfds_t nfds)
+{
+    if (h2e_listen(gw, fds[0].revents) != 0)
+        return -1;
+
+    for (size_t i = 0; i < gw->session_count && i + 1 < nfds;) {
+        if (h2e_session(gw, i, fds[i + 1].revents) == 0) {
+            i++;
+            continue;
+        }
+        /* remove_session() 把末位会话换入槽 i，清零 revents 避免用被移除
+         * 会话的旧事件处理新换入的会话（P1：活跃连接被随机关闭）。 */
+        http2_gateway_remove_session(gw, i);
+        fds[i + 1].revents = 0;
+    }
+    return 0;
+}
+
+/* 一轮事件循环：返回 0 继续、-1 退出主循环 */
+static int h2e_round(http2_gateway_t *gw)
+{
+    struct pollfd *fds = AIRY_CALLOC(gw->session_count + 1, sizeof(struct pollfd));
+    if (!fds) {
+        airy_sleep_ms(1000);
+        return 0;
+    }
+
+    nfds_t nfds = h2e_fill(gw, fds);
+    int ret = poll(fds, nfds, HTTP2_POLL_TIMEOUT_MS);
+    int rc = 0;
+
+    if (ret < 0) {
+        if (errno != EINTR) {
+            AIRY_LOG_ERROR("poll failed: %s", strerror(errno));
+            rc = -1;
+        }
+    } else {
+        rc = h2e_dispatch(gw, fds, nfds);
+        http2_event_loop_cleanup(gw);
+    }
+
+    AIRY_FREE(fds);
+    return rc;
+}
+
 /**
  * @brief Main event loop (runs on a dedicated thread)
  */
@@ -126,118 +242,8 @@ void *http2_event_loop(void *arg)
     AIRY_LOG_INFO("HTTP/2 event loop started (port=%u)", gw->base.port);
 
     while (atomic_load(&gw->running)) {
-
-        size_t max_fds = gw->session_count + 1;
-        struct pollfd *fds = AIRY_CALLOC(max_fds, sizeof(struct pollfd));
-        if (!fds) {
-
-            airy_sleep_ms(1000);
-            continue;
-        }
-
-        nfds_t nfds = 0;
-
-        fds[nfds].fd = gw->listen_fd;
-        fds[nfds].events = POLLIN;
-        nfds++;
-
-        for (size_t i = 0; i < gw->session_count; i++) {
-            http2_gateway_session_t *sess = gw->sessions[i];
-            short events = 0;
-
-            if (nghttp2_session_want_read(sess->session)) {
-                events |= POLLIN;
-            }
-            if (nghttp2_session_want_write(sess->session)) {
-                events |= POLLOUT;
-            }
-
-            if (sess->pending_send_buf && sess->pending_send_offset < sess->pending_send_len) {
-                events |= POLLOUT;
-            }
-
-            if (events == 0) {
-                events = POLLIN;
-            }
-
-            fds[nfds].fd = sess->fd;
-            fds[nfds].events = events;
-            nfds++;
-        }
-
-        int ret = poll(fds, nfds, HTTP2_POLL_TIMEOUT_MS);
-        if (ret < 0) {
-            if (errno == EINTR) {
-                AIRY_FREE(fds);
-                continue;
-            }
-            AIRY_LOG_ERROR("poll failed: %s", strerror(errno));
-            AIRY_FREE(fds);
+        if (h2e_round(gw) != 0)
             break;
-        }
-
-        if (fds[0].revents & POLLIN) {
-            http2_event_loop_accept(gw);
-        }
-        if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            AIRY_LOG_ERROR("Listen socket error");
-            AIRY_FREE(fds);
-            break;
-        }
-
-        for (size_t i = 0; i < gw->session_count && i + 1 < nfds;) {
-            http2_gateway_session_t *sess = gw->sessions[i];
-            short revents = fds[i + 1].revents;
-
-            if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
-
-                AIRY_LOG_WARN("session socket error: fd=%d, revents=0x%x (%s%s%s)", sess->fd, revents,
-                         (revents & POLLERR) ? "ERR " : "", (revents & POLLHUP) ? "HUP " : "",
-                         (revents & POLLNVAL) ? "NVAL" : "");
-                /* remove_session() swap-removes the last session into slot i;
-                 * zeroing fds[i+1].revents prevents that newly-moved session
-                 * from being processed with the removed session's stale
-                 * revents (P1: active connections were being closed randomly). */
-                http2_gateway_remove_session(gw, i);
-                fds[i + 1].revents = 0;
-                continue;
-            }
-
-            bool session_ok = true;
-
-            if (revents & POLLIN) {
-                int recv_ret = http2_session_recv_data(sess);
-                if (recv_ret < 0) {
-                    session_ok = false;
-                } else if (recv_ret == 1) {
-
-                    session_ok = false;
-                }
-            }
-
-            if (session_ok && (revents & POLLOUT)) {
-                if (http2_session_send_data(sess) != 0) {
-                    session_ok = false;
-                }
-            }
-
-            if (session_ok && (revents & POLLIN)) {
-                if (http2_session_send_data(sess) != 0) {
-                    session_ok = false;
-                }
-            }
-
-            if (!session_ok) {
-                http2_gateway_remove_session(gw, i);
-                fds[i + 1].revents = 0;
-            } else {
-                i++;
-            }
-        }
-
-        AIRY_FREE(fds);
-
-        http2_event_loop_cleanup(gw);
     }
 
     while (gw->session_count > 0) {
