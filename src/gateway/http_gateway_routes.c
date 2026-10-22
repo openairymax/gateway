@@ -101,6 +101,23 @@ static int gateway_peer_is_loopback(struct MHD_Connection *connection)
     return gw_auth_addr_is_loopback(addr_buf);
 }
 
+/* 轻量 JSON 拒绝回包：security + CORS 头必加；server 为 NULL 时不写
+ * Server 头（非法路径拒绝的既有形态）。 */
+static int gw_deny_json(http_gateway_t *gateway, struct MHD_Connection *connection, int status,
+                        const char *body, const char *server)
+{
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(strlen(body), (void *)body, MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Content-Type", "application/json");
+    if (server)
+        MHD_add_response_header(response, "Server", server);
+    gateway_apply_security_headers(response);
+    gateway_apply_cors_headers(gateway, connection, response);
+    int ret = MHD_queue_response(connection, status, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
 /**
  * @brief 统一 401 拒绝响应（T-11a：CORS-safe 工厂 + 安全头）
  */
@@ -123,9 +140,14 @@ static int http_gateway_queue_unauthorized(http_gateway_t *gateway,
  *
  * 判定语义（fail-closed 双层）见 gateway_auth.c：key 已配置 → 凭证必查
  * （回环不豁免）；未配置 → 仅放行回环对端。
- * @return MHD_YES=放行（调用方继续正常处理），否则为已 queue 的拒绝响应
+ *
+ * 返回值必须与 MHD 回调值解耦：MHD_queue_response 成功时同样返回
+ * MHD_YES，若直接以回调值判断放行，拒绝分支会被误判为通过，未授权
+ * 请求会继续累积 body 并进入 JSON-RPC 执行。
+ * @return 0=放行（继续正常处理）；1=已回包拒绝，*ret 为回调返回值
  */
-static int gateway_enforce_entry_auth(http_gateway_t *gateway, struct MHD_Connection *connection)
+static int gateway_enforce_entry_auth(http_gateway_t *gateway, struct MHD_Connection *connection,
+                                      int *ret)
 {
     const char *auth_header =
         MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Authorization");
@@ -136,9 +158,10 @@ static int gateway_enforce_entry_auth(http_gateway_t *gateway, struct MHD_Connec
                                  gw_auth_key_configured(), gateway_peer_is_loopback(connection));
     if (verdict == GW_AUTH_DENY) {
         AIRY_LOG_WARN("gateway auth: request denied (sensitive route, no valid credential)");
-        return http_gateway_queue_unauthorized(gateway, connection);
+        *ret = http_gateway_queue_unauthorized(gateway, connection);
+        return 1;
     }
-    return MHD_YES;
+    return 0;
 }
 
 /**
@@ -368,138 +391,109 @@ static http_route_handler_t find_http_route(const char *method, const char *path
     return NULL;
 }
 
-/**
-  * @brief HTTP request entry point
- *
-  * Processing flow (4 phases):
-  * Phase 1: initialize the request context (first call)
-  * Phase 2: receive the POST body
-  * Phase 3: handle the complete JSON-RPC request
-  * Phase 4: route to other endpoints (OPTIONS/GET, etc.)
- */
-int handle_http_request(void *cls, struct MHD_Connection *connection, const char *url,
-                        const char *method, const char *version,
-                        const char *upload_data, size_t *upload_data_size, void **con_cls)
+/* 限流键：X-Forwarded-For → X-Real-IP → socket 对端地址；全不可得时
+ * 归并到 _unresolved（同桶限流，不因取值失败而放行）。 */
+static const char *gw_client_ip(struct MHD_Connection *connection, char *buf, size_t sz)
 {
-    http_gateway_t *gateway = (http_gateway_t *)cls;
-    http_request_context_t *context = (http_request_context_t *)*con_cls;
+    const char *ip = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Forwarded-For");
+    if (!ip)
+        ip = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Real-IP");
+    if (ip)
+        return ip;
 
-    if (gateway->rate_limiter) {
-        const char *client_ip =
-            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Forwarded-For");
-        if (!client_ip) {
-            client_ip = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Real-IP");
-        }
-        if (!client_ip) {
-            const union MHD_ConnectionInfo *cinfo =
-                MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
-            const struct sockaddr *addr =
-                cinfo ? (const struct sockaddr *)cinfo->client_addr : NULL;
-            if (addr) {
-                char ip_buf[64];
-                if (addr->sa_family == AF_INET) {
-                    inet_ntop(AF_INET, &((struct sockaddr_in *)addr)->sin_addr, ip_buf,
-                              sizeof(ip_buf));
-                    client_ip = ip_buf;
-                } else if (addr->sa_family == AF_INET6) {
-                    inet_ntop(AF_INET6, &((struct sockaddr_in6 *)addr)->sin6_addr, ip_buf,
-                              sizeof(ip_buf));
-                    client_ip = ip_buf;
-                }
-            }
-        }
-        if (!client_ip) {
-            client_ip = "_unresolved";
-        }
+    const union MHD_ConnectionInfo *cinfo =
+        MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
+    const struct sockaddr *addr = cinfo ? (const struct sockaddr *)cinfo->client_addr : NULL;
+    if (!addr)
+        return "_unresolved";
+    if (addr->sa_family == AF_INET) {
+        inet_ntop(AF_INET, &((const struct sockaddr_in *)addr)->sin_addr, buf, sz);
+    } else if (addr->sa_family == AF_INET6) {
+        inet_ntop(AF_INET6, &((const struct sockaddr_in6 *)addr)->sin6_addr, buf, sz);
+    } else {
+        return "_unresolved";
+    }
+    return buf;
+}
 
-        if (!gateway_rate_limiter_allow(gateway->rate_limiter, client_ip)) {
+/* 限流门禁：超限直接回 429；0=放行，1=已回包（*ret 为回调返回值） */
+static int gw_rate_gate(http_gateway_t *gateway, struct MHD_Connection *connection, int *ret)
+{
+    if (!gateway->rate_limiter)
+        return 0;
 
-            const char *error_response =
-                "{\"error\":{\"code\":-32004,\"message\":\"Rate limit exceeded\"}}";
-            struct MHD_Response *response =
-                MHD_create_response_from_buffer(strlen(error_response), (void *)error_response,
-                                                MHD_RESPMEM_PERSISTENT);
-            MHD_add_response_header(response, "Content-Type", "application/json");
-            MHD_add_response_header(response, "Server", "AgentRT-gateway/1.0");
-            gateway_apply_security_headers(response);
-            gateway_apply_cors_headers(gateway, connection, response);
-            int ret = MHD_queue_response(connection, 429, response);
-            MHD_destroy_response(response);
-            return ret;
-        }
+    char ip_buf[64];
+    const char *client_ip = gw_client_ip(connection, ip_buf, sizeof(ip_buf));
+    if (gateway_rate_limiter_allow(gateway->rate_limiter, client_ip))
+        return 0;
+
+    *ret = gw_deny_json(gateway, connection, 429,
+                        "{\"error\":{\"code\":-32004,\"message\":\"Rate limit exceeded\"}}",
+                        "AgentRT-gateway/1.0");
+    return 1;
+}
+
+/* 入口鉴权门禁：仅敏感面生效（限流后、上下文分配前）；0=放行，1=已回包 */
+static int gw_auth_gate(http_gateway_t *gateway, struct MHD_Connection *connection,
+                        const char *url, const char *method, int *ret)
+{
+    if (!http_gateway_route_auth_required(method, url))
+        return 0;
+    return gateway_enforce_entry_auth(gateway, connection, ret);
+}
+
+/* 首次回调：分配并登记请求上下文；非法路径在 body 累积前拒绝 */
+static int gw_ctx_new(http_gateway_t *gateway, struct MHD_Connection *connection, const char *url,
+                      const char *method, void **con_cls)
+{
+    http_request_context_t *context = AIRY_CALLOC(1, sizeof(http_request_context_t));
+    if (!context)
+        return MHD_NO;
+
+    if (!gateway_is_url_safe(url)) {
+        AIRY_FREE(context);
+        return gw_deny_json(gateway, connection, 400,
+                            "{\"error\":{\"code\":-32002,\"message\":\"Invalid URL path\"}}", NULL);
     }
 
-    /* WS-2 T-11a：入口鉴权门禁（限流后、上下文分配前）。
-     * MHD 对同一请求多次回调，本判定幂等；敏感面未授权请求在 body
-     * 累积前即被拒绝（fail-closed 双层语义见 gateway_auth.c）。 */
-    if (http_gateway_route_auth_required(method, url)) {
-        int auth_ret = gateway_enforce_entry_auth(gateway, connection);
-        if (auth_ret != MHD_YES) {
-            return auth_ret;
-        }
-    }
+    context->method = method;
+    context->url = url;
+    context->start_time_ns = gateway_time_ns();
+    *con_cls = context;
+    return MHD_YES;
+}
 
-    if (!context) {
-        context = AIRY_CALLOC(1, sizeof(http_request_context_t));
-        if (!context) {
+/* POST body 累积：MHD 分块投递并在块间复用 upload_data 缓冲，必须
+ * 自持累积缓冲（只记末块指针会截断 body）。 */
+static int gw_body_append(http_gateway_t *gateway, struct MHD_Connection *connection,
+                          http_request_context_t *context, const char *data, size_t *len)
+{
+    size_t total = context->body_len + *len;
+    if (total > gateway->max_request_size)
+        return handle_request_too_large(gateway, connection, context, total);
+
+    if (total > context->body_cap) {
+        size_t new_cap = context->body_cap == 0 ? 4096 : context->body_cap;
+        while (new_cap < total)
+            new_cap *= 2;
+        char *nb = AIRY_REALLOC(context->body_buf, new_cap);
+        if (!nb)
             return MHD_NO;
-        }
-
-        if (!gateway_is_url_safe(url)) {
-            AIRY_FREE(context);
-            const char *error_response =
-                "{\"error\":{\"code\":-32002,\"message\":\"Invalid URL path\"}}";
-            struct MHD_Response *response =
-                MHD_create_response_from_buffer(strlen(error_response), (void *)error_response,
-                                                MHD_RESPMEM_PERSISTENT);
-            MHD_add_response_header(response, "Content-Type", "application/json");
-            gateway_apply_security_headers(response);
-            gateway_apply_cors_headers(gateway, connection, response);
-            int ret = MHD_queue_response(connection, 400, response);
-            MHD_destroy_response(response);
-            return ret;
-        }
-
-        context->method = method;
-        context->url = url;
-        context->start_time_ns = gateway_time_ns();
-        *con_cls = context;
-
-        return MHD_YES;
+        context->body_buf = nb;
+        context->body_cap = new_cap;
     }
 
-    if (strcmp(method, "POST") == 0 && upload_data && *upload_data_size > 0) {
-        /* P1 fix: MHD delivers large POST bodies in multiple chunks and
-         * REUSES the upload_data buffer between chunks. Only remembering the
-         * last chunk's pointer truncates the body; accumulate into our own
-         * buffer instead. */
-        if (context->body_len + *upload_data_size > gateway->max_request_size) {
-            return handle_request_too_large(gateway, connection, context,
-                                            context->body_len + *upload_data_size);
-        }
+    AIRY_MEMCPY(context->body_buf + context->body_len, data, *len);
+    context->body_len = total;
+    *len = 0;
+    return MHD_YES;
+}
 
-        if (context->body_len + *upload_data_size > context->body_cap) {
-            size_t new_cap = context->body_cap == 0 ? 4096 : context->body_cap;
-            while (new_cap < context->body_len + *upload_data_size) {
-                new_cap *= 2;
-            }
-            char *nb = AIRY_REALLOC(context->body_buf, new_cap);
-            if (!nb) {
-                return MHD_NO;
-            }
-            context->body_buf = nb;
-            context->body_cap = new_cap;
-        }
-        AIRY_MEMCPY(context->body_buf + context->body_len, upload_data, *upload_data_size);
-        context->body_len += *upload_data_size;
-
-        *upload_data_size = 0;
-        return MHD_YES;
-    }
-
-    /* Stage 3: dispatch the complete request - both JSON-RPC and raw non-JSON-RPC bodies.
-     * Streaming (SSE) endpoints are excluded: their response is a continuous event stream
-     * handled directly by the route handler, not a one-shot JSON reply (SSoT via route table). */
+/* 完成态分发：JSON-RPC 聚合（流式端点除外，SSoT 见路由表）→ 路由表
+ * → 404 兜底。 */
+static int gw_dispatch(http_gateway_t *gateway, struct MHD_Connection *connection,
+                       http_request_context_t *context, const char *url, const char *method)
+{
     if (strcmp(method, "POST") == 0 && !is_streaming_route(method, url) &&
         (context->json_request || (context->body_buf && context->body_len > 0))) {
         if (!context->json_request && context->body_buf && context->body_len > 0) {
@@ -510,12 +504,38 @@ int handle_http_request(void *cls, struct MHD_Connection *connection, const char
         return handle_post_jsonrpc(gateway, connection, context);
     }
 
-    int (*route_handler)(http_gateway_t *, struct MHD_Connection *, http_request_context_t *) =
-        find_http_route(method, url);
-
-    if (route_handler) {
+    http_route_handler_t route_handler = find_http_route(method, url);
+    if (route_handler)
         return route_handler(gateway, connection, context);
-    }
-
     return handle_not_found(gateway, connection, context);
+}
+
+/**
+  * @brief HTTP request entry point
+  *
+  * Processing flow (4 phases), each staged in its own helper:
+  * Phase 1: gw_rate_gate / gw_auth_gate / gw_ctx_new (first call)
+  * Phase 2: gw_body_append (POST body accumulation)
+  * Phase 3: gw_dispatch (JSON-RPC aggregation)
+  * Phase 4: gw_dispatch (route table / 404 fallback)
+ */
+int handle_http_request(void *cls, struct MHD_Connection *connection, const char *url,
+                        const char *method, const char *version,
+                        const char *upload_data, size_t *upload_data_size, void **con_cls)
+{
+    http_gateway_t *gateway = (http_gateway_t *)cls;
+    http_request_context_t *context = (http_request_context_t *)*con_cls;
+
+    int ret = MHD_YES;
+    if (gw_rate_gate(gateway, connection, &ret) ||
+        gw_auth_gate(gateway, connection, url, method, &ret))
+        return ret;
+
+    if (!context)
+        return gw_ctx_new(gateway, connection, url, method, con_cls);
+
+    if (strcmp(method, "POST") == 0 && upload_data && *upload_data_size > 0)
+        return gw_body_append(gateway, connection, context, upload_data, upload_data_size);
+
+    return gw_dispatch(gateway, connection, context, url, method);
 }
