@@ -511,79 +511,158 @@ static void print_usage(const char *prog)
     printf("  PERF-003: Concurrency > %d connections\n", MAX_CONCURRENT_CONNECTIONS);
 }
 
-static int parse_args(int argc, char *argv[])
+/* 单选项处理：返回 1 接受、负值为硬错误（终止解析）。 */
+typedef int (*bench_opt_fn)(const char *val);
+
+static int set_url(const char *v)
+{
+    AIRY_STRNCPY_TERM(g_config.url, v, sizeof(g_config.url));
+    return 1;
+}
+
+static int set_concurrent(const char *v)
+{
+    int n = atoi(v);
+
+    if (n < 1)
+        n = 1;
+    g_config.concurrent = n > MAX_CONCURRENT ? MAX_CONCURRENT : n;
+    return 1;
+}
+
+static int set_requests(const char *v)
+{
+    g_config.total_requests = atoi(v);
+    return 1;
+}
+
+static int set_duration(const char *v)
+{
+    g_config.duration_sec = atoi(v);
+    return 1;
+}
+
+static int set_method(const char *v)
+{
+    AIRY_STRNCPY_TERM(g_config.method, v, sizeof(g_config.method));
+    return 1;
+}
+
+/* 读入 POST body。文件打不开时保持既有语义：静默跳过，不中止压测。 */
+static int set_payload(const char *v)
+{
+    FILE *pf = fopen(v, "rb");
+    long len;
+    char *buf;
+
+    if (!pf)
+        return 1;
+    fseek(pf, 0, SEEK_END);
+    len = ftell(pf);
+    fseek(pf, 0, SEEK_SET);
+    if (len < 0) {
+        fclose(pf);
+        return 1;
+    }
+    buf = (char *)AIRY_MALLOC((size_t)len + 1);
+    if (!buf) {
+        fclose(pf);
+        return AIRY_ERR_UNKNOWN;
+    }
+    if (fread(buf, 1, (size_t)len, pf) != (size_t)len) {
+        fprintf(stderr, "Failed to read payload file\n");
+        AIRY_FREE(buf);
+        fclose(pf);
+        return AIRY_ERR_UNKNOWN;
+    }
+    fclose(pf);
+    buf[len] = '\0';
+    AIRY_FREE(g_config.payload);
+    g_config.payload = buf;
+    g_config.payload_size = (size_t)len;
+    return 1;
+}
+
+static int set_output(const char *v)
+{
+    AIRY_STRNCPY_TERM(g_config.output_file, v, sizeof(g_config.output_file));
+    return 1;
+}
+
+static int set_warmup(const char *v)
+{
+    g_config.warmup_count = atoi(v);
+    return 1;
+}
+
+static int set_verbose(const char *v)
+{
+    (void)v;
+    g_config.verbose = 1;
+    return 1;
+}
+
+/* 选项表：flag → 处理器，need_val 表该选项必须紧跟一个取值。 */
+static const struct {
+    const char *flag;
+    bench_opt_fn fn;
+    int need_val;
+} k_opts[] = {
+    {"--url", set_url, 1},           {"--concurrent", set_concurrent, 1},
+    {"--requests", set_requests, 1}, {"--duration", set_duration, 1},
+    {"--method", set_method, 1},     {"--payload", set_payload, 1},
+    {"--output", set_output, 1},     {"--warmup", set_warmup, 1},
+    {"--verbose", set_verbose, 0},   {"-v", set_verbose, 0},
+};
+
+static void bench_defaults(void)
 {
     memset(&g_config, 0, sizeof(g_config));
-
-    strncpy((g_config.url), (DEFAULT_URL), (MAX_URL_LENGTH)-1);
-    (g_config.url)[(MAX_URL_LENGTH)-1] = '\0';
-    ;
+    AIRY_STRNCPY_TERM(g_config.url, DEFAULT_URL, sizeof(g_config.url));
     g_config.concurrent = 10;
     g_config.total_requests = 1000;
     g_config.duration_sec = 30;
-    strncpy((g_config.method), ("GET"), (sizeof(g_config.method)) - 1);
-    (g_config.method)[(sizeof(g_config.method)) - 1] = '\0';
-    ;
-    strncpy((g_config.output_file), ("benchmark_report.json"), (sizeof(g_config.output_file)) - 1);
-    (g_config.output_file)[(sizeof(g_config.output_file)) - 1] = '\0';
-    ;
+    AIRY_STRNCPY_TERM(g_config.method, "GET", sizeof(g_config.method));
+    AIRY_STRNCPY_TERM(g_config.output_file, "benchmark_report.json",
+                      sizeof(g_config.output_file));
     g_config.warmup_count = WARMUP_COUNT;
     g_config.verbose = 0;
     g_config.running = 1;
+}
 
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            print_usage(argv[0]);
-            return 0;
-        } else if (strcmp(argv[i], "--url") == 0 && i + 1 < argc) {
-            strncpy((g_config.url), (argv[++i]), (MAX_URL_LENGTH)-1);
-            (g_config.url)[(MAX_URL_LENGTH)-1] = '\0';
-            ;
-        } else if (strcmp(argv[i], "--concurrent") == 0 && i + 1 < argc) {
-            g_config.concurrent = atoi(argv[++i]);
-            if (g_config.concurrent < 1)
-                g_config.concurrent = 1;
-            if (g_config.concurrent > MAX_CONCURRENT)
-                g_config.concurrent = MAX_CONCURRENT;
-        } else if (strcmp(argv[i], "--requests") == 0 && i + 1 < argc) {
-            g_config.total_requests = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
-            g_config.duration_sec = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "--method") == 0 && i + 1 < argc) {
-            strncpy((g_config.method), (argv[++i]), (sizeof(g_config.method)) - 1);
-            (g_config.method)[(sizeof(g_config.method)) - 1] = '\0';
-        } else if (strcmp(argv[i], "--payload") == 0 && i + 1 < argc) {
-            FILE *pf = fopen(argv[++i], "rb");
-            if (pf) {
-                fseek(pf, 0, SEEK_END);
-                g_config.payload_size = ftell(pf);
-                fseek(pf, 0, SEEK_SET);
-                g_config.payload = (char *)AIRY_MALLOC(g_config.payload_size + 1);
-                if (fread(g_config.payload, 1, g_config.payload_size, pf) !=
-                    (size_t)g_config.payload_size) {
-                    fprintf(stderr, "Failed to read payload file\n");
-                    AIRY_FREE(g_config.payload);
-                    g_config.payload = NULL;
-                    g_config.payload_size = 0;
-                    fclose(pf);
-                    return AIRY_ERR_UNKNOWN;
-                }
-                g_config.payload[g_config.payload_size] = '\0';
-                fclose(pf);
-            }
-        } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
-            strncpy(g_config.output_file, argv[++i], sizeof(g_config.output_file) - 1);
-            g_config.output_file[sizeof(g_config.output_file) - 1] = '\0';
-        } else if (strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) {
-            g_config.warmup_count = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "--verbose") == 0 || strcmp(argv[i], "-v") == 0) {
-            g_config.verbose = 1;
-        } else {
-            fprintf(stderr, "Unknown option: %s\n", argv[i]);
-            print_usage(argv[0]);
-            airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: not supported");
-            return AIRY_ERR_UNKNOWN;
+/* 解析一个选项：返回 1 继续、0 已输出帮助、负值为错误码。 */
+static int bench_opt(int argc, char *argv[], int *i)
+{
+    const char *arg = argv[*i];
+
+    if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
+        print_usage(argv[0]);
+        return 0;
+    }
+    for (size_t k = 0; k < sizeof(k_opts) / sizeof(k_opts[0]); k++) {
+        if (strcmp(arg, k_opts[k].flag) != 0)
+            continue;
+        if (k_opts[k].need_val) {
+            if (*i + 1 >= argc)
+                break;
+            (*i)++;
         }
+        return k_opts[k].fn(k_opts[k].need_val ? argv[*i] : NULL);
+    }
+    fprintf(stderr, "Unknown option: %s\n", arg);
+    print_usage(argv[0]);
+    airy_err_push_ex(AIRY_ERR_UNKNOWN, __FILE__, __LINE__, __func__, "if: not supported");
+    return AIRY_ERR_UNKNOWN;
+}
+
+static int parse_args(int argc, char *argv[])
+{
+    bench_defaults();
+    for (int i = 1; i < argc; i++) {
+        int r = bench_opt(argc, argv, &i);
+
+        if (r <= 0)
+            return r;
     }
     return 1;
 }
