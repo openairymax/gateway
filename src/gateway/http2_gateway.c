@@ -28,7 +28,7 @@
 
 static int http2_gateway_start_impl(void *impl);
 static void http2_gateway_stop_impl(void *impl);
-static void http2_gateway_destroy_impl(void *impl);
+static void destroy_impl(void *impl);
 
 static airy_err_t http2_gateway_start_impl(void *impl)
 {
@@ -157,7 +157,7 @@ static void http2_gateway_stop_impl(void *impl)
     AIRY_LOG_INFO("HTTP/2 gateway stopped");
 }
 
-static void http2_gateway_destroy_impl(void *impl)
+static void destroy_impl(void *impl)
 {
     http2_gateway_t *gw = (http2_gateway_t *)impl;
     if (!gw)
@@ -185,7 +185,7 @@ static void http2_gateway_destroy_impl(void *impl)
  */
 static const gateway_ops_t http2_gateway_ops = {
     .start = http2_gateway_start_impl,
-    .destroy = http2_gateway_destroy_impl,
+    .destroy = destroy_impl,
 };
 
 gateway_t *http2_gateway_create(const char *host, uint16_t port)

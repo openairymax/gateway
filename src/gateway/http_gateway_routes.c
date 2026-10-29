@@ -121,7 +121,7 @@ static int gw_deny_json(http_gateway_t *gateway, struct MHD_Connection *connecti
 /**
  * @brief 统一 401 拒绝响应（T-11a：CORS-safe 工厂 + 安全头）
  */
-static int http_gateway_queue_unauthorized(http_gateway_t *gateway,
+static int queue_unauth(http_gateway_t *gateway,
                                            struct MHD_Connection *connection)
 {
     const char *err_json =
@@ -158,7 +158,7 @@ static int gateway_enforce_entry_auth(http_gateway_t *gateway, struct MHD_Connec
                                  gw_auth_key_configured(), gateway_peer_is_loopback(connection));
     if (verdict == GW_AUTH_DENY) {
         AIRY_LOG_WARN("gateway auth: request denied (sensitive route, no valid credential)");
-        *ret = http_gateway_queue_unauthorized(gateway, connection);
+        *ret = queue_unauth(gateway, connection);
         return 1;
     }
     return 0;
