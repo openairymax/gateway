@@ -358,7 +358,7 @@ static void http_req_complete_cb(
  *      MHD_USE_AUTO_INTERNAL_THREAD 让库按平台自选后端
  *      （Linux→epoll/poll，macOS→poll/select），需 MHD 0.9.63+；
  *      更老版本回退 select internally。
- *   b) 启动成功后必须 connect 自证（http_gateway_probe_listen），
+ *   b) 启动成功后必须 connect 自证（probe_listen），
  *      listen 缺失一律 fail-closed。
  *   c) 编译期与运行时版本对照日志，错位即显性可见。
  */
@@ -377,7 +377,7 @@ static void http_req_complete_cb(
  * 安全，MHD 侧至多一次空连接终止，无害。
  * gateway_d 不在 Windows 构建（无 libmicrohttpd），保留分支仅为
  * 编译单元完整。 */
-static airy_err_t http_gateway_probe_listen(const char *host, uint16_t port)
+static airy_err_t probe_listen(const char *host, uint16_t port)
 {
 #ifdef _WIN32
     (void)host;
@@ -522,7 +522,7 @@ static airy_err_t http_gateway_start(void *gateway_impl)
 
     /* 启动自证：listen 缺失（版本错位/后端异常）一律 fail-closed，
      * 禁止 daemon 假活继续运行。 */
-    if (http_gateway_probe_listen(gateway->host, gateway->port) != AIRY_SUCCESS) {
+    if (probe_listen(gateway->host, gateway->port) != AIRY_SUCCESS) {
         AIRY_LOG_ERROR("http_gateway_start: listen probe failed on %s:%u "
                        "(daemon=%p, compile=0x%06x, runtime=%s); fail-closed",
                        gateway->host ? gateway->host : "127.0.0.1", (unsigned)gateway->port,
