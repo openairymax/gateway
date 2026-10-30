@@ -10,6 +10,11 @@
 #include "syscall_router.h"
 #include "syscall_router_internal.h"
 
+#include <string.h>
+
+/* 演化回路指标前缀：think_d 经 monit observe 表上报的六项指标。 */
+#define EVO_METRIC_PREFIX "airy_evolution_"
+
 /**
   * @brief Route observability syscalls
  */
@@ -39,6 +44,72 @@ char *route_telemetry_methods(const char *method, cJSON *params, cJSON *request_
     }
 
     return gw_route_reply(request_id, err, result);
+}
+
+/* 演化指标短键：去掉 "airy_evolution_" 前缀；非演化指标返回 NULL。 */
+static const char *evo_key(const char *name)
+{
+    const size_t plen = sizeof(EVO_METRIC_PREFIX) - 1;
+    if (!name || strncmp(name, EVO_METRIC_PREFIX, plen) != 0)
+        return NULL;
+    return name + plen;
+}
+
+/* 从 observe 指标数组收集演化项（短键 → 数值），其余指标忽略。 */
+static void evo_collect(cJSON *out, const cJSON *arr)
+{
+    const cJSON *it = NULL;
+    cJSON_ArrayForEach(it, arr)
+    {
+        const cJSON *name = cJSON_GetObjectItem(it, "name");
+        const cJSON *value = cJSON_GetObjectItem(it, "value");
+        if (!cJSON_IsString(name) || !cJSON_IsNumber(value))
+            continue;
+        const char *key = evo_key(name->valuestring);
+        if (key && *key)
+            cJSON_AddNumberToObject(out, key, value->valuedouble);
+    }
+}
+
+/* 定位指标数组：兼容 observe 的 {count, metrics:[...]} 与裸数组两种回执。 */
+static const cJSON *evo_items(const cJSON *root)
+{
+    const cJSON *arr = cJSON_GetObjectItem(root, "metrics");
+    if (cJSON_IsArray(arr))
+        return arr;
+    return cJSON_IsArray(root) ? root : NULL;
+}
+
+/* 演化指标只读快照：经 syscall 取 monit observe 表。
+ * monit 不可达时如实给出 available=false 与原因；可达但无演化指标时
+ * 返回空 metrics 对象（不伪造 0 值）。 */
+static cJSON *evo_metrics(void)
+{
+    cJSON *root = syscall_fetch("monit", "observe_get_metrics", cJSON_CreateObject(), NULL);
+    cJSON *out = cJSON_CreateObject();
+    if (!out) {
+        cJSON_Delete(root);
+        return NULL;
+    }
+    if (!root) {
+        cJSON_AddBoolToObject(out, "available", 0);
+        cJSON_AddStringToObject(out, "reason", "monit unreachable");
+        return out;
+    }
+    cJSON *items = cJSON_CreateObject();
+    if (!items) {
+        cJSON_Delete(root);
+        cJSON_Delete(out);
+        return NULL;
+    }
+    const cJSON *arr = evo_items(root);
+    if (arr)
+        evo_collect(items, arr);
+    cJSON_AddBoolToObject(out, "available", 1);
+    cJSON_AddStringToObject(out, "source", "monit");
+    cJSON_AddItemToObject(out, "metrics", items);
+    cJSON_Delete(root);
+    return out;
 }
 
 /* Telemetry */
@@ -91,6 +162,12 @@ airy_err_t airy_sys_telemetry_metrics(char **out_metrics)
     /* uptime = 当前时间 − 启动时间；修复原先直接返回 epoch 秒的语义错误 */
     cJSON_AddNumberToObject(metrics, "uptime_seconds",
                             (double)(start > 0 ? time(NULL) - start : 0));
+
+    /* 演化回路快照（think_d 上报至 monit observe 表）：不可达/未上报均在
+     * payload 内如实标注，不伪造 0 值。 */
+    cJSON *evo = evo_metrics();
+    if (evo)
+        cJSON_AddItemToObject(metrics, "evolution", evo);
 
     *out_metrics = cJSON_PrintUnformatted(metrics);
     cJSON_Delete(metrics);
