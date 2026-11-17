@@ -125,6 +125,14 @@
         },
         {
           "name": "get_stats"
+        },
+        {
+          "name": "slots_get",
+          "kind": "llm_list"
+        },
+        {
+          "name": "slots_set",
+          "perm": "cap:llm.admin"
         }
       ]
     },
