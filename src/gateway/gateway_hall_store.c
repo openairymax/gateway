@@ -17,10 +17,12 @@
  * duplicated hall_comp_valid; both now come from the SSoT.
  *
  * Read side: the gateway has no in-process hall handle, so hall watch
- * recursively scans the on-disk event flow, sorts candidates by
- * (ts_utc, seq) and flattens each envelope into the compact wire event
+ * recursively scans the on-disk event flow, orders candidates by
+ * (ts_utc, file name) and flattens each envelope into the compact wire event
  * shape (hall_event_flatten) shared by hall.replay / hall.stream /
- * hall.watch.
+ * hall.watch. seq is per-category and cannot act as a global tiebreak, so
+ * the unique file name is the cursor's second key (lossless push); causal
+ * order across categories is the gseq carried in the payload.
  */
 
 // @owner: team-B
@@ -50,7 +52,7 @@ int gw_hall_store_event(const char *task_id, const char *category, const char *n
 
 typedef struct {
     char ts_utc[HALL_EVT_TS_LEN];
-    unsigned long seq;
+    char name[256];
     char path[GW_HALL_PATH_MAX];
 } gw_hall_cand_t;
 
@@ -61,7 +63,9 @@ static int gw_hall_cand_cmp(const void *a, const void *b)
     int c = strcmp(ca->ts_utc, cb->ts_utc);
     if (c != 0)
         return c;
-    return (ca->seq > cb->seq) - (ca->seq < cb->seq);
+    /* seq 只在类别目录内计数，同毫秒跨类别会撞号；文件名唯一，用它兜底
+     * 才能保证游标单调且不跳过事件。 */
+    return strcmp(ca->name, cb->name);
 }
 
 static void gw_hall_walk_collect(const char *dir, const char *n, gw_hall_cand_t *cands,
@@ -78,7 +82,7 @@ static void gw_hall_walk_collect(const char *dir, const char *n, gw_hall_cand_t 
     gw_hall_cand_t *c = &cands[*count];
     AIRY_MEMCPY(c->ts_utc, parts.ts_utc, parts.ts_utc_len);
     c->ts_utc[parts.ts_utc_len] = '\0';
-    c->seq = seq;
+    AIRY_STRNCPY_TERM(c->name, n, sizeof(c->name));
     snprintf(c->path, sizeof(c->path), "%s/%s", dir, n);
     (*count)++;
 }
@@ -233,7 +237,7 @@ int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
     int result = 0;
     for (size_t i = 0; i < count; i++) {
         int gt_ts = strcmp(cands[i].ts_utc, w->last_ts);
-        if (gt_ts < 0 || (gt_ts == 0 && cands[i].seq <= w->last_seq))
+        if (gt_ts < 0 || (gt_ts == 0 && strcmp(cands[i].name, w->last_name) <= 0))
             continue;
         /* 推送形态与 hall.stream/replay 的 events 条目一致（SSoT）：
          * 展开 envelope 为扁平事件，订阅方用同一解码器消费两路数据。 */
@@ -245,7 +249,7 @@ int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
             AIRY_MEMCPY(out, flat, fl + 1);
             AIRY_FREE(flat);
             AIRY_STRNCPY_TERM(w->last_ts, cands[i].ts_utc, sizeof(w->last_ts));
-            w->last_seq = cands[i].seq;
+            AIRY_STRNCPY_TERM(w->last_name, cands[i].name, sizeof(w->last_name));
             result = 1;
             break;
         }

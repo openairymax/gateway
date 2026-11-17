@@ -91,13 +91,20 @@ char *hall_event_flatten(const char *path);
  * The gateway has no in-process hall handle (unlike the CLI/TUI which link
  * airy_coreloopthree); it reads the on-disk event flow. This cursor tracks
  * the last pushed event position so a long-lived SSE subscription can poll
- * the hall root and emit only newly recorded events, in global
- * (ts_utc, seq) order.
+ * the hall root and emit only newly recorded events.
+ *
+ * Cursor key is (ts_utc, file name). seq cannot be part of a total order:
+ * it counts inside one category directory, so two events written into
+ * different categories within the same millisecond carry the same seq. A
+ * (ts_utc, seq) cursor silently skipped one of them; the file name is
+ * unique and comparable, so name is the tiebreak that keeps the feed
+ * lossless. Causal order across categories is carried by gseq in the
+ * payload (clients sort by it after merging, as the TUI does).
  */
 typedef struct {
-    char root[1024];   /* hall root (airy_data_dir()/agentrt/hall) */
-    char last_ts[24];  /* last pushed ts_utc (fixed width, lexical) */
-    unsigned long last_seq;
+    char root[1024];        /* hall root (airy_data_dir()/agentrt/hall) */
+    char last_ts[24];       /* last pushed ts_utc (fixed width, lexical) */
+    char last_name[256];    /* last pushed file name (same-ms tiebreak) */
     int initialized;
 } gw_hall_watch_t;
 
@@ -107,11 +114,13 @@ typedef struct {
 void gw_hall_watch_init(gw_hall_watch_t *w);
 
 /**
- * @brief Fetch the next unseen event in global (ts_utc, seq) order.
+ * @brief Fetch the next unseen event in (ts_utc, file name) order.
  *
  * Scans the hall root recursively, sorts candidate events, and returns the
- * first event whose (ts_utc, seq) is strictly greater than the cursor.
- * On success the cursor is advanced past the returned event.
+ * first event whose (ts_utc, name) is strictly greater than the cursor.
+ * On success the cursor is advanced past the returned event. Every stored
+ * event is emitted exactly once, including same-millisecond events from
+ * different categories.
  *
  * @param w       watch cursor
  * @param out     caller buffer receiving the compact event JSON (no
