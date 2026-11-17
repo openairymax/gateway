@@ -121,6 +121,9 @@
           "name": "count_tokens"
         },
         {
+          "name": "probe"
+        },
+        {
           "name": "health_check"
         },
         {
