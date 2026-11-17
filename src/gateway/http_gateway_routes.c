@@ -12,6 +12,7 @@
 // @owner: team-B
 #include "http_gateway_routes.h"
 #include "http_gateway_deps.h"
+#include "compat.h"
 
 #include "gateway_auth.h"
 
@@ -203,11 +204,11 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
                         http_request_context_t *context)
 {
 
-    char health_json[192];
+    char health_json[320];
     int n = snprintf(health_json, sizeof(health_json),
                      "{\"status\":\"healthy\",\"service\":\"gateway\",\"version\":\""
-                     GATEWAY_VERSION "\",\"epoch\":%llu}",
-                     (unsigned long long)gateway->epoch_s);
+                     GATEWAY_VERSION "\",\"build\":\"%s\",\"epoch\":%llu}",
+                     airy_build_id(), (unsigned long long)gateway->epoch_s);
     if (n <= 0 || (size_t)n >= sizeof(health_json)) {
         return MHD_NO;
     }
