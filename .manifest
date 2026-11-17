@@ -85,6 +85,25 @@
       ]
     },
     {
+      "ns": "task",
+      "owner": "agent",
+      "route": true,
+      "daemon": "agent_d",
+      "sock": "agent",
+      "caps": [
+        {
+          "name": "submit",
+          "kind": "task_submit",
+          "perm": "cap:agent.run"
+        },
+        {
+          "name": "submit_stream",
+          "kind": "task_submit",
+          "perm": "cap:agent.run"
+        }
+      ]
+    },
+    {
       "ns": "llm",
       "owner": "llm",
       "route": true,
