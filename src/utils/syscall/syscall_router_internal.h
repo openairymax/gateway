@@ -30,7 +30,7 @@
 
 #include <cjson/cJSON.h>
 
-#include <airymax/sched.h>
+#include <linux/airymax/sched.h>
 
 /* Phase 3: executor consolidation - daemon Unix socket path
  *
