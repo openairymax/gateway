@@ -170,6 +170,15 @@
           "name": "execute"
         },
         {
+          "name": "submit"
+        },
+        {
+          "name": "poll"
+        },
+        {
+          "name": "cancel"
+        },
+        {
           "name": "list"
         },
         {
