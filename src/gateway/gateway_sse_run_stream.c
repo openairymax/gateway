@@ -10,9 +10,12 @@
  * 零业务逻辑（K-1 纯翻译）。
  *
  * 端点：POST /api/v1/agent/run/stream
- *   - 请求体：JSON-RPC 2.0（method=agent.run_stream，params 透传）
+ *   - 请求体：JSON-RPC 2.0（method 白名单见 rs_daemon_method，params 透传）
  *   - 响应：200 + text/event-stream；每事件一个 "data: <json>\n\n" 帧
  *   - 中断：客户端断开后关闭到 agent_d 的连接，流结束
+ *
+ * C-15 起 CLI/TUI/SDK 共用 task.submit_stream：daemon 分派按首个 '.' 截断，
+ * 故公开方法名在此映射为无点的 daemon 方法名，未知方法直接 400。
  */
 
 #include "http_gateway_sse_internal.h"
@@ -61,15 +64,26 @@ static void rs_resolve_agent_sock(char *out, size_t out_size)
     }
 }
 
-/* 构造 agent.run_stream JSON-RPC 请求（params 原样透传） */
-static char *rs_build_request(const cJSON *params)
+/* 公开流式方法 -> daemon 方法名；缺省（旧客户端不带 method）沿用
+ * agent.run_stream。未知方法返回 NULL，由调用方回 400。 */
+static const char *rs_daemon_method(const char *public_method)
+{
+    if (!public_method || !public_method[0] || strcmp(public_method, "agent.run_stream") == 0)
+        return "agent.run_stream";
+    if (strcmp(public_method, "task.submit_stream") == 0)
+        return "task_submit_stream";
+    return NULL;
+}
+
+/* 构造流式 JSON-RPC 请求（params 原样透传） */
+static char *rs_build_request(const cJSON *params, const char *daemon_method)
 {
     cJSON *req = cJSON_CreateObject();
     if (!req)
         return NULL;
     cJSON_AddStringToObject(req, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(req, "id", 1);
-    cJSON_AddStringToObject(req, "method", "agent.run_stream");
+    cJSON_AddStringToObject(req, "method", daemon_method);
     if (cJSON_IsObject(params)) {
         cJSON_AddItemToObject(req, "params", cJSON_Duplicate(params, 1));
     } else {
@@ -234,7 +248,16 @@ int handle_run_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connec
     }
 
     cJSON *params = cJSON_GetObjectItem(root, "params");
-    char *req_json = rs_build_request(cJSON_IsObject(params) ? params : NULL);
+    cJSON *m = cJSON_GetObjectItem(root, "method");
+    const char *daemon_method =
+        rs_daemon_method(cJSON_IsString(m) ? m->valuestring : NULL);
+    if (!daemon_method) {
+        cJSON_Delete(root);
+        return gw_sse_send_json_error(gateway, connection, 400,
+                                      "Unsupported streaming method (expected "
+                                      "agent.run_stream or task.submit_stream)");
+    }
+    char *req_json = rs_build_request(cJSON_IsObject(params) ? params : NULL, daemon_method);
     cJSON_Delete(root);
     if (!req_json) {
         return gw_sse_send_json_error(gateway, connection, 500, "Out of memory");
