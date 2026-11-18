@@ -16,7 +16,7 @@
     "dispatch"
   ],
   "defaults": {
-    "timeout_ms": 90000,
+    "timeout_ms": "budget:server",
     "version": 1
   },
   "sock_bindings": [
@@ -112,6 +112,7 @@
       "route": true,
       "daemon": "llm_d",
       "sock": "llm",
+      "timeout_ms": "budget:server",
       "caps": [
         {
           "name": "complete"
@@ -148,6 +149,7 @@
       "route": true,
       "daemon": "tool_d",
       "sock": "tool",
+      "timeout_ms": "budget:tool_outer",
       "caps": [
         {
           "name": "pending",
@@ -205,6 +207,7 @@
       "daemon": "tool_d",
       "sock": "tool",
       "prefix": "plugin",
+      "timeout_ms": "budget:tool_outer",
       "l2_pass": false,
       "caps": [
         {
@@ -323,7 +326,7 @@
       "route": true,
       "daemon": "think_d",
       "sock": "think",
-      "timeout_ms": 120000,
+      "timeout_ms": "budget:server",
       "caps": [
         {
           "name": "process"
