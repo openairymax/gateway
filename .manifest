@@ -189,6 +189,12 @@
         },
         {
           "name": "get_stats"
+        },
+        {
+          "name": "jobs"
+        },
+        {
+          "name": "job"
         }
       ]
     },
