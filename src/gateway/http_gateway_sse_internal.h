@@ -34,4 +34,14 @@
 int gw_sse_send_json_error(http_gateway_t *gateway, struct MHD_Connection *connection,
                            int status, const char *message);
 
+/*
+ * 503 responder for a southbound service that is restarting (not broken).
+ * Body is a JSON-RPC error carrying data.code=UNAVAILABLE and
+ * data.retry_after_ms, plus a Retry-After header, so the client can tell
+ * "come back shortly" apart from a real failure and keep the turn paused
+ * instead of reporting it as failed.
+ */
+int gw_sse_send_unavail(http_gateway_t *gateway, struct MHD_Connection *connection,
+                        int retry_ms);
+
 #endif /* HTTP_GATEWAY_SSE_INTERNAL_H */

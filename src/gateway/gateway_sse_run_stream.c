@@ -38,6 +38,10 @@
 
 #define RS_SSE_BUF_CAP (64 * 1024)
 
+/* Supervisor restarts agent_d in well under a second; 800ms is the hint
+ * the client waits before re-attempting a paused turn. */
+#define GW_SSE_RETRY_MS 800
+
 /* run_stream SSE 翻译上下文（仅帧缓冲与 agent_d socket，无业务状态） */
 typedef struct {
     int fd;
@@ -269,7 +273,7 @@ int handle_run_stream_sse(http_gateway_t *gateway, struct MHD_Connection *connec
     AIRY_FREE(req_json);
     if (fd < 0) {
         AIRY_LOG_WARN("run_stream: agent.sock connect failed (%s)", agent_sock);
-        return gw_sse_send_json_error(gateway, connection, 503, "Agent service unreachable");
+        return gw_sse_send_unavail(gateway, connection, GW_SSE_RETRY_MS);
     }
 
     rs_sse_ctx_t *rs = (rs_sse_ctx_t *)AIRY_CALLOC(1, sizeof(rs_sse_ctx_t));

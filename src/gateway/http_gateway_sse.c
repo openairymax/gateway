@@ -41,3 +41,37 @@ int gw_sse_send_json_error(http_gateway_t *gateway, struct MHD_Connection *conne
     atomic_fetch_add(&gateway->requests_failed, 1);
     return ret;
 }
+
+/* ── 503 responder for a restarting southbound service ─────────────── */
+
+int gw_sse_send_unavail(http_gateway_t *gateway, struct MHD_Connection *connection,
+                        int retry_ms)
+{
+    if (retry_ms < 0)
+        retry_ms = 0;
+    char body[256];
+    int n = snprintf(body, sizeof(body),
+                     "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,"
+                     "\"message\":\"agent service restarting\","
+                     "\"data\":{\"code\":\"UNAVAILABLE\",\"retry_after_ms\":%d}}}",
+                     retry_ms);
+    if (n < 0 || n >= (int)sizeof(body)) {
+        AIRY_STRNCPY_TERM(body,
+                          "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,"
+                          "\"message\":\"agent service restarting\","
+                          "\"data\":{\"code\":\"UNAVAILABLE\"}}}",
+                          sizeof(body));
+    }
+    struct MHD_Response *response =
+        create_http_response_ex(gateway, connection, 503, body, strlen(body));
+    int ret = MHD_NO;
+    if (response) {
+        char retry_s[16];
+        snprintf(retry_s, sizeof(retry_s), "%d", (retry_ms + 999) / 1000);
+        MHD_add_response_header(response, "Retry-After", retry_s);
+        ret = MHD_queue_response(connection, 503, response);
+        MHD_destroy_response(response);
+    }
+    atomic_fetch_add(&gateway->requests_failed, 1);
+    return ret;
+}
