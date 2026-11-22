@@ -189,11 +189,18 @@ char *gw_aipc_call(const char *sock_path, const char *method,
     resp[0] = '\0';
     char buf[4096];
     for (;;) {
+        int err = 0;
 #ifndef _WIN32
         ssize_t n = recv(fd, buf, sizeof(buf), 0);
+        if (n < 0)
+            err = errno;
 #else
         int n = recv(fd, buf, sizeof(buf), 0);
+        if (n < 0)
+            err = WSAGetLastError();
 #endif
+        if (n < 0 && err == EINTR)
+            continue;
         if (n <= 0)
             break;
         if (used + (size_t)n + 1 > cap) {
@@ -217,6 +224,11 @@ char *gw_aipc_call(const char *sock_path, const char *method,
         resp[used] = '\0';
     }
     gw_aipc_sock_close(fd);
+    if (used == 0) {
+        AIRY_LOG_WARN("aipc: peer closed without payload (%s)", sock_path);
+        AIRY_FREE(resp);
+        return NULL;
+    }
     return resp;
 }
 
