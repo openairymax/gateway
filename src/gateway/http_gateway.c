@@ -44,6 +44,7 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -368,6 +369,26 @@ static void http_req_complete_cb(
 #define GATEWAY_MHD_FLAGS (MHD_USE_SELECT_INTERNALLY | MHD_USE_TURBO)
 #endif
 
+/* 探测目标 sockaddr 的族内精确长度。BSD/Darwin 的 connect 校验 addrlen
+ * 与 sa_len：AF_INET 传 sizeof(sockaddr_storage)（128B）得 EINVAL，Linux
+ * 容忍，故缺陷只在 macOS 真机核验暴露（MHD 已监听、nc 可连，自证探测
+ * 却三次全败 → 假死 fail-closed → supervisor 重试至 FAILED）。 */
+#ifndef _WIN32
+static socklen_t probe_socklen(struct sockaddr_storage *ss)
+{
+    if (ss->ss_family == AF_INET6) {
+#ifdef __APPLE__
+        ((struct sockaddr_in6 *)ss)->sin6_len = sizeof(struct sockaddr_in6);
+#endif
+        return (socklen_t)sizeof(struct sockaddr_in6);
+    }
+#ifdef __APPLE__
+    ((struct sockaddr_in *)ss)->sin_len = sizeof(struct sockaddr_in);
+#endif
+    return (socklen_t)sizeof(struct sockaddr_in);
+}
+#endif
+
 /* 启动自证：MHD_start_daemon 返回非空不代表端口真实可达（头/库版本
  * 错位、平台后端差异均可致 daemon 非空而 listen 缺失）。以对实际
  * bind 地址的 connect 探测为真值（与干净主机核验脚本同源）：host
@@ -404,20 +425,29 @@ static airy_err_t probe_listen(const char *host, uint16_t port)
         /* 非 IP 字面量：start 侧已显性 fail，此处保持回环缺省。 */
     }
 
-    int fd = socket(ss.ss_family, SOCK_STREAM, 0);
-    if (fd < 0) {
-        return AIRY_EBUSY;
-    }
-
+    socklen_t slen = probe_socklen(&ss);
+    int last_errno = 0;
     airy_err_t err = AIRY_EBUSY;
     for (int attempt = 0; attempt < 3; ++attempt) {
-        if (connect(fd, (struct sockaddr *)&ss, sizeof(ss)) == 0) {
+        /* 每轮新 socket：失败的连接态不可复用（Darwin 上二次 connect
+         * 返回 EINVAL，掩盖真实 errno）。 */
+        int fd = socket(ss.ss_family, SOCK_STREAM, 0);
+        if (fd < 0) {
+            last_errno = errno;
+            break;
+        }
+        if (connect(fd, (struct sockaddr *)&ss, slen) == 0) {
+            close(fd);
             err = AIRY_SUCCESS;
             break;
         }
+        last_errno = errno;
+        close(fd);
         airy_sleep_ms(100);
     }
-    close(fd);
+    if (err != AIRY_SUCCESS)
+        AIRY_LOG_WARN("probe_listen: connect %s:%u failed after 3 attempts (errno=%d)",
+                      (host && host[0]) ? host : "127.0.0.1", (unsigned)port, last_errno);
     return err;
 #endif
 }
@@ -490,9 +520,15 @@ static airy_err_t http_gateway_start(void *gateway_impl)
         if (inet_pton(AF_INET, gateway->host, &sin->sin_addr) == 1) {
             sin->sin_family = AF_INET;
             sin->sin_port = htons(gateway->port);
+#ifdef __APPLE__
+            sin->sin_len = sizeof(struct sockaddr_in);
+#endif
         } else if (inet_pton(AF_INET6, gateway->host, &sin6->sin6_addr) == 1) {
             sin6->sin6_family = AF_INET6;
             sin6->sin6_port = htons(gateway->port);
+#ifdef __APPLE__
+            sin6->sin6_len = sizeof(struct sockaddr_in6);
+#endif
         } else {
             AIRY_LOG_ERROR("http_gateway_start: invalid listen host '%s' (IP literal required); "
                            "fail-closed instead of binding all interfaces",
