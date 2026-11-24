@@ -59,6 +59,11 @@ static int gw_aipc_connect(const char *sock_path)
     struct sockaddr_un addr;
     AIRY_MEMSET(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
+    /* P1-1：超长路径静默截断会连到另一个 socket（或连不上且错误码误导）。 */
+    if (strlen(sock_path) >= sizeof(addr.sun_path)) {
+        close(fd);
+        return -1;
+    }
     AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         close(fd);
