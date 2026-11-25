@@ -39,6 +39,12 @@ set(GATEWAY_SRC_BASE ${CMAKE_CURRENT_SOURCE_DIR})
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/gateway-sources.cmake)
 set(GATEWAY_SOURCES ${GATEWAY_COMMON_SOURCES})
 
+# 分层后的裸名解析面统一由清单导出，避免消费方各自拼目录
+set(GATEWAY_FACE_INC)
+foreach(_gw_face_dir ${GATEWAY_COMMON_INCLUDE_DIRS})
+    list(APPEND GATEWAY_FACE_INC $<BUILD_INTERFACE:${_gw_face_dir}>)
+endforeach()
+
 # ========== 头文件 ==========
 set(GATEWAY_HEADERS
     src/gateway/hall/gateway_hall_store.h
@@ -138,14 +144,9 @@ target_include_directories(gateway
         # 需向 gateway 的消费者（含测试目标）传递此 include 路径，避免找不到头文件
         $<BUILD_INTERFACE:${COMMONS_DIR}/utils/cjson>
         # 0.1.21 S30-P1-4 目录原子化：src/gateway 按协议族分层后的裸名解析面
-        # （与 gateway_d 共用同一份清单，见 cmake/gateway-sources.cmake）
-        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/auth>
-        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/aipc>
-        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/hall>
-        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/http1>
-        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/http2>
-        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/ws>
-        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/stdio>
+        # （与 gateway_d 共用同一份清单，见 cmake/gateway-sources.cmake；
+        # src/gateway 根目录含 gateway_internal.h，须一并挂载）
+        ${GATEWAY_FACE_INC}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${COREKERN_DIR}/include
