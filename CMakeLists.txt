@@ -136,10 +136,6 @@ set_source_files_properties(
 target_include_directories(gateway
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/utils>
-        # 2026-08-27 目录原子化：syscall 路由家族子目录（裸名 include 解析）
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/utils/syscall>
         # P0.18.2: gateway_rpc_handler.h (PUBLIC 头) 引用 <cjson_helpers.h>，
         # 需向 gateway 的消费者（含测试目标）传递此 include 路径，避免找不到头文件
         $<BUILD_INTERFACE:${COMMONS_DIR}/utils/cjson>
@@ -149,6 +145,9 @@ target_include_directories(gateway
         ${GATEWAY_FACE_INC}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        # 2026-08-27 目录原子化：syscall 路由家族子目录（裸名 include 解析）
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/syscall
         ${COREKERN_DIR}/include
         ${SYSCALL_DIR}/include
         ${COMMONS_DIR}
@@ -199,7 +198,7 @@ target_include_directories(gateway
 # airy_sys_svc_call()（SYS_SVC_CALL）派发，故 gateway 依赖 atoms/syscall
 # （airy_syscall 归档；仅 svc_dispatch.o 被拉取，其余 airy_sys_* 由本库
 # syscall_router_*.c 提供，避免重复符号）。
-# PUBLIC 传播至测试目标（test_jsonrpc/test_syscall_router/test_rpc_handler）
+# 链接面 PUBLIC 传播至测试目标（test_syscall_router/test_rpc_handler）
 target_link_libraries(gateway
     PUBLIC
         svc_common
@@ -288,6 +287,10 @@ if(BUILD_TESTS AND NOT WIN32)
     # syscall_router 测试 (8个用例)
     add_executable(test_syscall_router tests/test_syscall_router.c)
     target_compile_definitions(test_syscall_router PRIVATE AIRY_COMPLIANCE_IMPL)
+    # 测试直接包含实现侧头文件（裸名），须自行声明所在目录，
+    # 不再依赖 gateway 的 PUBLIC 传播。
+    target_include_directories(test_syscall_router PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/syscall)
     target_link_libraries(test_syscall_router gateway)
     add_test(NAME syscall_router_test COMMAND test_syscall_router)
 
@@ -296,6 +299,8 @@ if(BUILD_TESTS AND NOT WIN32)
     # gateway_rpc_handler 统一RPC处理模块测试 (14个用例)
     add_executable(test_rpc_handler tests/test_gateway_rpc_handler.c)
     target_compile_definitions(test_rpc_handler PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_include_directories(test_rpc_handler PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/utils)
     target_link_libraries(test_rpc_handler gateway)
     add_test(NAME rpc_handler_test COMMAND test_rpc_handler)
 
@@ -303,6 +308,8 @@ if(BUILD_TESTS AND NOT WIN32)
     # deny 行为测试先行（必红），随后 gateway_auth.c 落地转绿
     add_executable(test_gateway_auth tests/test_gateway_auth.c)
     target_compile_definitions(test_gateway_auth PRIVATE AIRY_COMPLIANCE_IMPL)
+    target_include_directories(test_gateway_auth PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(test_gateway_auth gateway)
     add_test(NAME gateway_auth_test COMMAND test_gateway_auth)
 
