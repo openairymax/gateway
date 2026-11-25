@@ -6,14 +6,16 @@
  * @file gateway_aipc_client.c
  * @brief Gateway southbound A-IPC unified client face.
  *
- * Single owner of every socket(AF_UNIX) creation under gateway/src (gate N2).
- * The REQUEST/RESPONSE implementation is the migrated gw_svc_call body;
- * gw_svc_call itself is now a thin wrapper (gateway_biz_forward.c) so zero
- * call sites changed.
+ * Single owner of every daemon-plane socket connection under gateway/src
+ * (gate N2). Transport ceremony — endpoint parsing, connect, receive timeout,
+ * whole-frame send — lives in commons/platform (platform_sock_conn.c); this
+ * file carries only the A-IPC wire policy (JSON-RPC envelope, response cap).
+ * POSIX talks AF_UNIX, Windows talks TCP loopback; neither branch is visible
+ * here, so the three entry points share one code path on every platform.
  *
- * STREAM/EVENT are the transition form from design §4.2: connect + send is
- * centralized here; the fd-returning contract keeps the MHD pull-model
- * readers and the PEP fail-open observer untouched.
+ * STREAM/EVENT keep the fd-returning contract (design §4.2): MHD pull-model
+ * readers and the PEP fail-open observer own their chunked read loops, idle
+ * deadlines and reconnect policy.
  */
 
 #include "gateway_aipc_client.h"
@@ -30,181 +32,94 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <errno.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/un.h>
-#include <unistd.h>
-#endif
-
-/* fd 类型随传输分支而异（POSIX int / WIN32 SOCKET），关闭助手同理成对定义 */
-#ifndef _WIN32
-static void gw_aipc_sock_close(int fd)
+/* REQUEST/RESPONSE 的线上信封：id 固定为 1（单请求单响应连接，无需复用
+ * 关联号），params 非对象时回落空对象，避免对端解析失败。 */
+static char *gw_aipc_req(const char *method, const char *params_json)
 {
-    if (fd >= 0)
-        close(fd);
-}
+    cJSON *req;
+    char *out;
 
-/* 机制件：AF_UNIX 连接仪式收敛到 commons/platform（airy_sock_conn_unix），
- * call/stream/subscribe 三处入口共用；失败返回 -1。 */
-static int gw_aipc_connect(const char *sock_path)
-{
-    airy_sock_t fd = airy_sock_conn_unix(sock_path, 0);
-    return (fd < 0) ? -1 : (int)fd;
-}
-
-/* 机制件：发全循环（短写续发），成功返回 0，失败返回 -1。 */
-static int gw_aipc_send_all(int fd, const char *buf, size_t len)
-{
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, buf + sent, len - sent, 0);
-        if (n <= 0)
-            return -1;
-        sent += (size_t)n;
+    if (!method || !method[0])
+        return NULL;
+    req = cJSON_CreateObject();
+    if (!req)
+        return NULL;
+    cJSON_AddStringToObject(req, "jsonrpc", "2.0");
+    cJSON_AddNumberToObject(req, "id", 1);
+    cJSON_AddStringToObject(req, "method", method);
+    if (params_json && params_json[0]) {
+        cJSON *p = cJSON_Parse(params_json);
+        cJSON_AddItemToObject(req, "params", p ? p : cJSON_CreateObject());
+    } else {
+        cJSON_AddItemToObject(req, "params", cJSON_CreateObject());
     }
-    return 0;
+    out = cJSON_PrintUnformatted(req);
+    cJSON_Delete(req);
+    return out;
 }
-#else
-static void gw_aipc_sock_close(SOCKET fd)
-{
-    if (fd != INVALID_SOCKET)
-        closesocket(fd);
-}
-#endif
 
 /* ── REQUEST/RESPONSE ──────────────────────────────────────────────── */
 
 char *gw_aipc_call(const char *sock_path, const char *method,
                    const char *params_json, int timeout_ms)
 {
-    /* JSON-RPC request envelope for the socket transport */
-    char *req_str = NULL;
-    {
-        cJSON *req = cJSON_CreateObject();
-        if (!req)
-            return NULL;
-        cJSON_AddStringToObject(req, "jsonrpc", "2.0");
-        cJSON_AddNumberToObject(req, "id", 1);
-        cJSON_AddStringToObject(req, "method", method);
-        if (params_json && params_json[0]) {
-            cJSON *p = cJSON_Parse(params_json);
-            cJSON_AddItemToObject(req, "params", p ? p : cJSON_CreateObject());
-        } else {
-            cJSON_AddItemToObject(req, "params", cJSON_CreateObject());
-        }
-        req_str = cJSON_PrintUnformatted(req);
-        cJSON_Delete(req);
-        if (!req_str)
-            return NULL;
-    }
+    char *req_str = gw_aipc_req(method, params_json);
+    airy_sock_t fd;
+    char *resp;
+    char buf[4096];
+    size_t cap = 65536;
+    size_t used = 0;
 
-#ifndef _WIN32
-    int fd = gw_aipc_connect(sock_path);
-    if (fd < 0) {
+    if (!req_str)
+        return NULL;
+    fd = airy_sock_conn_endpoint(sock_path, 0);
+    if (fd == AIRY_INVALID_SOCKET) {
+        AIRY_LOG_WARN("aipc: connect failed (%s)", sock_path ? sock_path : "");
         AIRY_FREE(req_str);
         return NULL;
     }
-
-    struct timeval tv = {timeout_ms / 1000, (timeout_ms % 1000) * 1000};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-#else
-    /* Windows：daemon 统一走 TCP 回环（daemon_main.h parse_args 强制），
-     * sock_path 参数约定为 "host:port"（如 "127.0.0.1:8086"），与
-     * daemon_rpc_client 及 gateway 的 AIRY_LLM_TCP_ADDR/PORT 约定一致。 */
-    SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == INVALID_SOCKET) {
+    if (timeout_ms <= 0)
+        timeout_ms = GW_AIPC_DEFAULT_TIMEOUT_MS;
+    if (airy_sock_set_recv_timeout(fd, (uint32_t)timeout_ms) != AIRY_SUCCESS) {
         AIRY_FREE(req_str);
+        airy_sock_close(fd);
         return NULL;
     }
-
-    char host[128];
-    char port_str[16];
-    const char *colon = sock_path ? strrchr(sock_path, ':') : NULL;
-    if (!colon || colon == sock_path || (size_t)(colon - sock_path) >= sizeof(host) ||
-        strlen(colon + 1) >= sizeof(port_str)) {
+    if (airy_sock_send_all(fd, req_str, strlen(req_str)) != AIRY_SUCCESS) {
+        AIRY_LOG_WARN("aipc: send failed (%s)", method);
         AIRY_FREE(req_str);
-        closesocket(fd);
+        airy_sock_close(fd);
         return NULL;
-    }
-    size_t host_len = (size_t)(colon - sock_path);
-    AIRY_MEMCPY(host, sock_path, host_len);
-    host[host_len] = '\0';
-    AIRY_STRNCPY_TERM(port_str, colon + 1, sizeof(port_str));
-    struct sockaddr_in addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons((uint16_t)atoi(port_str));
-    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0)
-        addr.sin_addr.s_addr = INADDR_LOOPBACK;
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        AIRY_FREE(req_str);
-        closesocket(fd);
-        return NULL;
-    }
-
-    int timeout_ms_win = timeout_ms > 0 ? timeout_ms : 90000;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms_win,
-               sizeof(timeout_ms_win));
-#endif
-
-    size_t len = strlen(req_str);
-    size_t sent = 0;
-    while (sent < len) {
-#ifndef _WIN32
-        ssize_t n = send(fd, req_str + sent, len - sent, 0);
-#else
-        int n = send(fd, req_str + sent, (int)(len - sent), 0);
-#endif
-        if (n <= 0) {
-            AIRY_FREE(req_str);
-            gw_aipc_sock_close(fd);
-            return NULL;
-        }
-        sent += (size_t)n;
     }
     AIRY_FREE(req_str);
 
-    size_t cap = 65536;
-    size_t used = 0;
-    char *resp = (char *)AIRY_MALLOC(cap);
+    resp = (char *)AIRY_MALLOC(cap);
     if (!resp) {
-        gw_aipc_sock_close(fd);
+        airy_sock_close(fd);
         return NULL;
     }
     resp[0] = '\0';
-    char buf[4096];
     for (;;) {
-        int err = 0;
-#ifndef _WIN32
-        ssize_t n = recv(fd, buf, sizeof(buf), 0);
-        if (n < 0)
-            err = errno;
-#else
-        int n = recv(fd, buf, sizeof(buf), 0);
-        if (n < 0)
-            err = WSAGetLastError();
-#endif
-        if (n < 0 && err == EINTR)
-            continue;
+        ssize_t n = airy_sock_recv_block(fd, buf, sizeof(buf));
         if (n <= 0)
             break;
+        if (used + (size_t)n + 1 > GW_AIPC_MAX_RESP) {
+            AIRY_FREE(resp);
+            airy_sock_close(fd);
+            return NULL;
+        }
         if (used + (size_t)n + 1 > cap) {
-            size_t new_cap = (used + (size_t)n + 1) * 2;
-            if (new_cap > GW_AIPC_MAX_RESP) {
-                AIRY_FREE(resp);
-                gw_aipc_sock_close(fd);
-                return NULL;
-            }
-            char *np = (char *)AIRY_REALLOC(resp, new_cap);
+            size_t need = used + (size_t)n + 1;
+            size_t new_cap = cap * 2;
+            char *np;
+            if (new_cap < need)
+                new_cap = need;
+            if (new_cap > GW_AIPC_MAX_RESP)
+                new_cap = GW_AIPC_MAX_RESP;
+            np = (char *)AIRY_REALLOC(resp, new_cap);
             if (!np) {
                 AIRY_FREE(resp);
-                gw_aipc_sock_close(fd);
+                airy_sock_close(fd);
                 return NULL;
             }
             resp = np;
@@ -214,9 +129,9 @@ char *gw_aipc_call(const char *sock_path, const char *method,
         used += (size_t)n;
         resp[used] = '\0';
     }
-    gw_aipc_sock_close(fd);
+    airy_sock_close(fd);
     if (used == 0) {
-        AIRY_LOG_WARN("aipc: peer closed without payload (%s)", sock_path);
+        AIRY_LOG_WARN("aipc: peer closed without payload (%s)", sock_path ? sock_path : "");
         AIRY_FREE(resp);
         return NULL;
     }
@@ -225,48 +140,39 @@ char *gw_aipc_call(const char *sock_path, const char *method,
 
 /* ── STREAM（过渡态：连接 + 发送，分片读循环留在调用方）──────────────── */
 
-int gw_aipc_stream(const char *sock_path, const char *req_json, int poll_timeout_s)
+airy_sock_t gw_aipc_stream(const char *sock_path, const char *req_json, int poll_timeout_s)
 {
-#ifndef _WIN32
-    int fd = gw_aipc_connect(sock_path);
-    if (fd < 0)
-        return -1;
-    if (poll_timeout_s > 0) {
-        struct timeval tv = {poll_timeout_s, 0};
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    }
-    if (gw_aipc_send_all(fd, req_json, strlen(req_json)) != 0) {
-        close(fd);
-        return -1;
+    airy_sock_t fd;
+
+    if (!req_json)
+        return AIRY_INVALID_SOCKET;
+    fd = airy_sock_conn_endpoint(sock_path, 0);
+    if (fd == AIRY_INVALID_SOCKET)
+        return AIRY_INVALID_SOCKET;
+    if (poll_timeout_s > 0)
+        airy_sock_set_recv_timeout(fd, (uint32_t)poll_timeout_s * 1000u);
+    if (airy_sock_send_all(fd, req_json, strlen(req_json)) != AIRY_SUCCESS) {
+        airy_sock_close(fd);
+        return AIRY_INVALID_SOCKET;
     }
     return fd;
-#else
-    (void)sock_path;
-    (void)req_json;
-    (void)poll_timeout_s;
-    return -1;
-#endif
 }
 
 /* ── EVENT（过渡态：连接 + 握手发送，帧循环/重连留在调用方）──────────── */
 
-int gw_aipc_subscribe(const char *sock_path, const char *handshake,
-                      size_t handshake_len)
+airy_sock_t gw_aipc_subscribe(const char *sock_path, const char *handshake,
+                              size_t handshake_len)
 {
-#ifndef _WIN32
-    int fd = gw_aipc_connect(sock_path);
-    if (fd < 0)
-        return -1;
+    airy_sock_t fd;
 
-    if (gw_aipc_send_all(fd, handshake, handshake_len) != 0) {
-        close(fd);
-        return -1;
+    if (!handshake)
+        return AIRY_INVALID_SOCKET;
+    fd = airy_sock_conn_endpoint(sock_path, 0);
+    if (fd == AIRY_INVALID_SOCKET)
+        return AIRY_INVALID_SOCKET;
+    if (airy_sock_send_all(fd, handshake, handshake_len) != AIRY_SUCCESS) {
+        airy_sock_close(fd);
+        return AIRY_INVALID_SOCKET;
     }
     return fd;
-#else
-    (void)sock_path;
-    (void)handshake;
-    (void)handshake_len;
-    return -1;
-#endif
 }

@@ -30,12 +30,17 @@
 
 #include <stddef.h>
 
+#include "daemon_platform_ext.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /** Full-response cap: oversized daemon replies fail the call (DoS guard). */
 #define GW_AIPC_MAX_RESP 1048576
+
+/** Receive timeout when the caller passes non-positive (bounded, never hang). */
+#define GW_AIPC_DEFAULT_TIMEOUT_MS 90000
 
 /**
  * @brief REQUEST/RESPONSE round trip against a daemon endpoint.
@@ -48,8 +53,7 @@ extern "C" {
  *                    daemon convention: TCP loopback)
  * @param method      Internal service method (e.g. "spawn"/"invoke"/"write")
  * @param params_json Method params JSON string (NULL/empty -> "{}")
- * @param timeout_ms  Receive timeout (ms; WIN32 falls back to the LLM
- *                    default when non-positive)
+ * @param timeout_ms  Receive timeout (ms; <=0 uses GW_AIPC_DEFAULT_TIMEOUT_MS)
  * @return Response JSON string (AIRY_MALLOC, caller AIRY_FREE), or NULL on
  *         failure
  */
@@ -64,15 +68,14 @@ char *gw_aipc_call(const char *sock_path, const char *method,
  * stalled stream surfaces as EAGAIN to the caller's poll logic; 0 keeps the
  * fd blocking (readers that rely on blocking recv, e.g. run_stream).
  *
- * @param sock_path      Target endpoint (UDS path, POSIX only)
+ * @param sock_path      Target endpoint (UDS path, or "host:port" on WIN32)
  * @param req_json       Request bytes sent verbatim (no NUL appended)
  * @param poll_timeout_s Optional SO_RCVTIMEO seconds (0 = blocking)
- * @return Connected fd on success, -1 on failure (WIN32: streaming paths are
- *         POSIX-only, callers already degrade)
- * @ownership caller closes the fd
+ * @return Connected socket on success, AIRY_INVALID_SOCKET on failure
+ * @ownership caller closes the socket
  */
-int gw_aipc_stream(const char *sock_path, const char *req_json,
-                   int poll_timeout_s);
+airy_sock_t gw_aipc_stream(const char *sock_path, const char *req_json,
+                           int poll_timeout_s);
 
 /**
  * @brief EVENT subscribe open: connect and ship the handshake bytes.
@@ -82,14 +85,14 @@ int gw_aipc_stream(const char *sock_path, const char *req_json,
  * request); this face owns connect + send. Frame parsing and the reconnect
  * policy stay with the caller (fail-open observer semantics).
  *
- * @param sock_path     Target endpoint (UDS path, POSIX only)
+ * @param sock_path     Target endpoint (UDS path, or "host:port" on WIN32)
  * @param handshake     Handshake bytes sent verbatim after connect
  * @param handshake_len Handshake byte count
- * @return Connected fd on success, -1 on failure
- * @ownership caller closes the fd
+ * @return Connected socket on success, AIRY_INVALID_SOCKET on failure
+ * @ownership caller closes the socket
  */
-int gw_aipc_subscribe(const char *sock_path, const char *handshake,
-                      size_t handshake_len);
+airy_sock_t gw_aipc_subscribe(const char *sock_path, const char *handshake,
+                              size_t handshake_len);
 
 #ifdef __cplusplus
 }
