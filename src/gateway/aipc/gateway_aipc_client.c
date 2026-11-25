@@ -72,7 +72,7 @@ char *gw_aipc_call(const char *sock_path, const char *method,
 
     if (!req_str)
         return NULL;
-    fd = airy_sock_conn_endpoint(sock_path, 0);
+    fd = airy_sock_conn_ep(sock_path, 0);
     if (fd == AIRY_INVALID_SOCKET) {
         AIRY_LOG_WARN("aipc: connect failed (%s)", sock_path ? sock_path : "");
         AIRY_FREE(req_str);
@@ -80,7 +80,7 @@ char *gw_aipc_call(const char *sock_path, const char *method,
     }
     if (timeout_ms <= 0)
         timeout_ms = GW_AIPC_DEFAULT_TIMEOUT_MS;
-    if (airy_sock_set_recv_timeout(fd, (uint32_t)timeout_ms) != AIRY_SUCCESS) {
+    if (airy_sock_rcv_tmo(fd, (uint32_t)timeout_ms) != AIRY_SUCCESS) {
         AIRY_FREE(req_str);
         airy_sock_close(fd);
         return NULL;
@@ -146,11 +146,11 @@ airy_sock_t gw_aipc_stream(const char *sock_path, const char *req_json, int poll
 
     if (!req_json)
         return AIRY_INVALID_SOCKET;
-    fd = airy_sock_conn_endpoint(sock_path, 0);
+    fd = airy_sock_conn_ep(sock_path, 0);
     if (fd == AIRY_INVALID_SOCKET)
         return AIRY_INVALID_SOCKET;
     if (poll_timeout_s > 0)
-        airy_sock_set_recv_timeout(fd, (uint32_t)poll_timeout_s * 1000u);
+        airy_sock_rcv_tmo(fd, (uint32_t)poll_timeout_s * 1000u);
     if (airy_sock_send_all(fd, req_json, strlen(req_json)) != AIRY_SUCCESS) {
         airy_sock_close(fd);
         return AIRY_INVALID_SOCKET;
@@ -167,7 +167,7 @@ airy_sock_t gw_aipc_subscribe(const char *sock_path, const char *handshake,
 
     if (!handshake)
         return AIRY_INVALID_SOCKET;
-    fd = airy_sock_conn_endpoint(sock_path, 0);
+    fd = airy_sock_conn_ep(sock_path, 0);
     if (fd == AIRY_INVALID_SOCKET)
         return AIRY_INVALID_SOCKET;
     if (airy_sock_send_all(fd, handshake, handshake_len) != AIRY_SUCCESS) {
