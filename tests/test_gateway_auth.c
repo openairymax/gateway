@@ -15,8 +15,8 @@
  */
 
 /* @owner: team-B */
-#include "gateway/gateway_auth.h"
-#include "gateway/http_gateway_routes.h"
+#include "gateway/auth/gateway_auth.h"
+#include "gateway/http1/http_gateway_routes.h"
 
 #include <stdio.h>
 #include <stdlib.h>

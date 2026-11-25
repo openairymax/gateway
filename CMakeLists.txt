@@ -41,11 +41,11 @@ set(GATEWAY_SOURCES ${GATEWAY_COMMON_SOURCES})
 
 # ========== 头文件 ==========
 set(GATEWAY_HEADERS
-    src/gateway/gateway_hall_store.h
-    src/gateway/http_gateway.h
-    src/gateway/http2_gateway.h
-    src/gateway/ws_gateway.h
-    src/gateway/stdio_gateway.h
+    src/gateway/hall/gateway_hall_store.h
+    src/gateway/http1/http_gateway.h
+    src/gateway/http2/http2_gateway.h
+    src/gateway/ws/ws_gateway.h
+    src/gateway/stdio/stdio_gateway.h
     src/utils/syscall/syscall_router.h
     src/utils/gateway_utils.h
     src/utils/gateway_protocol_handler.h
@@ -99,11 +99,11 @@ target_compile_definitions(gateway PUBLIC AIRY_HAS_CJSON=1)
 
 if(AIRY_HAS_LIBWEBSOCKETS)
     set_source_files_properties(
-        src/gateway/ws_gateway.c
+        src/gateway/ws/ws_gateway.c
         # 2026-08-27 ws_gateway 拆分：消息/回调文件经 ws_gateway_internal.h
         # 在 GATEWAY_HAS_WS 下包含 <libwebsockets.h>，同样需要豁免
-        src/gateway/ws_gateway_message.c
-        src/gateway/ws_gateway_callback.c
+        src/gateway/ws/ws_gateway_message.c
+        src/gateway/ws/ws_gateway_callback.c
         PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
     )
 endif()
@@ -116,14 +116,14 @@ endif()
 # 而其 #include <nghttp2/nghttp2.h> 位于守卫之前，若豁免依赖
 # AIRY_HAS_HTTP2，则缺库平台会因 poisoned "malloc" 编译失败。
 set_source_files_properties(
-    src/gateway/http2_gateway.c
-    src/gateway/http2_gateway_event.c
-    src/gateway/http2_gateway_frame.c
-    src/gateway/http2_gateway_headers.c
-    src/gateway/http2_gateway_response.c
-    src/gateway/http2_gateway_route.c
-    src/gateway/http2_gateway_session.c
-    src/gateway/http2_gateway_stream.c
+    src/gateway/http2/http2_gateway.c
+    src/gateway/http2/http2_gateway_event.c
+    src/gateway/http2/http2_gateway_frame.c
+    src/gateway/http2/http2_gateway_headers.c
+    src/gateway/http2/http2_gateway_response.c
+    src/gateway/http2/http2_gateway_route.c
+    src/gateway/http2/http2_gateway_session.c
+    src/gateway/http2/http2_gateway_stream.c
     PROPERTIES COMPILE_DEFINITIONS "AIRY_COMPLIANCE_IMPL"
 )
 
@@ -137,6 +137,15 @@ target_include_directories(gateway
         # P0.18.2: gateway_rpc_handler.h (PUBLIC 头) 引用 <cjson_helpers.h>，
         # 需向 gateway 的消费者（含测试目标）传递此 include 路径，避免找不到头文件
         $<BUILD_INTERFACE:${COMMONS_DIR}/utils/cjson>
+        # 0.1.21 S30-P1-4 目录原子化：src/gateway 按协议族分层后的裸名解析面
+        # （与 gateway_d 共用同一份清单，见 cmake/gateway-sources.cmake）
+        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/auth>
+        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/aipc>
+        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/hall>
+        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/http1>
+        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/http2>
+        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/ws>
+        $<BUILD_INTERFACE:${GATEWAY_SRC_BASE}/src/gateway/stdio>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${COREKERN_DIR}/include
@@ -248,10 +257,10 @@ install(FILES
 )
 
 install(FILES
-    src/gateway/http_gateway.h
-    src/gateway/http2_gateway.h
-    src/gateway/ws_gateway.h
-    src/gateway/stdio_gateway.h
+    src/gateway/http1/http_gateway.h
+    src/gateway/http2/http2_gateway.h
+    src/gateway/ws/ws_gateway.h
+    src/gateway/stdio/stdio_gateway.h
     src/utils/syscall/syscall_router.h
     DESTINATION include/agentrt/gateway
 )

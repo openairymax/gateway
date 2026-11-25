@@ -16,7 +16,7 @@
  */
 
 /* @owner: team-B */
-#include "gateway/gateway_auth.h"
+#include "gateway_auth.h"
 
 #include <stdlib.h>
 #include <string.h>

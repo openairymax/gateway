@@ -85,7 +85,7 @@ gateway/
 
 ### HTTP routes
 
-The static route table (see `src/gateway/http_gateway_routes.c`):
+The static route table (see `src/gateway/http1/http_gateway_routes.c`):
 
 | Method | Path | Streaming | Auth | Purpose |
 |--------|------|-----------|------|---------|
@@ -107,10 +107,10 @@ declared in `src/gateway/*.h` and shared with the daemon host via
 
 | Function | Declared in | Description |
 |----------|-------------|-------------|
-| `http_gateway_create(host, port)` | `src/gateway/http_gateway.h` | Create an HTTP/1.1 gateway instance |
-| `http2_gateway_create(host, port)` | `src/gateway/http2_gateway.h` | Create an HTTP/2 gateway instance (POSIX only) |
-| `ws_gateway_create(host, port)` | `src/gateway/ws_gateway.h` | Create a WebSocket gateway instance |
-| `stdio_gateway_create()` | `src/gateway/stdio_gateway.h` | Create a Stdio gateway instance (blocking REPL after start) |
+| `http_gateway_create(host, port)` | `src/gateway/http1/http_gateway.h` | Create an HTTP/1.1 gateway instance |
+| `http2_gateway_create(host, port)` | `src/gateway/http2/http2_gateway.h` | Create an HTTP/2 gateway instance (POSIX only) |
+| `ws_gateway_create(host, port)` | `src/gateway/ws/ws_gateway.h` | Create a WebSocket gateway instance |
+| `stdio_gateway_create()` | `src/gateway/stdio/stdio_gateway.h` | Create a Stdio gateway instance (blocking REPL after start) |
 | `gateway_start(gw)` | `include/gateway.h` | Start the gateway (HTTP/WS non-blocking; Stdio blocking) |
 | `gateway_destroy(gw)` | `include/gateway.h` | Destroy the instance and release resources (stops a running gateway automatically) |
 

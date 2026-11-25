@@ -18,9 +18,9 @@
  *
  * Read side: the gateway has no in-process hall handle, so hall watch
  * recursively scans the on-disk event flow, orders candidates by
- * (ts_utc, file name) and flattens each envelope into the compact wire event
- * shape (hall_event_flatten) shared by hall.replay / hall.stream /
- * hall.watch. seq is per-category and cannot act as a global tiebreak, so
+ * (ts_utc, file name) and emits each envelope flattened by the commons
+ * read-side primitive (hall_evt_flat_file) into the compact wire event
+ * shape shared by hall.replay / hall.stream / hall.watch. seq is per-category and cannot act as a global tiebreak, so
  * the unique file name is the cursor's second key (lossless push); causal
  * order across categories is the gseq carried in the payload.
  */
@@ -28,12 +28,10 @@
 // @owner: team-B
 #include "gateway_hall_store.h"
 
-#include "airy_memory.h"
 #include "airy_dirent.h"
+#include "airy_memory.h"
 #include "hall_event.h"
 #include "platform.h"
-
-#include <cjson/cJSON.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -136,83 +134,6 @@ void gw_hall_watch_init(gw_hall_watch_t *w)
     w->initialized = 1;
 }
 
-char *gw_hall_read_file(const char *path)
-{
-    FILE *f = fopen(path, "rb");
-    if (!f)
-        return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    long sz = ftell(f);
-    if (sz < 0 || fseek(f, 0, SEEK_SET) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    char *buf = (char *)AIRY_MALLOC((size_t)sz + 1);
-    if (!buf) {
-        fclose(f);
-        return NULL;
-    }
-    size_t got = fread(buf, 1, (size_t)sz, f);
-    fclose(f);
-    if (got != (size_t)sz) {
-        AIRY_FREE(buf);
-        return NULL;
-    }
-    buf[got] = '\0';
-    return buf;
-}
-
-/* Flatten one stored event envelope into the compact on-the-wire event
- * shape shared by every hall.* read endpoint (see header). */
-char *hall_event_flatten(const char *path)
-{
-    if (!path)
-        return NULL;
-    char *raw = gw_hall_read_file(path);
-    if (!raw)
-        return NULL;
-    cJSON *o = cJSON_Parse(raw);
-    AIRY_FREE(raw);
-    if (!o)
-        return NULL;
-
-    cJSON *f = cJSON_GetObjectItem(o, "file");
-    const char *file_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "id")) : NULL;
-    const char *category = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "category")) : NULL;
-    const char *task_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "task_id")) : NULL;
-    const char *tenant_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "tenant_id")) : NULL;
-    const char *node_id = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "node_id")) : NULL;
-    const char *ts_utc = f ? cJSON_GetStringValue(cJSON_GetObjectItem(f, "ts_utc")) : NULL;
-    double seq = f ? cJSON_GetNumberValue(cJSON_GetObjectItem(f, "seq")) : 0;
-    double gseq = f ? cJSON_GetNumberValue(cJSON_GetObjectItem(f, "gseq")) : 0;
-    cJSON *content = cJSON_GetObjectItem(o, "content");
-
-    cJSON *evt = cJSON_CreateObject();
-    if (evt) {
-        cJSON_AddStringToObject(evt, "file_id", file_id ? file_id : "");
-        cJSON_AddStringToObject(evt, "category", category ? category : "");
-        cJSON_AddStringToObject(evt, "task_id", task_id ? task_id : "");
-        cJSON_AddStringToObject(evt, "tenant_id", tenant_id ? tenant_id : "");
-        cJSON_AddStringToObject(evt, "node_id", node_id ? node_id : "");
-        cJSON_AddStringToObject(evt, "ts_utc", ts_utc ? ts_utc : "");
-        cJSON_AddNumberToObject(evt, "seq", seq);
-        cJSON_AddNumberToObject(evt, "gseq", gseq);
-        if (content && cJSON_IsObject(content))
-            cJSON_AddItemToObject(evt, "content", cJSON_Duplicate(content, 1));
-        else
-            cJSON_AddItemToObject(evt, "content", cJSON_CreateObject());
-    }
-    cJSON_Delete(o);
-    if (!evt)
-        return NULL;
-    char *s = cJSON_PrintUnformatted(evt);
-    cJSON_Delete(evt);
-    return s;
-}
-
 int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
 {
     if (!w || !out || out_sz == 0)
@@ -240,8 +161,9 @@ int gw_hall_watch_next(gw_hall_watch_t *w, char *out, size_t out_sz)
         if (gt_ts < 0 || (gt_ts == 0 && strcmp(cands[i].name, w->last_name) <= 0))
             continue;
         /* 推送形态与 hall.stream/replay 的 events 条目一致（SSoT）：
-         * 展开 envelope 为扁平事件，订阅方用同一解码器消费两路数据。 */
-        char *flat = hall_event_flatten(cands[i].path);
+         * 展平规则由 hall_event.h 的读侧原语单点定义，订阅方用同一
+         * 解码器消费两路数据。 */
+        char *flat = hall_evt_flat_file(cands[i].path);
         if (!flat)
             continue;
         size_t fl = strlen(flat);

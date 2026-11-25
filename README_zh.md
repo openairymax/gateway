@@ -85,7 +85,7 @@ gateway/
 
 ### HTTP 路由
 
-静态路由表（见 `src/gateway/http_gateway_routes.c`）：
+静态路由表（见 `src/gateway/http1/http_gateway_routes.c`）：
 
 | 方法 | 路径 | 流式 | 鉴权 | 用途 |
 |------|------|------|------|------|
@@ -106,10 +106,10 @@ gateway/
 
 | 函数 | 声明位置 | 说明 |
 |------|----------|------|
-| `http_gateway_create(host, port)` | `src/gateway/http_gateway.h` | 创建 HTTP/1.1 网关实例 |
-| `http2_gateway_create(host, port)` | `src/gateway/http2_gateway.h` | 创建 HTTP/2 网关实例（仅 POSIX） |
-| `ws_gateway_create(host, port)` | `src/gateway/ws_gateway.h` | 创建 WebSocket 网关实例 |
-| `stdio_gateway_create()` | `src/gateway/stdio_gateway.h` | 创建 Stdio 网关实例（start 后阻塞式 REPL） |
+| `http_gateway_create(host, port)` | `src/gateway/http1/http_gateway.h` | 创建 HTTP/1.1 网关实例 |
+| `http2_gateway_create(host, port)` | `src/gateway/http2/http2_gateway.h` | 创建 HTTP/2 网关实例（仅 POSIX） |
+| `ws_gateway_create(host, port)` | `src/gateway/ws/ws_gateway.h` | 创建 WebSocket 网关实例 |
+| `stdio_gateway_create()` | `src/gateway/stdio/stdio_gateway.h` | 创建 Stdio 网关实例（start 后阻塞式 REPL） |
 | `gateway_start(gw)` | `include/gateway.h` | 启动网关（HTTP/WS 非阻塞，Stdio 阻塞） |
 | `gateway_destroy(gw)` | `include/gateway.h` | 销毁实例并释放资源（运行中自动停止） |
 

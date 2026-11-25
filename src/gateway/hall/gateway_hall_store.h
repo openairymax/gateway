@@ -41,12 +41,6 @@ extern "C" {
 #endif
 
 /**
- * @brief Read a whole file into a malloc'd buffer (caller AIRY_FREE).
- * @return NULL on any error (open/seek/size/truncated read/OOM).
- */
-char *gw_hall_read_file(const char *path);
-
-/**
  * @brief Directory-walk skeleton shared by the hall read side.
  *
  * Iterates @p dir once, skipping dot entries, and invokes @p cb for every
@@ -69,21 +63,14 @@ void gw_hall_dir_walk(const char *dir, gw_hall_walk_cb cb, void *ud);
 int gw_hall_store_event(const char *task_id, const char *category, const char *node_id,
                         const char *content_json);
 
-/**
- * @brief Read a hall event file and flatten its envelope into the compact
- *        event JSON consumed by every hall.* read endpoint.
- *
- * Wire event bodies are stored with a {"file":{...},"access":{...},
- * "content":{...}} envelope (byte-aligned with the runtime writer). All
- * read surfaces (hall.replay / hall.stream events, hall.watch SSE push)
- * expose the flattened form {file_id,category,task_id,tenant_id,node_id,
- * ts_utc,seq,gseq,content} — a single on-the-wire event shape (SSoT), so
- * any client decodes stream and watch payloads identically.
- *
- * @param path  hall event file path
- * @return malloc'd compact JSON (caller AIRY_FREE); NULL on parse failure
+/*
+ * Flattening note: wire event bodies are stored with a {"file":{...},
+ * "access":{...},"content":{...}} envelope; every read surface
+ * (hall.replay / hall.stream events, hall.watch SSE push) emits the
+ * flattened form {file_id,category,task_id,tenant_id,node_id,ts_utc,seq,
+ * gseq,content}. 字段映射归 commons 读侧原语 hall_evt_flat_file()
+ * （commons/utils/hall/hall_event.h），本模块只持游标与目录遍历。
  */
-char *hall_event_flatten(const char *path);
 
 /**
  * @brief Hall event watch cursor (read side, for SSE push).
