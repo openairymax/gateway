@@ -20,6 +20,7 @@
 
 #include "logging.h"
 #include "platform.h"
+#include "daemon_platform_ext.h"
 
 #include "airy_memory.h"
 
@@ -49,27 +50,12 @@ static void gw_aipc_sock_close(int fd)
         close(fd);
 }
 
-/* 机制件：AF_UNIX 连接仪式（socket + sockaddr_un 填充 + connect）。
- * call/stream/subscribe 三处入口共用；失败即自关闭并返回 -1。 */
+/* 机制件：AF_UNIX 连接仪式收敛到 commons/platform（airy_sock_conn_unix），
+ * call/stream/subscribe 三处入口共用；失败返回 -1。 */
 static int gw_aipc_connect(const char *sock_path)
 {
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0)
-        return -1;
-    struct sockaddr_un addr;
-    AIRY_MEMSET(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    /* P1-1：超长路径静默截断会连到另一个 socket（或连不上且错误码误导）。 */
-    if (strlen(sock_path) >= sizeof(addr.sun_path)) {
-        close(fd);
-        return -1;
-    }
-    AIRY_STRNCPY_TERM(addr.sun_path, sock_path, sizeof(addr.sun_path));
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
-        return -1;
-    }
-    return fd;
+    airy_sock_t fd = airy_sock_conn_unix(sock_path, 0);
+    return (fd < 0) ? -1 : (int)fd;
 }
 
 /* 机制件：发全循环（短写续发），成功返回 0，失败返回 -1。 */
