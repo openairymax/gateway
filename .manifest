@@ -54,7 +54,17 @@
           "perm": "cap:agent.run"
         },
         {
+          "name": "run_stream",
+          "kind": "agent_run",
+          "perm": "cap:agent.run"
+        },
+        {
           "name": "cancel",
+          "kind": "agent_run",
+          "perm": "cap:agent.control"
+        },
+        {
+          "name": "run_cancel",
           "kind": "agent_run",
           "perm": "cap:agent.control"
         },
@@ -78,6 +88,9 @@
         },
         {
           "name": "turns"
+        },
+        {
+          "name": "vocab"
         },
         {
           "name": "health_check"
@@ -140,6 +153,12 @@
         {
           "name": "slots_set",
           "perm": "cap:llm.admin"
+        },
+        {
+          "name": "complete_stream"
+        },
+        {
+          "name": "embeddings"
         }
       ]
     },
@@ -197,6 +216,9 @@
         },
         {
           "name": "job"
+        },
+        {
+          "name": "verify"
         }
       ]
     },
@@ -478,10 +500,22 @@
           "name": "install_agent"
         },
         {
+          "name": "uninstall_agent"
+        },
+        {
           "name": "register_skill"
         },
         {
           "name": "search_skills"
+        },
+        {
+          "name": "uninstall_skill"
+        },
+        {
+          "name": "check_update"
+        },
+        {
+          "name": "sync_registry"
         },
         {
           "name": "health_check"
@@ -618,6 +652,9 @@
         },
         {
           "name": "health"
+        },
+        {
+          "name": "shutdown"
         },
         {
           "name": "health_check"
@@ -806,6 +843,57 @@
       "caps": [
         {
           "name": "health_check"
+        },
+        {
+          "name": "get_stats"
+        },
+        {
+          "name": "recognize"
+        },
+        {
+          "name": "eval"
+        },
+        {
+          "name": "stats"
+        },
+        {
+          "name": "plot"
+        },
+        {
+          "name": "solve"
+        },
+        {
+          "name": "differentiate"
+        },
+        {
+          "name": "integrate"
+        },
+        {
+          "name": "limit"
+        },
+        {
+          "name": "simplify"
+        },
+        {
+          "name": "factor"
+        },
+        {
+          "name": "expand"
+        },
+        {
+          "name": "matrix"
+        },
+        {
+          "name": "units"
+        },
+        {
+          "name": "numerical"
+        },
+        {
+          "name": "finance"
+        },
+        {
+          "name": "number_theory"
         }
       ]
     },
