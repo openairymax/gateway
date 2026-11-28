@@ -106,6 +106,24 @@ static void test_null_safety(void)
     TEST_PASS();
 }
 
+/**
+ * @brief Verify the OpenAI-compatible model listing route is registered
+ *
+ * GET /v1/models 是 OpenAI SDK 的可用性探测入口；路由缺位会让客户端在
+ * 首个请求即判定服务不可用（真机 2027 端口曾复现 404）。
+ */
+extern int http_gateway_route_auth_required(const char *method, const char *url);
+
+static void test_v1_models_route(void)
+{
+    TEST_BEGIN("v1_models_get_route");
+
+    ASSERT_EQ(http_gateway_route_auth_required("GET", "/v1/models"), 1);
+    ASSERT_EQ(http_gateway_route_auth_required("GET", "/v1/unknown"), 0);
+
+    TEST_PASS();
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -123,6 +141,10 @@ int main(int argc, char **argv)
 
     printf("[Safety Tests]\n");
     test_null_safety();
+    printf("\n");
+
+    printf("[Route Tests]\n");
+    test_v1_models_route();
     printf("\n");
 
     printf("========================================\n");

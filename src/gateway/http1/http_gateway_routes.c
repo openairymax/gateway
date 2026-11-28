@@ -317,6 +317,25 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
 }
 
 /**
+  * @brief Handle GET /v1/models（OpenAI 兼容面，CC=2）
+  *
+  * OpenAI SDK 以 GET 探测模型清单，而聚合分发只认带体 POST；缺此路由时
+  * 客户端拿到 404 并判定端点不可用。此处合成同义 service.list 请求，复用
+  * 既有 JSON-RPC 聚合出口，模型可见性与 llm_d 注册表同源。
+ */
+int handle_get_models(http_gateway_t *gateway, struct MHD_Connection *connection,
+                      http_request_context_t *context)
+{
+    static const char body[] = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"service.list\"}";
+    const size_t body_len = sizeof(body) - 1;
+
+    if (parse_json_request(gateway, context, body, body_len) != 0) {
+        return handle_parse_error(gateway, connection, context, body_len);
+    }
+    return handle_post_jsonrpc(gateway, connection, context);
+}
+
+/**
   * @brief HTTP route table (priority-ordered)
   *
   * auth_required：1=敏感面（入口鉴权门禁强制），
@@ -328,6 +347,7 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
   * 3. 3. Fall back to the default route (handle_not_found)
  */
 static const http_route_t http_routes[] = {{"POST", "/", handle_post_jsonrpc, 0, 1},
+                                           {"GET", "/v1/models", handle_get_models, 0, 1},
                                            {"POST", GW_SSE_RUN_STREAM_PATH, handle_run_stream_sse, 1, 1},
                                            {"GET", "/api/v1/hall/watch", handle_hall_watch_sse, 0, 1},
                                            {"OPTIONS", "*", handle_options_preflight, 0, 0},

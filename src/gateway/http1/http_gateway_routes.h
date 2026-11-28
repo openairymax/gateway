@@ -54,6 +54,12 @@ int handle_health_check(http_gateway_t *gateway, struct MHD_Connection *connecti
                         http_request_context_t *context);
 
 /**
+  * @brief Handle GET /v1/models (OpenAI-compatible model listing)
+ */
+int handle_get_models(http_gateway_t *gateway, struct MHD_Connection *connection,
+                      http_request_context_t *context);
+
+/**
   * @brief Handle GET /metrics
  */
 int handle_metrics_export(http_gateway_t *gateway, struct MHD_Connection *connection,
