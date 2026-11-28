@@ -320,19 +320,47 @@ int handle_parse_error(http_gateway_t *gateway, struct MHD_Connection *connectio
   * @brief Handle GET /v1/models（OpenAI 兼容面，CC=2）
   *
   * OpenAI SDK 以 GET 探测模型清单，而聚合分发只认带体 POST；缺此路由时
-  * 客户端拿到 404 并判定端点不可用。此处合成同义 service.list 请求，复用
-  * 既有 JSON-RPC 聚合出口，模型可见性与 llm_d 注册表同源。
- */
+  * 客户端拿到 404 并判定端点不可用。此处保留 HTTP 方法/路径交给协议入口，
+  * 由 gw_proto_detect 按 /v1/ 归类为 LLM API 并输出 OpenAI 形状
+  * （{"object":"list","data":[...]}），模型来源仍是 gateway_biz 解析的
+  * 默认模型（与 chat/embeddings 同源）。
+  */
 int handle_get_models(http_gateway_t *gateway, struct MHD_Connection *connection,
                       http_request_context_t *context)
 {
-    static const char body[] = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"service.list\"}";
-    const size_t body_len = sizeof(body) - 1;
-
-    if (parse_json_request(gateway, context, body, body_len) != 0) {
-        return handle_parse_error(gateway, connection, context, body_len);
+    if (!gateway->owner || !gateway->owner->handler_slot.handler) {
+        return handle_not_found(gateway, connection, context);
     }
-    return handle_post_jsonrpc(gateway, connection, context);
+
+    gateway_http_request_t http_req = {0};
+    http_req.magic = GATEWAY_HTTP_REQUEST_MAGIC;
+    http_req.method = context->method ? context->method : "GET";
+    http_req.path = context->url ? context->url : "/v1/models";
+    http_req.body = "";
+    http_req.body_len = 0;
+
+    char *json_response = gateway->owner->handler_slot.handler(&http_req,
+                                                              gateway->owner->handler_slot.data);
+    if (!json_response) {
+        const char *err_msg = "{\"error\":{\"message\":\"Protocol handler failed\","
+                              "\"type\":\"server_error\"}}";
+        struct MHD_Response *response =
+            create_http_response_ex(gateway, connection, 500, err_msg, strlen(err_msg));
+        int ret = MHD_queue_response(connection, 500, response);
+        MHD_destroy_response(response);
+        return ret;
+    }
+
+    struct MHD_Response *response =
+        create_http_response_ex(gateway, connection, 200, json_response, strlen(json_response));
+
+    atomic_fetch_add(&gateway->requests_total, 1);
+    atomic_fetch_add(&gateway->bytes_sent, strlen(json_response));
+
+    int ret = MHD_queue_response(connection, 200, response);
+    MHD_destroy_response(response);
+    AIRY_FREE(json_response);
+    return ret;
 }
 
 /**
